@@ -2,6 +2,7 @@ import { productSearchScore } from "../lib/product-search";
 import {
   checkUnitName,
   normalizeUnitName,
+  resolveUnitSystem,
   standardUnitsFor,
   suggestMigration,
   systemKeyFor,
@@ -1017,8 +1018,6 @@ async function replaceProductChildren(
   ingredients: IngredientInput[],
   // Without a kept unit, recipe quantities keep their numbers in the new default.
   keepUnconverted = false,
-  // New default units per old default unit, given when the product type changes.
-  typeConversion?: number,
 ) {
   const existingUnits = await ctx.db
     .query("productUnits")
@@ -1045,9 +1044,9 @@ async function replaceProductChildren(
   const bridge =
     units.find((unit) => unit.isDefault && oldUnits.has(unit.unitId)) ??
     units.find((unit) => oldUnits.has(unit.unitId));
-  const conversion =
-    typeConversion ??
-    (bridge ? bridge.factorToDefault / oldUnits.get(bridge.unitId)! : null);
+  const conversion = bridge
+    ? bridge.factorToDefault / oldUnits.get(bridge.unitId)!
+    : null;
   for (const row of existingUnits) {
     if (nextUnitIds.has(row.unitId)) continue;
     const [recipeReferences, additionReferences] = await Promise.all([
@@ -1876,6 +1875,29 @@ export const setSettings = mutation({
         );
       }
     }
+    if (args.unitSystem) {
+      const before = resolveUnitSystem(current?.unitSystem);
+      const after = resolveUnitSystem(args.unitSystem);
+      for (const productType of ["dry", "wet"] as const) {
+        if (before[productType] === after[productType]) continue;
+        const inUse = await ctx.db
+          .query("products")
+          .withIndex("by_organizationId_and_productType", (q) =>
+            q.eq("organizationId", organizationId).eq("productType", productType),
+          )
+          .take(6);
+        if (inUse.length > 0) {
+          const names = inUse
+            .slice(0, 5)
+            .map((product) => product.name)
+            .join(", ");
+          const more = inUse.length > 5 ? " og flere" : "";
+          throw new ConvexError(
+            `Enhedssystemet for ${productTypeLabel(productType)} kan ikke ændres, fordi disse produkter bruger det: ${names}${more}. Skift typen på produkterne først.`,
+          );
+        }
+      }
+    }
     const next = {
       ...(disabledProductTypes ? { disabledProductTypes } : {}),
       packagingEnabled: args.packagingEnabled ?? current?.packagingEnabled ?? false,
@@ -2155,8 +2177,6 @@ export async function updateProductWithAuth(
     expiry?: Expiry | null;
     salesPrice?: number | null;
     productType?: ProductType;
-    // How many old standard units one new standard unit is, when the type changes.
-    typeConversion?: number;
     // How to handle stock when the old default unit was removed. Either value
     // keeps recipe quantities that use a removed unit.
     unconvertedStock?: "keep" | "reset";
@@ -2188,20 +2208,9 @@ export async function updateProductWithAuth(
   const categoryId = categoryIds[0];
   const unitSystem = await getUnitSystemSettings(ctx, organizationId);
   const effectiveProductType = args.productType ?? product.productType;
-  const typeChanged =
-    args.productType !== undefined &&
-    product.productType !== undefined &&
-    args.productType !== product.productType;
   if (args.productType && args.productType !== product.productType) {
     await requireEnabledProductType(ctx, organizationId, args.productType);
   }
-  if (args.typeConversion !== undefined) {
-    requirePositiveNumber(args.typeConversion, "Omregningen");
-  }
-  const typeConversion =
-    typeChanged && args.typeConversion !== undefined
-      ? 1 / args.typeConversion
-      : undefined;
   const resolvedUnits = await resolveUnits(ctx, organizationId, args.units, {
     type: effectiveProductType ?? null,
     settings: unitSystem,
@@ -2284,10 +2293,9 @@ export async function updateProductWithAuth(
     }
     // Factor from the old default unit to the new one. If the old default was
     // removed, derive it from the new default's previous factor.
-    let stockFactor =
-      typeConversion ??
-      units.find((unit) => unit.unitId === product.defaultUnitId)
-        ?.factorToDefault;
+    let stockFactor = units.find(
+      (unit) => unit.unitId === product.defaultUnitId,
+    )?.factorToDefault;
     if (stockFactor === undefined) {
       const previousNewDefault = await ctx.db
         .query("productUnits")
@@ -2331,7 +2339,6 @@ export async function updateProductWithAuth(
     units,
     args.ingredients,
     args.unconvertedStock !== undefined,
-    typeConversion,
   );
   await replaceProductIngredientAdditions(
     ctx,
@@ -2521,7 +2528,9 @@ export const importProduct = mutation({
       args.categories.map((name) => ({ kind: "new", name })),
     );
     const categoryId = categoryIds[0];
-    const units = await resolveUnits(
+    const productType = existing?.productType;
+    const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+    const resolvedUnits = await resolveUnits(
       ctx,
       organizationId,
       args.units.map((unit) => ({
@@ -2530,7 +2539,18 @@ export const importProduct = mutation({
         packagingWeight: unit.packagingWeight,
         isDefault: unit.isDefault,
       })),
+      productType ? { type: productType, settings: unitSystem } : undefined,
     );
+    // Overwriting a typed product keeps its standard units and default.
+    const units = productType
+      ? await applyStandardUnits(
+          ctx,
+          organizationId,
+          productType,
+          unitSystem,
+          resolvedUnits,
+        )
+      : resolvedUnits;
     const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
 
     if (existing) {
@@ -2905,7 +2925,6 @@ export const updateProduct = mutation({
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     productType: v.optional(productTypeValidator),
-    typeConversion: v.optional(v.number()),
     unconvertedStock: v.optional(v.union(v.literal("keep"), v.literal("reset"))),
   },
   returns: v.id("products"),
@@ -3236,6 +3255,13 @@ export async function renameUnitWithAuth(
     .unique();
   if (existing && existing._id !== unit._id) {
     throw new ConvexError("Enheden findes allerede");
+  }
+  if (normalizedName !== unit.normalizedName) {
+    requireSensibleUnitName(
+      name,
+      null,
+      await getUnitSystemSettings(ctx, organizationId),
+    );
   }
   await ctx.db.patch("units", unit._id, { name, normalizedName });
   await recordAudit(ctx, auth, {
@@ -3701,20 +3727,13 @@ export const listUnitMigration = query({
     const settings = await getCatalogSettingsRow(ctx, organizationId);
     const unitSystem = settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM;
     const disabledProductTypes = settings?.disabledProductTypes ?? [];
-    const products = await ctx.db
+    // Migrated products leave the list, so the next batch shows up reactively.
+    const unmigrated = await ctx.db
       .query("products")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q.eq("organizationId", organizationId),
+      .withIndex("by_organizationId_and_productType", (q) =>
+        q.eq("organizationId", organizationId).eq("productType", undefined),
       )
-      .take(501);
-    if (products.length > 500) {
-      throw new ConvexError(
-        "Der er over 500 produkter. Arkivér produkter, du ikke bruger, eller kontakt en bruger med rollen Administrator",
-      );
-    }
-    const unmigrated = products.filter(
-      (product) => product.productType === undefined,
-    );
+      .take(200);
     const rows = await Promise.all(
       unmigrated.map(async (product) => {
         const productUnits = await ctx.db
@@ -3777,6 +3796,9 @@ export const migrateProductUnit = mutation({
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
     }
+    if (product.productType !== undefined) {
+      throw new ConvexError("Produktet bruger allerede standardenheder");
+    }
     requirePositiveNumber(args.factorToStandard, "Omregningsfaktoren");
     await requireEnabledProductType(ctx, organizationId, args.productType);
 
@@ -3834,6 +3856,12 @@ export const migrateProductUnit = mutation({
       for (const row of stockRows) {
         await ctx.db.patch("locationStock", row._id, {
           quantity: normalizeStock(row.quantity * args.factorToStandard),
+          onlinePosSalesQuantity:
+            row.onlinePosSalesQuantity === undefined
+              ? undefined
+              : normalizeStock(
+                  row.onlinePosSalesQuantity * args.factorToStandard,
+                ),
           updatedAt: Date.now(),
         });
       }
@@ -3845,6 +3873,10 @@ export const migrateProductUnit = mutation({
     await ctx.db.patch("products", product._id, {
       productType: args.productType,
       defaultUnitId: standardUnitId,
+      // An absent yield means one default unit; keep it one old default unit.
+      ...(!product.recipeYield && standardUnitId !== product.defaultUnitId
+        ? { recipeYield: { quantity: 1, unitId: product.defaultUnitId } }
+        : {}),
       updatedAt: Math.max(Date.now(), product.updatedAt + 1),
     });
     await recordAudit(ctx, auth, {

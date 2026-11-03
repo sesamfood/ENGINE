@@ -211,7 +211,8 @@ function withStandardRows(
   rows: UnitRow[],
   type: ProductType,
   options: FunctionReturnType<typeof api.catalog.listFormOptions>,
-  // New standard units per old standard unit, when switching between types.
+  // New standard units per old default unit. With it, every old unit stays
+  // with a converted factor, so stock, recipes and sales keep a bridge.
   conversion?: number,
 ): UnitRow[] {
   const matched = new Map<string, StandardUnit>();
@@ -244,17 +245,23 @@ function withStandardRows(
     conversion ??
     (oldDefault ? matched.get(oldDefault.key)?.factorToStandard : undefined);
   const customRows = rows
-    .filter((row) => !matched.has(row.key) && row.standard === null)
+    .filter(
+      (row) =>
+        !matched.has(row.key) &&
+        (row.standard === null || conversion !== undefined),
+    )
     .map((row) => {
-      const factor = parseFactor(row.factor);
+      const factor = row.isDefault ? 1 : parseFactor(row.factor);
       return {
         ...row,
         isDefault: false,
-        factor: row.isDefault
-          ? ""
-          : scale !== undefined && Number.isFinite(factor) && factor > 0
+        standard: null,
+        factor:
+          scale !== undefined && Number.isFinite(factor) && factor > 0
             ? formatFactor(factor * scale)
-            : row.factor,
+            : row.isDefault
+              ? ""
+              : row.factor,
       };
     });
   return [...standardRows, ...customRows];
@@ -472,8 +479,15 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [expiryUnit, setExpiryUnit] = useState<Expiry["unit"]>("days");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [productType, setProductType] = useState<ProductType | null>(null);
-  // Saved standard units per current standard unit; null if a switch was not converted.
-  const [typeConversion, setTypeConversion] = useState<number | null>(1);
+  const [savedProductType, setSavedProductType] = useState<ProductType | null>(
+    null,
+  );
+  // Units as they were before leaving the saved type, restored on the way back.
+  const [savedTypeUnits, setSavedTypeUnits] = useState<{
+    rows: UnitRow[];
+    yieldUnitKey: string | null;
+    yieldQuantity: string;
+  } | null>(null);
   const [pendingType, setPendingType] = useState<ProductType | null>(null);
   const [pendingConversion, setPendingConversion] = useState("");
   const [unitRows, setUnitRows] = useState<UnitRow[]>([]);
@@ -550,7 +564,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       standard: null,
     }));
     setProductType(product.productType);
-    setTypeConversion(1);
+    setSavedProductType(product.productType);
+    setSavedTypeUnits(null);
     setUnitRows(
       product.productType
         ? withStandardRows(loadedUnitRows, product.productType, options)
@@ -706,6 +721,17 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       value: `existing:${unit.id}`,
       label: unit.name,
     })) ?? [];
+  // The type's standard units are always on the product, so leave them out.
+  const standardUnitValues = new Set(
+    options?.standardUnits.flatMap((unit) =>
+      unit.productType === productType && unit.unitId
+        ? [`existing:${unit.unitId}`]
+        : [],
+    ),
+  );
+  const customUnitOptions = unitOptions.filter(
+    (option) => !standardUnitValues.has(option.value),
+  );
 
   const activeProductOptions = useMemo<ProductOption[]>(
     () =>
@@ -814,32 +840,61 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   function changeProductType(type: ProductType) {
     if (!options || type === productType) return;
-    const hasCustomRows = unitRows.some((row) => row.standard === null);
-    if (productType && (productId || hasCustomRows)) {
+    if (savedTypeUnits && type === savedProductType) {
+      setProductType(type);
+      setUnitRows(savedTypeUnits.rows);
+      setYieldUnitKey(savedTypeUnits.yieldUnitKey);
+      setYieldQuantity(savedTypeUnits.yieldQuantity);
+      setSavedTypeUnits(null);
+      return;
+    }
+    const oldDefault = unitRows.find((row) => row.isDefault);
+    const oldDefaultName = oldDefault
+      ? unitValueName(oldDefault.unitValue, options.units)
+      : null;
+    const defaultIsStandard =
+      oldDefaultName !== null &&
+      options.standardUnits.some(
+        (unit) =>
+          unit.productType === type &&
+          normalizeUnitName(unit.name) === normalizeUnitName(oldDefaultName),
+      );
+    const needsConversion = productType
+      ? productId !== undefined ||
+        unitRows.some((row) => row.standard === null && row.unitValue)
+      : productId !== undefined && oldDefaultName !== null && !defaultIsStandard;
+    if (needsConversion) {
       setPendingConversion("");
       setPendingType(type);
       return;
     }
-    setProductType(type);
-    setUnitRows((current) => withStandardRows(current, type, options));
+    applyProductType(type);
   }
 
-  // oldPerNew: how many current standard units one new standard unit is.
-  function confirmProductType(oldPerNew: number | null) {
-    if (!options || !pendingType) return;
+  // conversion: new standard units per current default unit.
+  function applyProductType(type: ProductType, conversion?: number) {
+    if (!options) return;
+    if (productId && productType === savedProductType && !savedTypeUnits) {
+      setSavedTypeUnits({ rows: unitRows, yieldUnitKey, yieldQuantity });
+    }
+    setProductType(type);
+    setUnitRows(withStandardRows(unitRows, type, options, conversion));
+    // The implicit yield of one default unit stays one old default unit.
+    if (conversion !== undefined && yieldUnitKey === null) {
+      setYieldUnitKey(unitRows.find((row) => row.isDefault)?.key ?? null);
+    }
+  }
+
+  // value: what the user entered in the conversion dialog, or null to skip.
+  function confirmProductType(value: number | null) {
+    if (!pendingType) return;
     const type = pendingType;
     setPendingType(null);
-    setProductType(type);
-    setTypeConversion((current) =>
-      current === null || oldPerNew === null ? null : current * oldPerNew,
-    );
-    setUnitRows((current) =>
-      withStandardRows(
-        current,
-        type,
-        options,
-        oldPerNew === null ? undefined : 1 / oldPerNew,
-      ),
+    // Typed products enter "1 new standard = X old standard", untyped ones
+    // "1 old default = X new standard".
+    applyProductType(
+      type,
+      value === null ? undefined : productType ? 1 / value : value,
     );
   }
 
@@ -1110,7 +1165,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
             productType: productType ?? undefined,
-            typeConversion: typeConversion ?? undefined,
             unconvertedStock,
           })
         : await createProduct({
@@ -1561,7 +1615,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         <Field className="md:self-center">
                           <FieldLabel className="sr-only">Enhed</FieldLabel>
                           <CreatableCombobox
-                            options={unitOptions}
+                            options={customUnitOptions}
                             value={row.unitValue}
                             onValueChange={(value) => {
                               setTypedUnitNames((current) => {
@@ -2169,7 +2223,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           if (!open) setPendingType(null);
         }}
       >
-        {pendingType && productType && options ? (
+        {pendingType && options ? (
           <AlertDialogContent className="data-[size=default]:sm:max-w-lg">
             <AlertDialogHeader>
               <AlertDialogTitle>
@@ -2178,12 +2232,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               </AlertDialogTitle>
               <AlertDialogDescription>
                 Angiv omregningen, så lager, opskrifter og egne enheder bliver
-                omregnet. Uden omregning beholder tallene deres værdi.
+                omregnet. De tidligere enheder bliver på produktet med den nye
+                omregning. Uden omregning beholder tallene deres værdi.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <Field>
               <FieldLabel htmlFor="product-type-conversion">
-                1 {standardUnitFor(pendingType, options.unitSystem).name}{" "}
+                1{" "}
+                {productType
+                  ? standardUnitFor(pendingType, options.unitSystem).name
+                  : defaultUnitName}{" "}
                 svarer til
               </FieldLabel>
               <Input
@@ -2203,7 +2261,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 className="h-11"
               />
               <FieldDescription>
-                {standardUnitFor(productType, options.unitSystem).name}
+                {
+                  standardUnitFor(productType ?? pendingType, options.unitSystem)
+                    .name
+                }
               </FieldDescription>
             </Field>
             <AlertDialogFooter>

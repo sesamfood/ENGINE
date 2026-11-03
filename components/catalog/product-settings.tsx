@@ -150,7 +150,7 @@ export function ProductSettings({
               <FieldTitle>Enhedssystem</FieldTitle>
               <HelpTooltip
                 label="enhedssystem"
-                content="Ændringen gælder for nye produkter. Eksisterende produkter flyttes under Administration → Enheder."
+                content="Enhedssystemet for Standard og Væske kan kun ændres, mens ingen produkter bruger typen. Produkter uden type flyttes til standardenheder under Administration → Enheder."
               />
             </div>
             <ToggleGroup
