@@ -107,6 +107,7 @@ const catalogProductValidator = v.object({
   id: v.id("products"),
   name: v.string(),
   status: statusValidator,
+  productType: v.union(productTypeValidator, v.null()),
   category: v.union(
     productCategoryValidator,
     v.null(),
@@ -1375,6 +1376,7 @@ async function hydrateCatalogProduct(
     id: product._id,
     name: product.name,
     status: product.status,
+    productType: product.productType ?? null,
     category: category ? { id: category.id, name: category.name } : null,
     categories,
     defaultUnit: defaultUnit
@@ -1440,6 +1442,7 @@ export const listProducts = query({
           product.name,
           memberships.map((id) => categoryPaths.get(id) ?? "").join(" · "),
           search,
+          product.productType,
         ) !== null
       );
     });
