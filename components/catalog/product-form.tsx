@@ -1639,68 +1639,66 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         key={row.key}
                         className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-unit) md:items-start"
                       >
-                        <Field>
-                          {/* Invisible on wide screens to align with the factor field. */}
-                          <FieldLabel className="max-md:sr-only md:invisible">
-                            Enhed
-                          </FieldLabel>
-                          <div className="flex items-center gap-3">
-                            {container ? (
-                              <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
-                                {container.imageUrl ? (
-                                  <Image
-                                    src={container.imageUrl}
-                                    alt={`Billede af ${container.name}`}
-                                    fill
-                                    sizes="64px"
-                                    className="object-cover"
-                                  />
-                                ) : (
-                                  <PackageOpenIcon aria-hidden="true" />
-                                )}
-                              </div>
-                            ) : null}
-                            <div className="flex min-w-0 flex-1 flex-col gap-2">
-                              <CreatableCombobox
-                                options={customUnitOptions}
-                                suggestionOptions={containerUnitOptions(typedName)}
-                                suggestionLabel="Beholdere"
-                                value={row.unitValue}
-                                onValueChange={(value) => {
-                                  setTypedUnitNames((current) => {
-                                    const next = { ...current };
-                                    delete next[row.key];
-                                    return next;
-                                  });
-                                  const selection = unitSelection(value);
-                                  setUnitRows((current) =>
-                                    current.map((item) =>
-                                      item.key === row.key
-                                        ? { ...item, ...selection }
-                                        : item,
-                                    ),
-                                  );
-                                }}
-                                onInputValueChange={(value) =>
-                                  setTypedUnitNames((current) => ({
-                                    ...current,
-                                    [row.key]: value,
-                                  }))
-                                }
-                                placeholder="Vælg eller opret en enhed"
-                                allowCreate
-                                disabled={locked}
-                                ariaLabel="Produktenhed"
-                                ariaInvalid={Boolean(nameIssue)}
-                              />
-                              {row.containerId ? (
-                                <FieldDescription>
-                                  {containerDescription(row.containerId)}
-                                </FieldDescription>
-                              ) : null}
+                        <div className="flex items-center gap-3 md:self-stretch">
+                          {container ? (
+                            <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
+                              {container.imageUrl ? (
+                                <Image
+                                  src={container.imageUrl}
+                                  alt={`Billede af ${container.name}`}
+                                  fill
+                                  sizes="64px"
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <PackageOpenIcon aria-hidden="true" />
+                              )}
                             </div>
-                          </div>
-                        </Field>
+                          ) : null}
+                          <Field className="min-w-0 flex-1">
+                            {/* Invisible on wide screens to align with the factor field. */}
+                            <FieldLabel className="max-md:sr-only md:invisible">
+                              Enhed
+                            </FieldLabel>
+                            <CreatableCombobox
+                              options={customUnitOptions}
+                              suggestionOptions={containerUnitOptions(typedName)}
+                              suggestionLabel="Beholdere"
+                              value={row.unitValue}
+                              onValueChange={(value) => {
+                                setTypedUnitNames((current) => {
+                                  const next = { ...current };
+                                  delete next[row.key];
+                                  return next;
+                                });
+                                const selection = unitSelection(value);
+                                setUnitRows((current) =>
+                                  current.map((item) =>
+                                    item.key === row.key
+                                      ? { ...item, ...selection }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              onInputValueChange={(value) =>
+                                setTypedUnitNames((current) => ({
+                                  ...current,
+                                  [row.key]: value,
+                                }))
+                              }
+                              placeholder="Vælg eller opret en enhed"
+                              allowCreate
+                              disabled={locked}
+                              ariaLabel="Produktenhed"
+                              ariaInvalid={Boolean(nameIssue)}
+                            />
+                            {row.containerId ? (
+                              <FieldDescription>
+                                {containerDescription(row.containerId)}
+                              </FieldDescription>
+                            ) : null}
+                          </Field>
+                        </div>
                         <Field>
                           <FieldLabel htmlFor={`${row.key}-factor`}>
                             {row.isDefault
