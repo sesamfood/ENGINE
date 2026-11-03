@@ -994,8 +994,10 @@ export default defineSchema({
     productId: v.id("products"),
     unitId: v.id("units"),
     factorToDefault: v.number(),
-    // Packaging weight in this unit, subtracted when a Count includes packaging.
+    // Legacy packaging weight in this unit; moved to containers by migration.
     packagingWeight: v.optional(v.number()),
+    // Set when the unit is a container, e.g. one bucket.
+    containerId: v.optional(v.id("containers")),
   })
     .index("by_organizationId_and_productId", ["organizationId", "productId"])
     .index("by_organizationId_and_productId_and_unitId", [
@@ -1004,6 +1006,24 @@ export default defineSchema({
       "unitId",
     ])
     .index("by_organizationId_and_unitId", ["organizationId", "unitId"]),
+
+  containers: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    imageStorageId: v.optional(v.id("_storage")),
+    // Empty weight in grams, subtracted from a weighed Count.
+    weightGrams: v.number(),
+    capacityMilliliters: v.optional(v.number()),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_imageStorageId", ["imageStorageId"])
+    .index("by_organizationId_and_normalizedName", [
+      "organizationId",
+      "normalizedName",
+    ]),
 
   productIngredients: defineTable({
     organizationId: v.string(),

@@ -127,7 +127,7 @@ type CountUnit = {
   id: Id<"units">;
   name: string;
   factorToDefault: number;
-  packagingWeight?: number;
+  container?: { id: Id<"containers">; name: string; weightGrams: number };
   quantity: number;
 };
 
@@ -447,6 +447,7 @@ function ProductCard({
                 <div className="w-full @md/field-group:w-56">
                   <CountQuantityInput
                     label={`Mængde af ${product.name} i ${unit.name}`}
+                    units={product.units}
                     unit={unit}
                     value={draftQuantities[unit.id] ?? quantityFor(unit)}
                     disabled={disabled}
@@ -581,6 +582,7 @@ function SingleProductCounter({
                       <div className="w-full @md/field-group:w-64">
                         <CountQuantityInput
                           label={`Mængde af ${product.name} i ${unit.name}`}
+                          units={product.units}
                           unit={unit}
                           value={quantityFor(unit)}
                           disabled={disabled}

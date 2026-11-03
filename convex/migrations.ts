@@ -4,6 +4,7 @@ import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { unitPriceFromLineTotal } from "./integrations/onlinepos/lib/api";
 import { backfillDailyPaymentTypes } from "./lib/salesRollup";
+import { gramsPerUnit } from "../lib/containers";
 
 const ONLINE_POS_SOURCE = "onlinePos";
 
@@ -81,5 +82,61 @@ export const backfillSalesDailyPaymentTypes = migrations.define({
   batchSize: 10,
   migrateOne: async (ctx, daily) => {
     await backfillDailyPaymentTypes(ctx, daily);
+  },
+});
+
+// Turns unit packaging weights into unlinked containers so the weights are
+// kept. Units without a weight conversion keep their old value.
+export const packagingWeightsToContainers = migrations.define({
+  table: "productUnits",
+  batchSize: 50,
+  migrateOne: async (ctx, row) => {
+    if (row.packagingWeight === undefined) return;
+    const product = await ctx.db.get("products", row.productId);
+    if (!product || product.organizationId !== row.organizationId) return;
+    const siblings = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", row.organizationId)
+          .eq("productId", row.productId),
+      )
+      .take(200);
+    const units = await Promise.all(
+      siblings.map(async (sibling) => ({
+        name: (await ctx.db.get("units", sibling.unitId))?.name ?? "",
+        factorToDefault: sibling.factorToDefault,
+      })),
+    );
+    const grams = gramsPerUnit(units, { name: "", factorToDefault: row.factorToDefault });
+    if (!grams) return;
+
+    const weightGrams = Math.round(row.packagingWeight * grams * 1000) / 1000;
+    const name = `Beholder ${
+      weightGrams >= 1000
+        ? `${(weightGrams / 1000).toLocaleString("da-DK")} kg`
+        : `${weightGrams.toLocaleString("da-DK")} g`
+    }`;
+    const normalizedName = name.toLocaleLowerCase("da");
+    const existing = await ctx.db
+      .query("containers")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q
+          .eq("organizationId", row.organizationId)
+          .eq("normalizedName", normalizedName),
+      )
+      .first();
+    if (!existing) {
+      await ctx.db.insert("containers", {
+        organizationId: row.organizationId,
+        name,
+        normalizedName,
+        weightGrams,
+        status: "active",
+        createdBy: product.createdBy,
+        updatedAt: Date.now(),
+      });
+    }
+    await ctx.db.patch("productUnits", row._id, { packagingWeight: undefined });
   },
 });
