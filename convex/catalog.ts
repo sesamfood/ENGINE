@@ -55,6 +55,7 @@ import {
   MAX_PRODUCT_CATEGORIES,
   replaceProductCategories,
 } from "./lib/productCategories";
+import { resolveProductContainerIds } from "./containers";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -143,10 +144,11 @@ const productDetailValidator = v.object({
       id: v.id("units"),
       name: v.string(),
       factorToDefault: v.number(),
-      packagingWeight: v.union(v.number(), v.null()),
+      containerId: v.union(v.id("containers"), v.null()),
       isDefault: v.boolean(),
     }),
   ),
+  containerIds: v.array(v.id("containers")),
   ingredients: v.array(
     v.object({
       productId: v.id("products"),
@@ -213,7 +215,8 @@ const unitReferenceValidator = v.union(
 const productUnitInputValidator = v.object({
   unit: unitReferenceValidator,
   factorToDefault: v.number(),
-  packagingWeight: v.optional(v.number()),
+  // Undefined keeps the unit's stored container.
+  containerId: v.optional(v.union(v.id("containers"), v.null())),
   isDefault: v.boolean(),
 });
 
@@ -252,7 +255,6 @@ const productExportValidator = v.object({
     v.object({
       name: v.string(),
       factorToDefault: v.number(),
-      packagingWeight: v.optional(v.number()),
       isDefault: v.boolean(),
     }),
   ),
@@ -278,7 +280,6 @@ const productExportValidator = v.object({
 const importedProductUnitValidator = v.object({
   name: v.string(),
   factorToDefault: v.number(),
-  packagingWeight: v.optional(v.number()),
   isDefault: v.boolean(),
 });
 
@@ -310,7 +311,7 @@ type UnitReference =
 type ProductUnitInput = {
   unit: UnitReference;
   factorToDefault: number;
-  packagingWeight?: number;
+  containerId?: Id<"containers"> | null;
   isDefault: boolean;
 };
 
@@ -602,7 +603,7 @@ async function ensureStandardUnitRows(
 type ResolvedProductUnit = {
   unitId: Id<"units">;
   factorToDefault: number;
-  packagingWeight?: number;
+  containerId?: Id<"containers"> | null;
   isDefault: boolean;
 };
 
@@ -694,18 +695,10 @@ async function resolveUnits(
     throw new ConvexError("Vælg præcis én standardenhed");
   }
 
-  const resolved: Array<{
-    unitId: Id<"units">;
-    factorToDefault: number;
-    packagingWeight?: number;
-    isDefault: boolean;
-  }> = [];
+  const resolved: ResolvedProductUnit[] = [];
 
   for (const input of inputs) {
     requirePositiveNumber(input.factorToDefault, "Omregningsfaktoren");
-    if (input.packagingWeight !== undefined) {
-      requirePositiveNumber(input.packagingWeight, "Emballagevægten");
-    }
     if (input.isDefault && input.factorToDefault !== 1) {
       throw new ConvexError("Omregningen for standardenheden skal være 1");
     }
@@ -713,7 +706,7 @@ async function resolveUnits(
     resolved.push({
       unitId: await resolveUnit(ctx, organizationId, input.unit, nameCheck),
       factorToDefault: input.factorToDefault,
-      packagingWeight: input.packagingWeight,
+      containerId: input.containerId,
       isDefault: input.isDefault,
     });
   }
@@ -723,6 +716,17 @@ async function resolveUnits(
   }
 
   return resolved;
+}
+
+// A unit's container always belongs to the product.
+function withUnitContainers(
+  containerIds: Id<"containers">[],
+  units: ResolvedProductUnit[],
+) {
+  return [
+    ...containerIds,
+    ...units.flatMap((unit) => (unit.containerId ? [unit.containerId] : [])),
+  ];
 }
 
 async function resolveRecipeYield(
@@ -1016,6 +1020,8 @@ async function replaceProductChildren(
   productId: Id<"products">,
   units: Awaited<ReturnType<typeof resolveUnits>>,
   ingredients: IngredientInput[],
+  // The product's containers; unit containers outside it are dropped.
+  containerIds: Id<"containers">[],
   // Without a kept unit, recipe quantities keep their numbers in the new default.
   keepUnconverted = false,
 ) {
@@ -1104,12 +1110,19 @@ async function replaceProductChildren(
   for (const row of existingUnits) await ctx.db.delete("productUnits", row._id);
 
   for (const row of units) {
+    const containerId =
+      row.containerId === undefined
+        ? existingUnits.find((current) => current.unitId === row.unitId)
+            ?.containerId
+        : (row.containerId ?? undefined);
     await ctx.db.insert("productUnits", {
       organizationId,
       productId,
       unitId: row.unitId,
       factorToDefault: row.factorToDefault,
-      packagingWeight: row.packagingWeight,
+      ...(containerId && containerIds.includes(containerId)
+        ? { containerId }
+        : {}),
     });
   }
   await replaceProductIngredients(ctx, organizationId, productId, ingredients);
@@ -1608,7 +1621,6 @@ export const exportProducts = query({
               return {
                 name: unit.name,
                 factorToDefault: row.factorToDefault,
-                packagingWeight: row.packagingWeight,
                 isDefault: row.unitId === product.defaultUnitId,
               };
             }),
@@ -1741,7 +1753,7 @@ export const getProduct = query({
               id: row.unitId,
               name: unit.name,
               factorToDefault: row.factorToDefault,
-              packagingWeight: row.packagingWeight ?? null,
+              containerId: row.containerId ?? null,
               isDefault: row.unitId === product.defaultUnitId,
             }
           : null;
@@ -1800,6 +1812,7 @@ export const getProduct = query({
       categories,
       imageUrl,
       units: units.filter((row) => row !== null),
+      containerIds: product.containerIds ?? [],
       ingredients: ingredients.filter((row) => row !== null),
       recipeYield: product.recipeYield ?? null,
       addableIngredients: addableIngredients.filter((row) => row !== null),
@@ -2068,6 +2081,7 @@ export async function createProductWithAuth(
     expiry?: Expiry | null;
     salesPrice?: number | null;
     productType?: ProductType;
+    containerIds?: Id<"containers">[];
   },
 ): Promise<Id<"products">> {
   const { organizationId, userIdentifier } = auth;
@@ -2114,6 +2128,11 @@ export async function createProductWithAuth(
     requireTemperature(args.maxTemperatureCelsius, "Maksimumtemperaturen");
   }
 
+  const containerIds = await resolveProductContainerIds(
+    ctx,
+    organizationId,
+    withUnitContainers(args.containerIds ?? [], units),
+  );
   const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
   const productId = await ctx.db.insert("products", {
     organizationId,
@@ -2122,6 +2141,7 @@ export async function createProductWithAuth(
     categoryId,
     ...(args.productType ? { productType: args.productType } : {}),
     defaultUnitId,
+    ...(containerIds.length > 0 ? { containerIds } : {}),
     ...(recipeYield ? { recipeYield } : {}),
     ...(typeof args.maxTemperatureCelsius === "number"
       ? { maxTemperatureCelsius: args.maxTemperatureCelsius }
@@ -2140,6 +2160,7 @@ export async function createProductWithAuth(
     productId,
     units,
     args.ingredients,
+    containerIds,
   );
   await replaceProductIngredientAdditions(
     ctx,
@@ -2177,6 +2198,8 @@ export async function updateProductWithAuth(
     expiry?: Expiry | null;
     salesPrice?: number | null;
     productType?: ProductType;
+    // Undefined keeps the stored containers.
+    containerIds?: Id<"containers">[];
     // How to handle stock when the old default unit was removed. Either value
     // keeps recipe quantities that use a removed unit.
     unconvertedStock?: "keep" | "reset";
@@ -2332,12 +2355,19 @@ export async function updateProductWithAuth(
       });
     }
   }
+  const containerIds = await resolveProductContainerIds(
+    ctx,
+    organizationId,
+    withUnitContainers(args.containerIds ?? product.containerIds ?? [], units),
+    product.containerIds,
+  );
   await replaceProductChildren(
     ctx,
     organizationId,
     product._id,
     units,
     args.ingredients,
+    containerIds,
     args.unconvertedStock !== undefined,
   );
   await replaceProductIngredientAdditions(
@@ -2363,6 +2393,7 @@ export async function updateProductWithAuth(
     categoryId,
     ...(args.productType ? { productType: args.productType } : {}),
     defaultUnitId,
+    containerIds: containerIds.length > 0 ? containerIds : undefined,
     recipeYield,
     ...(args.maxTemperatureCelsius !== undefined
       ? {
@@ -2473,6 +2504,7 @@ export const createProduct = mutation({
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     productType: v.optional(productTypeValidator),
+    containerIds: v.optional(v.array(v.id("containers"))),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {
@@ -2536,7 +2568,6 @@ export const importProduct = mutation({
       args.units.map((unit) => ({
         unit: { kind: "new" as const, name: unit.name },
         factorToDefault: unit.factorToDefault,
-        packagingWeight: unit.packagingWeight,
         isDefault: unit.isDefault,
       })),
       productType ? { type: productType, settings: unitSystem } : undefined,
@@ -2747,6 +2778,7 @@ export const importProduct = mutation({
         existing._id,
         units,
         [],
+        existing.containerIds ?? [],
       );
       await ctx.db.patch("products", existing._id, {
         name,
@@ -2793,7 +2825,7 @@ export const importProduct = mutation({
       createdBy: userIdentifier,
       updatedAt: Date.now(),
     });
-    await replaceProductChildren(ctx, organizationId, productId, units, []);
+    await replaceProductChildren(ctx, organizationId, productId, units, [], []);
     await replaceProductCategories(
       ctx,
       { _id: productId, organizationId, categoryId },
@@ -2925,6 +2957,7 @@ export const updateProduct = mutation({
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     productType: v.optional(productTypeValidator),
+    containerIds: v.optional(v.array(v.id("containers"))),
     unconvertedStock: v.optional(v.union(v.literal("keep"), v.literal("reset"))),
   },
   returns: v.id("products"),

@@ -159,6 +159,7 @@ export const administrationFeatures: HelpFeature[] = [
             bullets: [
               "Fanen Kategorier samler Produkter og underkategorier. Brug Ny underkategori eller Redigér til at ændre opdelingen.",
               "Fanen Enheder viser alle enheder. Sammenlæg flytter Produkter og aktive opsætninger fra en dublet til den valgte enhed. Historiske registreringer bevares.",
+              "Fanen Beholdere samler baljer, spande og kasser med billede, vægt og rumfang. Tilføj dem på Produktet under Beholdere. Ved Count vælges en beholder, og dens vægt trækkes fra, når Produktet har en vægtenhed.",
             ],
           },
           {

@@ -21,6 +21,7 @@ const catalogSections: CatalogSection[] = [
   { value: "menus", label: "Menuer", permission: "integrations.manage" },
   { value: "categories", label: "Kategorier" },
   { value: "units", label: "Enheder" },
+  { value: "containers", label: "Beholdere" },
 ];
 
 const userSections = [
