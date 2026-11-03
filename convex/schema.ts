@@ -859,6 +859,8 @@ export default defineSchema({
     organizationId: v.string(),
     name: v.string(),
     normalizedName: v.string(),
+    // Shown instead of name for any quantity other than exactly 1.
+    pluralName: v.optional(v.string()),
     // Set on built-in standard units, e.g. "dry:g". See lib/unit-system.ts.
     systemKey: v.optional(v.string()),
   }).index("by_organizationId_and_normalizedName", [

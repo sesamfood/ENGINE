@@ -84,6 +84,13 @@ export function systemKeyFor(type: ProductType, key: string) {
   return `${type}:${key}`;
 }
 
+export function unitNameFor(
+  unit: { name: string; pluralName?: string },
+  quantity: number,
+) {
+  return quantity === 1 ? unit.name : (unit.pluralName ?? unit.name);
+}
+
 export function normalizeUnitName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("da");
 }
