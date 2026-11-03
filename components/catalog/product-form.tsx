@@ -2167,7 +2167,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         }}
       >
         {pendingType && productType && options ? (
-          <AlertDialogContent>
+          <AlertDialogContent className="data-[size=default]:sm:max-w-lg">
             <AlertDialogHeader>
               <AlertDialogTitle>
                 Skift til{" "}
