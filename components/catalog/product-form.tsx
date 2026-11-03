@@ -1693,14 +1693,18 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                               ariaInvalid={Boolean(nameIssue)}
                             />
                             {row.containerId ? (
-                              <FieldDescription>
+                              <FieldDescription className="ms-2.75">
                                 {containerDescription(row.containerId)}
                               </FieldDescription>
                             ) : null}
                           </Field>
                         </div>
                         <Field>
-                          <FieldLabel htmlFor={`${row.key}-factor`}>
+                          {/* Indented to line up with the text inside the input. */}
+                          <FieldLabel
+                            htmlFor={`${row.key}-factor`}
+                            className="ms-2.75"
+                          >
                             {row.isDefault
                               ? "Omregning"
                               : `1 ${unitName(row)} svarer til`}
@@ -1722,7 +1726,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                             }
                             className="h-11"
                           />
-                          <FieldDescription>
+                          <FieldDescription className="ms-2.75">
                             {row.isDefault ? "Basisværdi" : defaultUnitName}
                           </FieldDescription>
                         </Field>
