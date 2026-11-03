@@ -288,7 +288,7 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               <BanIcon data-icon="inline-start" />
               Annullér bestilling
             </PopoverTrigger>
-            <PopoverContent side="top" align="start">
+            <PopoverContent side="top">
               <PopoverHeader>
                 <PopoverTitle>Annullér bestillingen?</PopoverTitle>
                 <PopoverDescription>
