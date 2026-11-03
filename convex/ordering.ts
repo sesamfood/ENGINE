@@ -85,7 +85,9 @@ const productValidator = v.object({
   unitId: v.id("units"),
   unitName: v.string(),
   // All units the Produkt can be ordered in, default first. Used by internal orders.
-  units: v.array(v.object({ id: v.id("units"), name: v.string() })),
+  units: v.array(
+    v.object({ id: v.id("units"), name: v.string(), factor: v.number() }),
+  ),
   hasIngredients: v.boolean(),
   stock: v.union(v.number(), v.null()),
   lastCountedAt: v.union(v.number(), v.null()),
@@ -151,9 +153,12 @@ export const listProducts = query({
                 : null,
               getProductUnitFactors(ctx, product).then((factors) =>
                 Promise.all(
-                  [...factors.keys()]
-                    .filter((unitId) => unitId !== product.defaultUnitId)
-                    .map((unitId) => ctx.db.get("units", unitId)),
+                  [...factors]
+                    .filter(([unitId]) => unitId !== product.defaultUnitId)
+                    .map(async ([unitId, factor]) => {
+                      const item = await ctx.db.get("units", unitId);
+                      return item && { ...item, factor };
+                    }),
                 ),
               ),
             ]);
@@ -169,9 +174,9 @@ export const listProducts = query({
                 : "Uden kategori",
             unitId: unit._id,
             unitName: unit.name,
-            units: [unit, ...units].flatMap((item) =>
+            units: [{ ...unit, factor: 1 }, ...units].flatMap((item) =>
               item?.organizationId === organizationId
-                ? [{ id: item._id, name: item.name }]
+                ? [{ id: item._id, name: item.name, factor: item.factor }]
                 : [],
             ),
             hasIngredients: ingredient !== null,
@@ -573,6 +578,47 @@ export const listInternalSuppliers = query({
           ]
         : [];
     });
+  },
+});
+
+// The unit each Produkt was last ordered in on the location's recent internal orders.
+export const listRecentInternalUnits = query({
+  args: { locationId: v.id("locations") },
+  returns: v.array(
+    v.object({ productId: v.id("products"), unitId: v.id("units") }),
+  ),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requirePlanner(ctx, args.locationId);
+    const orders = (
+      await ctx.db
+        .query("orders")
+        .withIndex("by_organizationId_and_locationId_and_createdAt", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", args.locationId),
+        )
+        .order("desc")
+        .take(50)
+    )
+      .filter((order) => order.fulfillingLocationId)
+      .slice(0, 10);
+    const lines = await Promise.all(
+      orders.map((order) =>
+        ctx.db
+          .query("orderLines")
+          .withIndex("by_organizationId_and_orderId", (q) =>
+            q.eq("organizationId", organizationId).eq("orderId", order._id),
+          )
+          .take(200),
+      ),
+    );
+    const units = new Map<Id<"products">, Id<"units">>();
+    for (const line of lines.flat()) {
+      if (line.productId && line.unitId && !units.has(line.productId)) {
+        units.set(line.productId, line.unitId);
+      }
+    }
+    return [...units].map(([productId, unitId]) => ({ productId, unitId }));
   },
 });
 

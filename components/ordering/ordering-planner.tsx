@@ -202,6 +202,15 @@ function Planner({
   const internalSupplier =
     internalSuppliers?.find((item) => item.locationId === supplierValue) ??
     null;
+  const recentUnits = useQuery(
+    api.ordering.listRecentInternalUnits,
+    canPlan && locationId && internalSupplier ? { locationId } : "skip",
+  );
+  const recentUnitIds = useMemo(
+    () =>
+      new Map(recentUnits?.map((item) => [item.productId, item.unitId])),
+    [recentUnits],
+  );
   const editLines = useMemo(() => {
     const lines = new Map<string, { unitId: Id<"units">; input: string }[]>();
     for (const line of editOrder?.lines ?? []) {
@@ -372,6 +381,7 @@ function Planner({
     settings === undefined ||
     suppliers === undefined ||
     internalSuppliers === undefined ||
+    (internalSupplier !== null && recentUnits === undefined) ||
     (catalogSupplier && (supplierLinks === undefined || catalog === undefined)) ||
     !context ||
     products === undefined ||
@@ -432,14 +442,23 @@ function Planner({
     ) {
       return [];
     }
-    const orderUnitId = link?.unitId ?? product.unitId;
+    // Internal orders start in the unit last ordered, suggested in whole units.
+    const recentUnit = internalSupplier
+      ? product.units.find(
+          (unit) =>
+            unit.id !== product.unitId &&
+            unit.id === recentUnitIds.get(product.id),
+        )
+      : undefined;
+    const orderUnitId = link?.unitId ?? recentUnit?.id ?? product.unitId;
+    const factor = link?.factorToDefault ?? recentUnit?.factor;
     const catalogItem = link
       ? catalogByNumber.get(link.productNumber)
       : undefined;
     const packs =
-      product.forecast.suggested === null || !link
+      product.forecast.suggested === null || !factor
         ? product.forecast.suggested
-        : Math.ceil(product.forecast.suggested / link.factorToDefault - 1e-9);
+        : Math.ceil(product.forecast.suggested / factor - 1e-9);
     const suggested =
       packs && catalogItem ? Math.max(packs, catalogItem.minOrder) : packs;
     const key = `${locationId}:${product.id}:${orderUnitId}`;
@@ -469,7 +488,7 @@ function Planner({
         quantity,
         suggested,
         orderUnitId,
-        orderUnitName: link?.unitName ?? product.unitName,
+        orderUnitName: link?.unitName ?? recentUnit?.name ?? product.unitName,
         productNumber: link?.productNumber ?? null,
         catalogItem,
         lines,
