@@ -62,7 +62,6 @@ import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
-  PopoverDescription,
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
@@ -316,10 +315,6 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
             <PopoverContent side="top">
               <PopoverHeader>
                 <PopoverTitle>Annullér bestillingen?</PopoverTitle>
-                <PopoverDescription>
-                  {order.supplierName ?? "Leverandøren"} kan ikke længere
-                  oprette en transfer for bestillingen, før du genåbner den.
-                </PopoverDescription>
               </PopoverHeader>
               <div className="flex justify-end gap-2">
                 <Button
@@ -382,25 +377,12 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
 
 function FulfillmentBadge({
   status,
-  className,
 }: {
   status: Doc<"orders">["fulfillmentStatus"];
-  className?: string;
 }) {
-  if (status === "cancelled") {
-    return (
-      <Badge variant="destructive" className={className}>
-        Annulleret
-      </Badge>
-    );
-  }
-  if (status === "transferred") {
-    return (
-      <Badge variant="success" className={className}>
-        Transfer oprettet
-      </Badge>
-    );
-  }
+  if (status === "open") return <Badge variant="outline">Afventer transfer</Badge>;
+  if (status === "cancelled") return <Badge variant="destructive">Annulleret</Badge>;
+  if (status === "transferred") return <Badge variant="success">Transfer oprettet</Badge>;
   return null;
 }
 
@@ -447,6 +429,7 @@ function HistoryList({
                   <TableHead>Dækker perioden</TableHead>
                   <TableHead>Afgivet af</TableHead>
                   <TableHead>Leverandør</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Produkter</TableHead>
                 </TableRow>
               </TableHeader>
@@ -480,10 +463,9 @@ function HistoryList({
                     <TableCell className="max-w-60 whitespace-normal break-words">
                       {order.supplierName ?? "Ingen"}
                       {order.fulfillingLocationId ? " (intern)" : ""}
-                      <FulfillmentBadge
-                        status={order.fulfillmentStatus}
-                        className="ml-2"
-                      />
+                    </TableCell>
+                    <TableCell>
+                      <FulfillmentBadge status={order.fulfillmentStatus} />
                     </TableCell>
                     <TableCell appearance="numeric" className="text-right">
                       {numberFormatter.format(order.itemCount)}
@@ -515,8 +497,7 @@ function HistoryList({
                     <CardTitle>
                       {timestampFormatter.format(order.createdAt)}
                     </CardTitle>
-                    {order.fulfillmentStatus === "cancelled" ||
-                    order.fulfillmentStatus === "transferred" ? (
+                    {order.fulfillmentStatus ? (
                       <CardAction>
                         <FulfillmentBadge status={order.fulfillmentStatus} />
                       </CardAction>
