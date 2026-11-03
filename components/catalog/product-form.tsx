@@ -21,6 +21,7 @@ import {
   checkUnitName,
   normalizeUnitName,
   PRODUCT_TYPES,
+  standardUnitFor,
   unitNameIssueMessage,
   type ProductType,
 } from "@/lib/unit-system";
@@ -210,6 +211,8 @@ function withStandardRows(
   rows: UnitRow[],
   type: ProductType,
   options: FunctionReturnType<typeof api.catalog.listFormOptions>,
+  // New standard units per old standard unit, when switching between types.
+  conversion?: number,
 ): UnitRow[] {
   const matched = new Map<string, StandardUnit>();
   const standardRows = options.standardUnits
@@ -237,7 +240,9 @@ function withStandardRows(
     });
   // Custom factors follow the old default when it becomes a standard unit.
   const oldDefault = rows.find((row) => row.isDefault);
-  const scale = oldDefault ? matched.get(oldDefault.key)?.factorToStandard : undefined;
+  const scale =
+    conversion ??
+    (oldDefault ? matched.get(oldDefault.key)?.factorToStandard : undefined);
   const customRows = rows
     .filter((row) => !matched.has(row.key) && row.standard === null)
     .map((row) => {
@@ -467,6 +472,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [expiryUnit, setExpiryUnit] = useState<Expiry["unit"]>("days");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [productType, setProductType] = useState<ProductType | null>(null);
+  // Saved standard units per current standard unit; null if a switch was not converted.
+  const [typeConversion, setTypeConversion] = useState<number | null>(1);
+  const [pendingType, setPendingType] = useState<ProductType | null>(null);
+  const [pendingConversion, setPendingConversion] = useState("");
   const [unitRows, setUnitRows] = useState<UnitRow[]>([]);
   // Text typed into each unit combobox, for the unit name warning.
   const [typedUnitNames, setTypedUnitNames] = useState<
@@ -541,6 +550,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       standard: null,
     }));
     setProductType(product.productType);
+    setTypeConversion(1);
     setUnitRows(
       product.productType
         ? withStandardRows(loadedUnitRows, product.productType, options)
@@ -804,8 +814,33 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   function changeProductType(type: ProductType) {
     if (!options || type === productType) return;
+    const hasCustomRows = unitRows.some((row) => row.standard === null);
+    if (productType && (productId || hasCustomRows)) {
+      setPendingConversion("");
+      setPendingType(type);
+      return;
+    }
     setProductType(type);
     setUnitRows((current) => withStandardRows(current, type, options));
+  }
+
+  // oldPerNew: how many current standard units one new standard unit is.
+  function confirmProductType(oldPerNew: number | null) {
+    if (!options || !pendingType) return;
+    const type = pendingType;
+    setPendingType(null);
+    setProductType(type);
+    setTypeConversion((current) =>
+      current === null || oldPerNew === null ? null : current * oldPerNew,
+    );
+    setUnitRows((current) =>
+      withStandardRows(
+        current,
+        type,
+        options,
+        oldPerNew === null ? undefined : 1 / oldPerNew,
+      ),
+    );
   }
 
   function newUnitNameIssue(row: UnitRow, name: string | undefined) {
@@ -1075,6 +1110,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
             productType: productType ?? undefined,
+            typeConversion: typeConversion ?? undefined,
             unconvertedStock,
           })
         : await createProduct({
@@ -1493,7 +1529,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         value={type.value}
                         className="min-h-11 flex-1"
                       >
-                        {type.label}
+                        {options
+                          ? `${type.label} (${standardUnitFor(type.value, options.unitSystem).name})`
+                          : type.label}
                       </ToggleGroupItem>
                     ))}
                   </ToggleGroup>
@@ -1504,8 +1542,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   )}
                 </Field>
                 <div className="flex flex-col gap-3">
-                  {unitRows.map((row) => {
-                    const locked = !productType || row.standard !== null;
+                  {/* Standard units stay in state so they are saved, but are not shown. */}
+                  {unitRows.filter((row) => row.standard === null).map((row) => {
+                    const locked = !productType;
                     const typedName = typedUnitNames[row.key];
                     const nameIssue = newUnitNameIssue(
                       row,
@@ -1514,17 +1553,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     return (
                       <div
                         key={row.key}
-                        className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-recipe) md:items-start"
+                        className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-unit) md:items-start"
                       >
-                        <div className="flex min-h-11 items-center md:w-32 md:self-center">
-                          {row.standard ? (
-                            <Badge
-                              variant={row.standard.isStandard ? "default" : "secondary"}
-                            >
-                              {row.standard.isStandard ? "Standardenhed" : "Standard"}
-                            </Badge>
-                          ) : null}
-                        </div>
                         <Field className="md:self-center">
                           <FieldLabel className="sr-only">Enhed</FieldLabel>
                           <CreatableCombobox
@@ -1645,7 +1675,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           </Alert>
                         ) : null}
                         {row.packagingEnabled ? (
-                          <Field className="md:col-span-2 md:col-start-2">
+                          <Field className="md:col-span-2">
                             <div className="flex items-center gap-1">
                               <FieldLabel htmlFor={`${row.key}-packaging-weight`}>
                                 Emballagevægt
@@ -2129,6 +2159,70 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           }}
         />
       ) : null}
+
+      <AlertDialog
+        open={pendingType !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingType(null);
+        }}
+      >
+        {pendingType && productType && options ? (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Skift til{" "}
+                {PRODUCT_TYPES.find((type) => type.value === pendingType)?.label}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Angiv omregningen, så lager, opskrifter og egne enheder bliver
+                omregnet. Uden omregning beholder tallene deres værdi.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <Field>
+              <FieldLabel htmlFor="product-type-conversion">
+                1 {standardUnitFor(pendingType, options.unitSystem).name}{" "}
+                svarer til
+              </FieldLabel>
+              <Input
+                id="product-type-conversion"
+                type="text"
+                inputMode="decimal"
+                autoFocus
+                value={pendingConversion}
+                onChange={(event) => setPendingConversion(event.target.value)}
+                onKeyDown={(event) => {
+                  const value = parseFactor(pendingConversion);
+                  if (event.key === "Enter" && value > 0) {
+                    event.preventDefault();
+                    confirmProductType(value);
+                  }
+                }}
+                className="h-11"
+              />
+              <FieldDescription>
+                {standardUnitFor(productType, options.unitSystem).name}
+              </FieldDescription>
+            </Field>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annullér</AlertDialogCancel>
+              <AlertDialogAction
+                variant="secondary"
+                onClick={() => confirmProductType(null)}
+              >
+                Skift uden omregning
+              </AlertDialogAction>
+              <AlertDialogAction
+                disabled={!(parseFactor(pendingConversion) > 0)}
+                onClick={() =>
+                  confirmProductType(parseFactor(pendingConversion))
+                }
+              >
+                Skift og omregn
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        ) : null}
+      </AlertDialog>
 
       <AlertDialog
         open={unconverted !== null}

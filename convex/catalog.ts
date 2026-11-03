@@ -1017,6 +1017,8 @@ async function replaceProductChildren(
   ingredients: IngredientInput[],
   // Without a kept unit, recipe quantities keep their numbers in the new default.
   keepUnconverted = false,
+  // New default units per old default unit, given when the product type changes.
+  typeConversion?: number,
 ) {
   const existingUnits = await ctx.db
     .query("productUnits")
@@ -1043,9 +1045,9 @@ async function replaceProductChildren(
   const bridge =
     units.find((unit) => unit.isDefault && oldUnits.has(unit.unitId)) ??
     units.find((unit) => oldUnits.has(unit.unitId));
-  const conversion = bridge
-    ? bridge.factorToDefault / oldUnits.get(bridge.unitId)!
-    : null;
+  const conversion =
+    typeConversion ??
+    (bridge ? bridge.factorToDefault / oldUnits.get(bridge.unitId)! : null);
   for (const row of existingUnits) {
     if (nextUnitIds.has(row.unitId)) continue;
     const [recipeReferences, additionReferences] = await Promise.all([
@@ -2153,6 +2155,8 @@ export async function updateProductWithAuth(
     expiry?: Expiry | null;
     salesPrice?: number | null;
     productType?: ProductType;
+    // How many old standard units one new standard unit is, when the type changes.
+    typeConversion?: number;
     // How to handle stock when the old default unit was removed. Either value
     // keeps recipe quantities that use a removed unit.
     unconvertedStock?: "keep" | "reset";
@@ -2184,9 +2188,20 @@ export async function updateProductWithAuth(
   const categoryId = categoryIds[0];
   const unitSystem = await getUnitSystemSettings(ctx, organizationId);
   const effectiveProductType = args.productType ?? product.productType;
+  const typeChanged =
+    args.productType !== undefined &&
+    product.productType !== undefined &&
+    args.productType !== product.productType;
   if (args.productType && args.productType !== product.productType) {
     await requireEnabledProductType(ctx, organizationId, args.productType);
   }
+  if (args.typeConversion !== undefined) {
+    requirePositiveNumber(args.typeConversion, "Omregningen");
+  }
+  const typeConversion =
+    typeChanged && args.typeConversion !== undefined
+      ? 1 / args.typeConversion
+      : undefined;
   const resolvedUnits = await resolveUnits(ctx, organizationId, args.units, {
     type: effectiveProductType ?? null,
     settings: unitSystem,
@@ -2269,9 +2284,10 @@ export async function updateProductWithAuth(
     }
     // Factor from the old default unit to the new one. If the old default was
     // removed, derive it from the new default's previous factor.
-    let stockFactor = units.find(
-      (unit) => unit.unitId === product.defaultUnitId,
-    )?.factorToDefault;
+    let stockFactor =
+      typeConversion ??
+      units.find((unit) => unit.unitId === product.defaultUnitId)
+        ?.factorToDefault;
     if (stockFactor === undefined) {
       const previousNewDefault = await ctx.db
         .query("productUnits")
@@ -2315,6 +2331,7 @@ export async function updateProductWithAuth(
     units,
     args.ingredients,
     args.unconvertedStock !== undefined,
+    typeConversion,
   );
   await replaceProductIngredientAdditions(
     ctx,
@@ -2888,6 +2905,7 @@ export const updateProduct = mutation({
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     productType: v.optional(productTypeValidator),
+    typeConversion: v.optional(v.number()),
     unconvertedStock: v.optional(v.union(v.literal("keep"), v.literal("reset"))),
   },
   returns: v.id("products"),

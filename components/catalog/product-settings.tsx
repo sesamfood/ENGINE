@@ -183,15 +183,15 @@ export function ProductSettings({
               </ToggleGroupItem>
             </ToggleGroup>
             <FieldDescription>
-              Standard: {standardUnitFor("dry", unitSystem).name} for tørvarer
-              og {standardUnitFor("wet", unitSystem).name} for væsker
+              Standard bruger {standardUnitFor("dry", unitSystem).name}, og
+              Væske bruger {standardUnitFor("wet", unitSystem).name}
             </FieldDescription>
           </Field>
           {unitSystem.mode === "custom" ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <SystemSelect
                 id="catalog-dry-system"
-                label="Tørvarer"
+                label="Standard"
                 value={unitSystem.drySystem}
                 disabled={disabled}
                 onValueChange={(drySystem) =>

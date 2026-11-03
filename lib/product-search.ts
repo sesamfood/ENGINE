@@ -128,7 +128,7 @@ export function productNameSearchScore(name: string, search: string) {
 
 // Searchable like a category, so "væske" lists all wet products.
 const productTypeTerms: Record<ProductType, string> = {
-  dry: "tørvare tørvarer dry",
+  dry: "standard tørvare tørvarer dry",
   wet: "væske væsker wet",
   piece: "styk stk piece",
 };

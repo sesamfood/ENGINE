@@ -4,7 +4,7 @@ export type ProductType = "dry" | "wet" | "piece";
 export type UnitSystemId = "metric" | "imperial";
 
 export const PRODUCT_TYPES: Array<{ value: ProductType; label: string }> = [
-  { value: "dry", label: "Tørvare" },
+  { value: "dry", label: "Standard" },
   { value: "wet", label: "Væske" },
   { value: "piece", label: "Styk" },
 ];
