@@ -1862,10 +1862,15 @@ export const setSettings = mutation({
         .withIndex("by_organizationId_and_productType", (q) =>
           q.eq("organizationId", organizationId).eq("productType", productType),
         )
-        .first();
-      if (inUse) {
+        .take(6);
+      if (inUse.length > 0) {
+        const names = inUse
+          .slice(0, 5)
+          .map((product) => product.name)
+          .join(", ");
+        const more = inUse.length > 5 ? " og flere" : "";
         throw new ConvexError(
-          `${productTypeLabel(productType)} kan ikke slås fra, fordi produkter bruger typen. Skift typen på produkterne først.`,
+          `${productTypeLabel(productType)} kan ikke slås fra, fordi disse produkter bruger typen: ${names}${more}. Skift typen på produkterne først.`,
         );
       }
     }
