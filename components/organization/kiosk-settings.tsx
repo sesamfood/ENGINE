@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
@@ -65,7 +64,6 @@ import { SettingsSwitchField } from "./settings-switch-field";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { useRouter } from "next/navigation";
 import {
-  kioskDestinationWarnings,
   kioskDestinations,
   type KioskDestinationId,
 } from "@/lib/kiosk";
@@ -414,16 +412,9 @@ export function KioskSettings() {
                               if (homePage === page.id && !checked) setHomePage("");
                             }}
                           />
-                          <FieldContent>
-                            <FieldLabel htmlFor={`page-${page.id}`}>
-                              {page.label}
-                            </FieldLabel>
-                            {kioskDestinationWarnings[page.id] ? (
-                              <FieldDescription>
-                                {kioskDestinationWarnings[page.id]}
-                              </FieldDescription>
-                            ) : null}
-                          </FieldContent>
+                          <FieldLabel htmlFor={`page-${page.id}`}>
+                            {page.label}
+                          </FieldLabel>
                         </Field>
                       ))}
                     {featureEnabled(feature) ? (

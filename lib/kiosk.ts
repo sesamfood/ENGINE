@@ -31,15 +31,6 @@ export const kioskDestinations = [
 
 export type KioskDestinationId = (typeof kioskDestinations)[number]["id"];
 
-export const kioskDestinationWarnings: Partial<
-  Record<KioskDestinationId, string>
-> = {
-  "ownChecks.overview":
-    "På denne side kan tabletten registrere korrigerende handlinger, uanset kontoens rolle.",
-  "ownChecks.documentation":
-    "På denne side kan tabletten eksportere kontroldokumentation, uanset kontoens rolle.",
-};
-
 export function kioskDestinationMatches(id: string, pathname: string) {
   const destination = kioskDestinations.find((item) => item.id === id);
   return (
