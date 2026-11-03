@@ -17,8 +17,10 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import type { FunctionReturnType } from "convex/server";
+import { formatMeasure, measureUnits } from "@/lib/containers";
 import {
   checkUnitName,
+  knownMeasure,
   normalizeUnitName,
   PRODUCT_TYPES,
   standardUnitFor,
@@ -28,13 +30,13 @@ import {
 import {
   ArrowLeftIcon,
   ImageIcon,
-  MoreHorizontalIcon,
-  PackageIcon,
+  PackageOpenIcon,
   PlusIcon,
   SaveIcon,
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -89,12 +91,6 @@ import {
   FieldTitle,
 } from "@/components/ui/field";
 import { Empty } from "@/components/ui/empty";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -124,8 +120,8 @@ type UnitRow = {
   key: string;
   unitValue: string | null;
   factor: string;
-  packagingWeight: string;
-  packagingEnabled: boolean;
+  // Container preselected when this unit is counted.
+  containerId: Id<"containers"> | null;
   isDefault: boolean;
   // Set for the locked standard units of the product type.
   standard: StandardUnit | null;
@@ -233,8 +229,7 @@ function withStandardRows(
           match?.unitValue ??
           (unit.unitId !== null ? `existing:${unit.unitId}` : `new:${unit.name}`),
         factor: factorInputValue(unit.factorToStandard),
-        packagingWeight: match?.packagingWeight ?? "",
-        packagingEnabled: match?.packagingEnabled ?? false,
+        containerId: match?.containerId ?? null,
         isDefault: unit.isStandard,
         standard: unit,
       };
@@ -454,6 +449,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       ? ingredientRemovalSettings?.integrationId
       : undefined;
   const options = useQuery(api.catalog.listFormOptions);
+  const containers = useQuery(api.containers.list);
   const catalogSettings = useQuery(api.catalog.getSettings);
   const createProduct = useMutation(api.catalog.createProduct);
   const updateProduct = useMutation(api.catalog.updateProduct);
@@ -555,11 +551,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       key: `unit-${unit.id}`,
       unitValue: `existing:${unit.id}`,
       factor: factorInputValue(unit.factorToDefault),
-      packagingWeight:
-        unit.packagingWeight === null
-          ? ""
-          : factorInputValue(unit.packagingWeight),
-      packagingEnabled: unit.packagingWeight !== null,
+      containerId: unit.containerId,
       isDefault: unit.isDefault,
       standard: null,
     }));
@@ -732,6 +724,37 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const customUnitOptions = unitOptions.filter(
     (option) => !standardUnitValues.has(option.value),
   );
+  const activeContainers =
+    containers?.filter((container) => container.status === "active") ?? [];
+  const weightUnits = measureUnits("dry", options?.unitSystem);
+
+  // Containers offered as units, filtered by the text typed in the row.
+  function containerUnitOptions(typed: string | undefined): ComboboxOption[] {
+    const query = typed?.trim().toLocaleLowerCase("da") ?? "";
+    return activeContainers
+      .filter((container) =>
+        container.name.toLocaleLowerCase("da").includes(query),
+      )
+      .map((container) => ({
+        value: `container:${container.id}`,
+        label: container.name,
+      }));
+  }
+
+  // A container picked as a unit becomes a unit with its name.
+  function unitSelection(value: string | null) {
+    const container = value?.startsWith("container:")
+      ? activeContainers.find((item) => `container:${item.id}` === value)
+      : undefined;
+    if (!container) return { unitValue: value, containerId: null };
+    const unit = options?.units.find(
+      (item) => normalizeUnitName(item.name) === normalizeUnitName(container.name),
+    );
+    return {
+      unitValue: unit ? `existing:${unit.id}` : `new:${container.name}`,
+      containerId: container.id,
+    };
+  }
 
   const activeProductOptions = useMemo<ProductOption[]>(
     () =>
@@ -838,6 +861,20 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     );
   }
 
+  // Not-full containers can only be counted in products with a weight unit.
+  const hasWeightUnit = unitRows.some(
+    (row) => knownMeasure(unitName(row))?.type === "dry",
+  );
+
+  function containerDescription(containerId: Id<"containers">) {
+    const container = containers?.find((item) => item.id === containerId);
+    if (!container) return "Beholder";
+    const text = `Beholder · vejer ${formatMeasure(container.weightGrams, weightUnits)}${container.status === "archived" ? " · arkiveret" : ""}`;
+    return hasWeightUnit
+      ? text
+      : `${text}. Tilføj en vægtenhed, så ikke fulde beholdere kan vejes ved Count.`;
+  }
+
   function changeProductType(type: ProductType) {
     if (!options || type === productType) return;
     if (savedTypeUnits && type === savedProductType) {
@@ -914,8 +951,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         key: newKey("unit"),
         unitValue: null,
         factor: "",
-        packagingWeight: "",
-        packagingEnabled: false,
+        containerId: null,
         isDefault: false,
         standard: null,
       },
@@ -1016,15 +1052,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     ) {
       nextErrors.units = "Alle omregninger skal være større end nul";
     }
-    if (
-      unitRows.some((row) => {
-        if (!row.packagingEnabled || !row.packagingWeight.trim()) return false;
-        const weight = parseFactor(row.packagingWeight);
-        return !Number.isFinite(weight) || weight <= 0;
-      })
-    ) {
-      nextErrors.units = "Emballagevægten skal være større end nul";
-    }
     const unitKeys = unitRows.map((row) =>
       row.unitValue?.toLocaleLowerCase("da"),
     );
@@ -1090,10 +1117,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     const units = unitRows.map((row) => ({
       unit: parseReference(row.unitValue!),
       factorToDefault: parseFactor(row.factor),
-      packagingWeight:
-        row.packagingEnabled && row.packagingWeight.trim()
-          ? parseFactor(row.packagingWeight)
-          : undefined,
+      containerId: row.containerId,
       isDefault: row.isDefault,
     }));
     const ingredients = [
@@ -1603,6 +1627,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   {unitRows.filter((row) => row.standard === null).map((row) => {
                     const locked = !productType;
                     const typedName = typedUnitNames[row.key];
+                    const container = containers?.find(
+                      (item) => item.id === row.containerId,
+                    );
                     const nameIssue = newUnitNameIssue(
                       row,
                       typedName || newUnitName(row),
@@ -1612,40 +1639,72 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         key={row.key}
                         className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-unit) md:items-start"
                       >
-                        <Field className="md:self-center">
-                          <FieldLabel className="sr-only">Enhed</FieldLabel>
-                          <CreatableCombobox
-                            options={customUnitOptions}
-                            value={row.unitValue}
-                            onValueChange={(value) => {
-                              setTypedUnitNames((current) => {
-                                const next = { ...current };
-                                delete next[row.key];
-                                return next;
-                              });
-                              setUnitRows((current) =>
-                                current.map((item) =>
-                                  item.key === row.key
-                                    ? { ...item, unitValue: value }
-                                    : item,
-                                ),
-                              );
-                            }}
-                            onInputValueChange={(value) =>
-                              setTypedUnitNames((current) => ({
-                                ...current,
-                                [row.key]: value,
-                              }))
-                            }
-                            placeholder="Vælg eller opret en enhed"
-                            allowCreate
-                            disabled={locked}
-                            ariaLabel="Produktenhed"
-                            ariaInvalid={Boolean(nameIssue)}
-                          />
-                        </Field>
+                        <div className="flex items-center gap-3 md:self-stretch">
+                          {container ? (
+                            <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
+                              {container.imageUrl ? (
+                                <Image
+                                  src={container.imageUrl}
+                                  alt={`Billede af ${container.name}`}
+                                  fill
+                                  sizes="64px"
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <PackageOpenIcon aria-hidden="true" />
+                              )}
+                            </div>
+                          ) : null}
+                          <Field className="min-w-0 flex-1">
+                            {/* Invisible on wide screens to align with the factor field. */}
+                            <FieldLabel className="max-md:sr-only md:invisible">
+                              Enhed
+                            </FieldLabel>
+                            <CreatableCombobox
+                              options={customUnitOptions}
+                              suggestionOptions={containerUnitOptions(typedName)}
+                              suggestionLabel="Beholdere"
+                              value={row.unitValue}
+                              onValueChange={(value) => {
+                                setTypedUnitNames((current) => {
+                                  const next = { ...current };
+                                  delete next[row.key];
+                                  return next;
+                                });
+                                const selection = unitSelection(value);
+                                setUnitRows((current) =>
+                                  current.map((item) =>
+                                    item.key === row.key
+                                      ? { ...item, ...selection }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              onInputValueChange={(value) =>
+                                setTypedUnitNames((current) => ({
+                                  ...current,
+                                  [row.key]: value,
+                                }))
+                              }
+                              placeholder="Vælg eller opret en enhed"
+                              allowCreate
+                              disabled={locked}
+                              ariaLabel="Produktenhed"
+                              ariaInvalid={Boolean(nameIssue)}
+                            />
+                            {row.containerId ? (
+                              <FieldDescription className="ms-2.75">
+                                {containerDescription(row.containerId)}
+                              </FieldDescription>
+                            ) : null}
+                          </Field>
+                        </div>
                         <Field>
-                          <FieldLabel htmlFor={`${row.key}-factor`}>
+                          {/* Indented to line up with the text inside the input. */}
+                          <FieldLabel
+                            htmlFor={`${row.key}-factor`}
+                            className="ms-2.75"
+                          >
                             {row.isDefault
                               ? "Omregning"
                               : `1 ${unitName(row)} svarer til`}
@@ -1667,50 +1726,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                             }
                             className="h-11"
                           />
-                          <FieldDescription>
+                          <FieldDescription className="ms-2.75">
                             {row.isDefault ? "Basisværdi" : defaultUnitName}
                           </FieldDescription>
                         </Field>
                         <div className="flex md:mt-6">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-lg"
-                                  className="size-11"
-                                  disabled={!productType}
-                                  aria-label={`Flere handlinger for ${unitName(row)}`}
-                                />
-                              }
-                            >
-                              <MoreHorizontalIcon />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  setUnitRows((current) =>
-                                    current.map((item) =>
-                                      item.key === row.key
-                                        ? {
-                                            ...item,
-                                            packagingEnabled:
-                                              !item.packagingEnabled,
-                                            packagingWeight: "",
-                                          }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                <PackageIcon />
-                                {row.packagingEnabled
-                                  ? "Fjern emballagevægt"
-                                  : "Tilføj emballagevægt"}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
                           <Button
                             type="button"
                             variant="ghost"
@@ -1730,39 +1750,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                               {unitNameIssueMessage(nameIssue)}
                             </AlertDescription>
                           </Alert>
-                        ) : null}
-                        {row.packagingEnabled ? (
-                          <Field className="md:col-span-2">
-                            <div className="flex items-center gap-1">
-                              <FieldLabel htmlFor={`${row.key}-packaging-weight`}>
-                                Emballagevægt
-                              </FieldLabel>
-                              <HelpTooltip
-                                label="Emballagevægt"
-                                content="Trækkes fra, når en Count i denne enhed registreres med emballage."
-                              />
-                            </div>
-                            <Input
-                              id={`${row.key}-packaging-weight`}
-                              type="text"
-                              inputMode="decimal"
-                              value={row.packagingWeight}
-                              onChange={(event) =>
-                                setUnitRows((current) =>
-                                  current.map((item) =>
-                                    item.key === row.key
-                                      ? {
-                                          ...item,
-                                          packagingWeight: event.target.value,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              className="h-11"
-                            />
-                            <FieldDescription>{unitName(row)}</FieldDescription>
-                          </Field>
                         ) : null}
                       </div>
                     );

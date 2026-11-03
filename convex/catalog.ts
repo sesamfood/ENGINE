@@ -55,6 +55,7 @@ import {
   MAX_PRODUCT_CATEGORIES,
   replaceProductCategories,
 } from "./lib/productCategories";
+import { requireUnitContainer } from "./containers";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -143,7 +144,7 @@ const productDetailValidator = v.object({
       id: v.id("units"),
       name: v.string(),
       factorToDefault: v.number(),
-      packagingWeight: v.union(v.number(), v.null()),
+      containerId: v.union(v.id("containers"), v.null()),
       isDefault: v.boolean(),
     }),
   ),
@@ -213,7 +214,8 @@ const unitReferenceValidator = v.union(
 const productUnitInputValidator = v.object({
   unit: unitReferenceValidator,
   factorToDefault: v.number(),
-  packagingWeight: v.optional(v.number()),
+  // The container this unit is. Undefined keeps the stored one.
+  containerId: v.optional(v.union(v.id("containers"), v.null())),
   isDefault: v.boolean(),
 });
 
@@ -252,7 +254,6 @@ const productExportValidator = v.object({
     v.object({
       name: v.string(),
       factorToDefault: v.number(),
-      packagingWeight: v.optional(v.number()),
       isDefault: v.boolean(),
     }),
   ),
@@ -278,7 +279,6 @@ const productExportValidator = v.object({
 const importedProductUnitValidator = v.object({
   name: v.string(),
   factorToDefault: v.number(),
-  packagingWeight: v.optional(v.number()),
   isDefault: v.boolean(),
 });
 
@@ -310,7 +310,7 @@ type UnitReference =
 type ProductUnitInput = {
   unit: UnitReference;
   factorToDefault: number;
-  packagingWeight?: number;
+  containerId?: Id<"containers"> | null;
   isDefault: boolean;
 };
 
@@ -602,7 +602,7 @@ async function ensureStandardUnitRows(
 type ResolvedProductUnit = {
   unitId: Id<"units">;
   factorToDefault: number;
-  packagingWeight?: number;
+  containerId?: Id<"containers"> | null;
   isDefault: boolean;
 };
 
@@ -694,18 +694,10 @@ async function resolveUnits(
     throw new ConvexError("Vælg præcis én standardenhed");
   }
 
-  const resolved: Array<{
-    unitId: Id<"units">;
-    factorToDefault: number;
-    packagingWeight?: number;
-    isDefault: boolean;
-  }> = [];
+  const resolved: ResolvedProductUnit[] = [];
 
   for (const input of inputs) {
     requirePositiveNumber(input.factorToDefault, "Omregningsfaktoren");
-    if (input.packagingWeight !== undefined) {
-      requirePositiveNumber(input.packagingWeight, "Emballagevægten");
-    }
     if (input.isDefault && input.factorToDefault !== 1) {
       throw new ConvexError("Omregningen for standardenheden skal være 1");
     }
@@ -713,7 +705,7 @@ async function resolveUnits(
     resolved.push({
       unitId: await resolveUnit(ctx, organizationId, input.unit, nameCheck),
       factorToDefault: input.factorToDefault,
-      packagingWeight: input.packagingWeight,
+      containerId: input.containerId,
       isDefault: input.isDefault,
     });
   }
@@ -1104,12 +1096,22 @@ async function replaceProductChildren(
   for (const row of existingUnits) await ctx.db.delete("productUnits", row._id);
 
   for (const row of units) {
+    const storedContainerId = existingUnits.find(
+      (current) => current.unitId === row.unitId,
+    )?.containerId;
+    const containerId =
+      row.containerId === undefined
+        ? storedContainerId
+        : (row.containerId ?? undefined);
+    if (containerId && containerId !== storedContainerId) {
+      await requireUnitContainer(ctx, organizationId, containerId);
+    }
     await ctx.db.insert("productUnits", {
       organizationId,
       productId,
       unitId: row.unitId,
       factorToDefault: row.factorToDefault,
-      packagingWeight: row.packagingWeight,
+      ...(containerId ? { containerId } : {}),
     });
   }
   await replaceProductIngredients(ctx, organizationId, productId, ingredients);
@@ -1608,7 +1610,6 @@ export const exportProducts = query({
               return {
                 name: unit.name,
                 factorToDefault: row.factorToDefault,
-                packagingWeight: row.packagingWeight,
                 isDefault: row.unitId === product.defaultUnitId,
               };
             }),
@@ -1741,7 +1742,7 @@ export const getProduct = query({
               id: row.unitId,
               name: unit.name,
               factorToDefault: row.factorToDefault,
-              packagingWeight: row.packagingWeight ?? null,
+              containerId: row.containerId ?? null,
               isDefault: row.unitId === product.defaultUnitId,
             }
           : null;
@@ -2536,7 +2537,6 @@ export const importProduct = mutation({
       args.units.map((unit) => ({
         unit: { kind: "new" as const, name: unit.name },
         factorToDefault: unit.factorToDefault,
-        packagingWeight: unit.packagingWeight,
         isDefault: unit.isDefault,
       })),
       productType ? { type: productType, settings: unitSystem } : undefined,

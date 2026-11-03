@@ -34,7 +34,12 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 type LatestCountProduct = {
   id: Id<"products">;
   name: string;
-  units: Array<{ id: Id<"units">; name: string; packagingWeight?: number }>;
+  units: Array<{
+    id: Id<"units">;
+    name: string;
+    factorToDefault: number;
+    container?: { id: Id<"containers">; name: string; weightGrams: number };
+  }>;
 };
 
 // Bottom-bar action for adding a Produkt that was forgotten in the latest Count.
@@ -180,6 +185,7 @@ function AddToLatestCountDialog({
                 <div className="w-full @md/field-group:w-56">
                   <CountQuantityInput
                     label={`Mængde af ${product.name} i ${unit.name}`}
+                    units={product.units}
                     unit={unit}
                     value={quantities[unit.id] ?? 0}
                     disabled={saving}
