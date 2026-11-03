@@ -1,8 +1,14 @@
 "use client";
 
-import { useConvex, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { DownloadIcon, HistoryIcon, PencilIcon } from "lucide-react";
+import {
+  BanIcon,
+  DownloadIcon,
+  HistoryIcon,
+  PencilIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -19,9 +25,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -51,6 +59,13 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -62,7 +77,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { dateKey, DEFAULT_TIME_ZONE, inclusiveDateRangeDays } from "@/lib/date";
 import { downloadCsv } from "@/lib/download-csv";
@@ -101,7 +116,12 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
   const convex = useConvex();
   const canExport = usePermission("ordering.export");
   const canPlace = usePermission("ordering.place");
+  const cancelOrder = useMutation(api.ordering.cancelInternalOrder);
+  const reopenOrder = useMutation(api.ordering.reopenInternalOrder);
   const [exporting, setExporting] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -110,6 +130,37 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       mounted.current = false;
     };
   }, []);
+
+  async function cancel() {
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      await cancelOrder({ orderId });
+      toast.success("Bestillingen er annulleret");
+      if (mounted.current) setConfirmCancel(false);
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Bestillingen kunne ikke annulleres"),
+      );
+    } finally {
+      if (mounted.current) setCancelling(false);
+    }
+  }
+
+  async function reopen() {
+    if (reopening) return;
+    setReopening(true);
+    try {
+      await reopenOrder({ orderId });
+      toast.success("Bestillingen er genåbnet");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Bestillingen kunne ikke genåbnes"),
+      );
+    } finally {
+      if (mounted.current) setReopening(false);
+    }
+  }
 
   async function exportOrder() {
     if (exporting || !canExport) return;
@@ -195,7 +246,9 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               <dd>
                 {order.fulfillmentStatus === "open"
                   ? "Afventer transfer"
-                  : "Transfer oprettet"}
+                  : order.fulfillmentStatus === "cancelled"
+                    ? "Annulleret"
+                    : "Transfer oprettet"}
               </dd>
             </div>
           ) : null}
@@ -249,6 +302,55 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       </div>
       <DialogFooter showCloseButton>
         {canPlace && order.fulfillmentStatus === "open" ? (
+          <Popover
+            open={confirmCancel}
+            onOpenChange={(open) => {
+              if (!cancelling) setConfirmCancel(open);
+            }}
+          >
+            <PopoverTrigger render={<Button variant="destructive" />}>
+              <BanIcon data-icon="inline-start" />
+              Annullér bestilling
+            </PopoverTrigger>
+            <PopoverContent side="top">
+              <PopoverHeader>
+                <PopoverTitle>Annullér bestillingen?</PopoverTitle>
+              </PopoverHeader>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  disabled={cancelling}
+                  onClick={() => setConfirmCancel(false)}
+                >
+                  Behold
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={cancelling}
+                  onClick={() => void cancel()}
+                >
+                  {cancelling ? <Spinner data-icon="inline-start" /> : null}
+                  Annullér bestilling
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : null}
+        {canPlace && order.fulfillmentStatus === "cancelled" ? (
+          <Button
+            variant="outline"
+            disabled={reopening}
+            onClick={() => void reopen()}
+          >
+            {reopening ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RotateCcwIcon data-icon="inline-start" />
+            )}
+            Genåbn bestilling
+          </Button>
+        ) : null}
+        {canPlace && order.fulfillmentStatus === "open" ? (
           <Button
             variant="outline"
             render={<Link href={`/ordering?order=${order._id}`} />}
@@ -271,6 +373,17 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       </DialogFooter>
     </>
   );
+}
+
+function FulfillmentBadge({
+  status,
+}: {
+  status: Doc<"orders">["fulfillmentStatus"];
+}) {
+  if (status === "open") return <Badge variant="outline">Afventer transfer</Badge>;
+  if (status === "cancelled") return <Badge variant="destructive">Annulleret</Badge>;
+  if (status === "transferred") return <Badge variant="success">Transfer oprettet</Badge>;
+  return null;
 }
 
 function HistoryList({
@@ -316,6 +429,7 @@ function HistoryList({
                   <TableHead>Dækker perioden</TableHead>
                   <TableHead>Afgivet af</TableHead>
                   <TableHead>Leverandør</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Produkter</TableHead>
                 </TableRow>
               </TableHeader>
@@ -350,6 +464,9 @@ function HistoryList({
                       {order.supplierName ?? "Ingen"}
                       {order.fulfillingLocationId ? " (intern)" : ""}
                     </TableCell>
+                    <TableCell>
+                      <FulfillmentBadge status={order.fulfillmentStatus} />
+                    </TableCell>
                     <TableCell appearance="numeric" className="text-right">
                       {numberFormatter.format(order.itemCount)}
                     </TableCell>
@@ -380,6 +497,11 @@ function HistoryList({
                     <CardTitle>
                       {timestampFormatter.format(order.createdAt)}
                     </CardTitle>
+                    {order.fulfillmentStatus ? (
+                      <CardAction>
+                        <FulfillmentBadge status={order.fulfillmentStatus} />
+                      </CardAction>
+                    ) : null}
                     <CardDescription>
                       Dækker {formatPeriod(order.fromDate, order.toDate)}
                     </CardDescription>

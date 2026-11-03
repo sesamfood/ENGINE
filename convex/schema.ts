@@ -1444,7 +1444,11 @@ export default defineSchema({
     // Internal orders: received through the fulfilling Transfer, not receiptStatus.
     fulfillingLocationId: v.optional(v.id("locations")),
     fulfillmentStatus: v.optional(
-      v.union(v.literal("open"), v.literal("transferred")),
+      v.union(
+        v.literal("open"),
+        v.literal("transferred"),
+        v.literal("cancelled"),
+      ),
     ),
     transferId: v.optional(v.id("transfers")),
     // Set when an open internal order is edited. A Transfer must match the latest version.

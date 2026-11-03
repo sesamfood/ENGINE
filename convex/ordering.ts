@@ -1016,6 +1016,9 @@ export const updateInternalOrder = mutation({
     ) {
       throw new ConvexError("Bestillingen blev ikke fundet");
     }
+    if (order.fulfillmentStatus === "cancelled") {
+      throw new ConvexError("Bestillingen er annulleret");
+    }
     if (order.fulfillmentStatus !== "open") {
       throw new ConvexError(
         "Der er allerede oprettet en transfer for bestillingen, så den kan ikke ændres",
@@ -1051,6 +1054,65 @@ export const updateInternalOrder = mutation({
       entityId: order._id,
       locationId: order.locationId,
       summary: `Intern bestilling ændret til ${rows.length} produkter${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
+    });
+    return null;
+  },
+});
+
+export const cancelInternalOrder = mutation({
+  args: { orderId: v.id("orders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "ordering.place");
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId
+    ) {
+      throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    requireLocationAccess(auth, order.locationId);
+    if (order.fulfillmentStatus === "cancelled") return null;
+    if (order.fulfillmentStatus !== "open") {
+      throw new ConvexError(
+        "Der er allerede oprettet en transfer for bestillingen, så den kan ikke annulleres",
+      );
+    }
+    await ctx.db.patch("orders", order._id, { fulfillmentStatus: "cancelled" });
+    await recordAudit(ctx, auth, {
+      action: "ordering.cancel",
+      entityTable: "orders",
+      entityId: order._id,
+      locationId: order.locationId,
+      summary: `Intern bestilling annulleret${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
+    });
+    return null;
+  },
+});
+
+export const reopenInternalOrder = mutation({
+  args: { orderId: v.id("orders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "ordering.place");
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId
+    ) {
+      throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    requireLocationAccess(auth, order.locationId);
+    if (order.fulfillmentStatus !== "cancelled") return null;
+    await ctx.db.patch("orders", order._id, { fulfillmentStatus: "open" });
+    await recordAudit(ctx, auth, {
+      action: "ordering.reopen",
+      entityTable: "orders",
+      entityId: order._id,
+      locationId: order.locationId,
+      summary: `Intern bestilling genåbnet${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
     });
     return null;
   },
