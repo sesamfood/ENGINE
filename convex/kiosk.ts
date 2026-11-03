@@ -24,7 +24,7 @@ const settingsValidator = v.object({
   homePage: v.string(),
   inactivitySeconds: v.union(v.number(), v.null()),
   allowLeavingStartOfDay: v.boolean(),
-  pinPages: v.array(v.string()),
+  pinFeatures: v.array(v.string()),
   updatedAt: v.number(),
 });
 const accountValidator = v.object({
@@ -62,7 +62,7 @@ function validateSettings(
   enabledPages: string[],
   homePage: string,
   inactivitySeconds: number | null,
-  pinPages: string[] = [],
+  pinFeatures: string[] = [],
 ) {
   if (!enabledPages.length) throw new ConvexError("Vælg mindst én kioskside");
   if (new Set(enabledPages).size !== enabledPages.length) {
@@ -74,8 +74,15 @@ function validateSettings(
   if (!enabledPages.includes(homePage)) {
     throw new ConvexError("Startsiden skal være aktiveret");
   }
-  if (pinPages.some((page) => !enabledPages.includes(page))) {
-    throw new ConvexError("PIN-kode kan kun kræves på aktiverede sider");
+  if (
+    pinFeatures.some(
+      (feature) =>
+        !kioskDestinations.some(
+          (page) => page.feature === feature && enabledPages.includes(page.id),
+        ),
+    )
+  ) {
+    throw new ConvexError("PIN-kode kan kun kræves for moduler med aktiverede sider");
   }
   if (
     inactivitySeconds !== null &&
@@ -146,7 +153,7 @@ export const getAdminSettings = query({
           homePage: settings.homePage,
           inactivitySeconds: settings.inactivitySeconds,
           allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
-          pinPages: settings.pinPages ?? [],
+          pinFeatures: settings.pinFeatures ?? [],
           updatedAt: settings.updatedAt,
         }
       : null;
@@ -159,7 +166,7 @@ export const saveSettings = mutation({
     homePage: v.string(),
     inactivitySeconds: v.union(v.number(), v.null()),
     allowLeavingStartOfDay: v.optional(v.boolean()),
-    pinPages: v.optional(v.array(v.string())),
+    pinFeatures: v.optional(v.array(v.string())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -168,7 +175,7 @@ export const saveSettings = mutation({
       args.enabledPages,
       args.homePage,
       args.inactivitySeconds,
-      args.pinPages,
+      args.pinFeatures,
     );
     const current = await ctx.db
       .query("kioskSettings")

@@ -159,7 +159,7 @@ type KioskSettings = {
   homePage: string | null;
   inactivitySeconds: number | null;
   allowLeavingStartOfDay: boolean;
-  pinPages: string[];
+  pinFeatures: string[];
   updatedAt: number;
 };
 
@@ -488,12 +488,13 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   const onPinPage = Boolean(
     runtime?.kioskModeEnabled &&
       !countLocked &&
-      runtime.settings?.pinPages.some((page) =>
+      runtime.settings?.pinFeatures.includes(featureForPath(pathname) ?? "") &&
+      runtime.settings.enabledPages.some((page) =>
         kioskDestinationMatches(page, pathname),
       ),
   );
   const pinUnlocked = Boolean(
-    runtime?.kioskModeEnabled && runtime.settings?.pinPages.length && !runtime.pinLocked,
+    runtime?.kioskModeEnabled && runtime.settings?.pinFeatures.length && !runtime.pinLocked,
   );
 
   // Leaving the PIN pages locks them again.

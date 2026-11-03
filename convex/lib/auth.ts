@@ -13,7 +13,7 @@ import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { getDatabaseAdapter } from "../auth";
-import type { KioskDestinationId } from "../../lib/kiosk";
+import { kioskDestination, type KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
 import { startOfDayAllowedPages } from "./kioskDay";
 import { getTestOrganization, resolveTestOrganizationMember } from "./testOrganizations";
@@ -556,7 +556,7 @@ export async function requireKioskDestination(
     pages.every(
       (item) =>
         !settings.enabledPages.includes(item) ||
-        settings.pinPages?.includes(item),
+        settings.pinFeatures?.includes(kioskDestination(item).feature),
     ) &&
     !(await kioskPinOpen(ctx, auth.organizationId, auth.kioskLocationId, auth.sessionId))
   ) {

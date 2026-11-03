@@ -2013,8 +2013,8 @@ export default defineSchema({
     inactivitySeconds: v.union(v.number(), v.null()),
     // Lets the kiosk leave a due start of day and use its other pages.
     allowLeavingStartOfDay: v.optional(v.boolean()),
-    // Enabled pages that ask for the location's PIN code.
-    pinPages: v.optional(v.array(v.string())),
+    // Modules whose kiosk pages ask for the location's PIN code.
+    pinFeatures: v.optional(v.array(v.string())),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 

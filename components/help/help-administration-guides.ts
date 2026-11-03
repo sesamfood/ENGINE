@@ -434,7 +434,7 @@ export const administrationFeatures: HelpFeature[] = [
             id: "opsatning",
             title: "Vælg kioskens sider",
             steps: [
-              "Åbn Administration → Kiosk, og vælg de sider, kiosker må bruge, under Kiosktilstand.",
+              "Åbn Administration → Kiosk, og vælg de sider, kiosker må bruge, under Kiosktilstand. Moduler, der er slået fra, vises ikke.",
               "Vælg Startside. Slå eventuelt Nulstil ved inaktivitet til, og angiv 5–3600 sekunder.",
               "Vælg Gem kioskopsætning.",
             ],
@@ -448,7 +448,7 @@ export const administrationFeatures: HelpFeature[] = [
             id: "pin",
             title: "Lås sider med PIN-kode",
             steps: [
-              "Markér Kræver PIN-kode under de aktiverede sider, der skal låses, og vælg Gem kioskopsætning.",
+              "Markér Kræver PIN-kode under hvert modul, der skal låses, og vælg Gem kioskopsætning. Alle modulets sider låses.",
               "Vælg Angiv PIN-kode ud for hver Lokation under PIN-koder, og angiv 4–8 cifre.",
             ],
             bullets: [

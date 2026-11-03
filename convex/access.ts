@@ -56,7 +56,7 @@ const kioskSettingsValidator = v.object({
   homePage: v.string(),
   inactivitySeconds: v.union(v.number(), v.null()),
   allowLeavingStartOfDay: v.boolean(),
-  pinPages: v.array(v.string()),
+  pinFeatures: v.array(v.string()),
   updatedAt: v.number(),
 });
 
@@ -365,7 +365,7 @@ async function getAccessContext(ctx: QueryCtx) {
               homePage: settings.homePage,
               inactivitySeconds: settings.inactivitySeconds,
               allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
-              pinPages: settings.pinPages ?? [],
+              pinFeatures: settings.pinFeatures ?? [],
               updatedAt: settings.updatedAt,
             }
           : null,
