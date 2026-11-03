@@ -13,7 +13,7 @@ import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
-import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
+import { useAccess, useKioskPage, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -88,6 +88,7 @@ function DashboardLanding() {
   const canView = usePermission("dashboard.view");
   const canManage = usePermission("dashboard.manage") && !access?.kiosk?.kioskModeEnabled;
   const canViewFinancials = usePermission("dashboard.viewFinancials");
+  const showMonthly = useKioskPage("dashboard.monthly");
   const router = useRouter();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
   const initialize = useMutation(api.dashboard.initialize);
@@ -139,7 +140,7 @@ function DashboardLanding() {
           <EmptyTitle>Ingen dashboards</EmptyTitle>
           <EmptyDescription>Der er ikke oprettet et dashboard, du kan se.</EmptyDescription>
         </EmptyHeader>
-        {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
+        {canViewFinancials && access.granularity === "detail" && showMonthly ? (
           <EmptyContent><Button className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button></EmptyContent>
         ) : null}
       </Empty>
@@ -153,6 +154,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
+  const showMonthly = useKioskPage("dashboard.monthly");
   // Kiosk sessions may view dashboards but not edit, share, or sync them.
   const kioskMode = Boolean(access?.kiosk?.kioskModeEnabled);
   const canManage = usePermission("dashboard.manage") && !kioskMode;
@@ -385,7 +387,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
         </div>
         <div className="flex flex-wrap gap-2">
-          {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
+          {canViewFinancials && access.granularity === "detail" && showMonthly ? (
             <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button>
           ) : null}
           {canSyncData || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled

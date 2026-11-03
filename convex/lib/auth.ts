@@ -551,6 +551,17 @@ export async function requireKioskDestination(
   ) {
     throw new ConvexError("Siden er ikke aktiveret i kiosktilstand");
   }
+  if (
+    auth.kioskLocationId &&
+    pages.every(
+      (item) =>
+        !settings.enabledPages.includes(item) ||
+        settings.pinPages?.includes(item),
+    ) &&
+    !(await kioskPinOpen(ctx, auth.organizationId, auth.kioskLocationId, auth.sessionId))
+  ) {
+    throw new ConvexError("Siden kræver PIN-kode");
+  }
   // Reads stay open so pages can render while the kiosk redirects to start of day.
   // Pages linked from a start-of-day task stay writable so the task can be done.
   if ("scheduler" in ctx && auth.kioskLocationId && !settings.allowLeavingStartOfDay) {
@@ -564,6 +575,27 @@ export async function requireKioskDestination(
     }
   }
   return true;
+}
+
+export async function kioskPinOpen(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  sessionId: string | null,
+) {
+  const pin = await ctx.db
+    .query("kioskPins")
+    .withIndex("by_organizationId_and_locationId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", locationId),
+    )
+    .unique();
+  if (!pin) return true;
+  if (!sessionId) return false;
+  const unlock = await ctx.db
+    .query("kioskPinUnlocks")
+    .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+    .unique();
+  return unlock?.unlocked === true;
 }
 
 export function requireLocationAccess(
@@ -683,7 +715,7 @@ export async function requireTransferViewer(
 
 export async function requireGoodsReceiptRegistrar(ctx: AuthContext) {
   const auth = await requirePermission(ctx, "goodsReceipts.register");
-  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  await requireKioskDestination(ctx, auth, "goodsReceipts.register");
   return auth;
 }
 
@@ -852,19 +884,22 @@ export async function requireIntegrationManager(ctx: AuthContext) {
   return auth;
 }
 
-export async function requireDashboardViewer(ctx: AuthContext) {
+export async function requireDashboardViewer(
+  ctx: AuthContext,
+  page: KioskDestinationId = "dashboard.view",
+) {
   const auth = await requireOrganization(ctx);
   requireFeatureEnabled(auth, "dashboard");
   if (!hasPermission(auth.role, auth.permissions, "dashboard.view")) {
     throw new ConvexError("Du har ikke adgang til dashboardet");
   }
-  await requireKioskDestination(ctx, auth, "dashboard.view");
+  await requireKioskDestination(ctx, auth, page);
   return auth;
 }
 
 export async function requireSalesDetailViewer(ctx: AuthContext) {
   const auth = await requirePermission(ctx, "sales.viewDetail");
-  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  await requireKioskDestination(ctx, auth, "woltOrders.view");
   return auth;
 }
 
@@ -875,8 +910,7 @@ export async function requireDashboardManager(ctx: AuthContext) {
 }
 
 export async function requireFinancialReportViewer(ctx: AuthContext) {
-  const auth = await requireDashboardViewer(ctx);
-  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  const auth = await requireDashboardViewer(ctx, "dashboard.monthly");
   if (!hasPermission(auth.role, auth.permissions, "dashboard.viewFinancials")) {
     throw new ConvexError("Du har ikke adgang til månedsrapporten");
   }

@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { KioskPinSettings } from "./kiosk-pin-settings";
 import { SettingsSwitchField } from "./settings-switch-field";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { useRouter } from "next/navigation";
@@ -263,6 +264,7 @@ export function KioskSettings() {
   const [inactivityEnabled, setInactivityEnabled] = useState(true);
   const [inactivitySeconds, setInactivitySeconds] = useState(60);
   const [allowLeavingStartOfDay, setAllowLeavingStartOfDay] = useState(false);
+  const [pinPages, setPinPages] = useState<KioskDestinationId[]>([]);
   const [settingsPending, setSettingsPending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string>();
@@ -278,6 +280,7 @@ export function KioskSettings() {
       setInactivityEnabled(settings?.inactivitySeconds !== null);
       setInactivitySeconds(settings?.inactivitySeconds ?? 60);
       setAllowLeavingStartOfDay(settings?.allowLeavingStartOfDay ?? false);
+      setPinPages((settings?.pinPages ?? []) as KioskDestinationId[]);
     });
     return () => window.clearTimeout(timeout);
   }, [settings]);
@@ -318,7 +321,7 @@ export function KioskSettings() {
     event.preventDefault();
     setSettingsPending(true);
     try {
-      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay });
+      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay, pinPages: pinPages.filter((page) => enabledPages.includes(page)) });
       toast.success("Kioskopsætningen er gemt");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
@@ -410,6 +413,24 @@ export function KioskSettings() {
                                 {kioskDestinationWarnings[page.id]}
                               </FieldDescription>
                             ) : null}
+                            {enabledPages.includes(page.id) ? (
+                              <Field orientation="horizontal" className="mt-1">
+                                <Checkbox
+                                  id={`pin-${page.id}`}
+                                  checked={pinPages.includes(page.id)}
+                                  onCheckedChange={(checked) =>
+                                    setPinPages(
+                                      checked
+                                        ? [...pinPages, page.id]
+                                        : pinPages.filter((id) => id !== page.id),
+                                    )
+                                  }
+                                />
+                                <FieldLabel htmlFor={`pin-${page.id}`}>
+                                  Kræver PIN-kode
+                                </FieldLabel>
+                              </Field>
+                            ) : null}
                           </FieldContent>
                         </Field>
                       ))}
@@ -429,6 +450,8 @@ export function KioskSettings() {
           </form>
         </CardContent>
       </Card> : null}
+
+      {canManageSettings ? <KioskPinSettings /> : null}
 
       {canManageSettings ? <SessionKioskCard disabled={!settings} /> : null}
 

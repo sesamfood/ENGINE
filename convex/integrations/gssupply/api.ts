@@ -15,6 +15,7 @@ import {
   requireAllLocationAccess,
   requireHumanPrincipal,
   requireIntegrationManager,
+  requireKioskDestination,
   requireLocationAccess,
   requireOrganization,
   requirePermission,
@@ -638,9 +639,7 @@ export const listOrderingLinks = query({
   ),
   handler: async (ctx, args) => {
     const auth = await requirePermission(ctx, "ordering.plan");
-    if (auth.kioskModeEnabled) {
-      throw new ConvexError("Du har ikke adgang til bestilling");
-    }
+    await requireKioskDestination(ctx, auth, "ordering.new");
     requireLocationAccess(auth, args.locationId);
     const supplierId = await getGsSupplySupplierId(ctx, auth.organizationId);
     if (!supplierId) return null;

@@ -1,7 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { hasPermission } from "../lib/auth-permissions";
 import { mutation, query } from "./_generated/server";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  requireKioskDestination,
+  requireOrganization,
+  requireOrganizationAdmin,
+} from "./lib/auth";
 import {
   forecastSettings,
   forecastSettingsFields,
@@ -20,12 +24,13 @@ export const getSettings = query({
   handler: async (ctx) => {
     const auth = await requireOrganization(ctx);
     if (
-      auth.kioskModeEnabled ||
-      (!hasPermission(auth.role, auth.permissions, "ordering.plan") &&
+      !hasPermission(auth.role, auth.permissions, "ordering.plan") &&
+      (auth.kioskModeEnabled ||
         !hasPermission(auth.role, auth.permissions, "organization.settings"))
     ) {
       throw new ConvexError("Du har ikke adgang");
     }
+    await requireKioskDestination(ctx, auth, ["ordering.new", "ordering.history"]);
     const settings = await ctx.db
       .query("orderingSettings")
       .withIndex("by_organizationId", (q) =>

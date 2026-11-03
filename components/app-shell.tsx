@@ -50,6 +50,7 @@ import { toast } from "sonner";
 import posthog from "posthog-js";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { KioskPinGate } from "@/components/kiosk/kiosk-pin-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -118,7 +119,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { featureForPath, featureLabels, type FeatureId } from "@/lib/features";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
-import { kioskDestinationMatches } from "@/lib/kiosk";
+import { kioskDestinationMatches, type KioskDestinationId } from "@/lib/kiosk";
 import { isPreview } from "@/lib/page-title";
 import type { KioskDayTask } from "@/lib/kiosk-day";
 import {
@@ -158,6 +159,7 @@ type KioskSettings = {
   homePage: string | null;
   inactivitySeconds: number | null;
   allowLeavingStartOfDay: boolean;
+  pinPages: string[];
   updatedAt: number;
 };
 
@@ -167,6 +169,7 @@ export type KioskRuntime = {
   locationId: Id<"locations"> | null;
   locationName: string | null;
   settings: KioskSettings | null;
+  pinLocked: boolean;
 };
 
 type LocationOption = { id: Id<"locations">; name: string };
@@ -278,6 +281,15 @@ function useOnLinkedDayTaskPage() {
 
 export function useKiosk() {
   return useContext(AccessContext)?.kiosk ?? null;
+}
+
+// True outside kiosk mode, or when the kiosk has the page enabled.
+export function useKioskPage(page: KioskDestinationId) {
+  const kiosk = useKiosk();
+  return (
+    !kiosk?.kioskModeEnabled ||
+    Boolean(kiosk.settings?.enabledPages.includes(page))
+  );
 }
 
 export function usePermission(permissionId: PermissionId) {
@@ -472,6 +484,22 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   const day = useKioskDay();
   const dayPhase = day?.phase;
   const onDayTasks = pathname === KIOSK_DAY_PATH && Boolean(dayPhase);
+  const lockPinPages = useMutation(api.kiosk.lockPinPages);
+  const onPinPage = Boolean(
+    runtime?.kioskModeEnabled &&
+      !countLocked &&
+      runtime.settings?.pinPages.some((page) =>
+        kioskDestinationMatches(page, pathname),
+      ),
+  );
+  const pinUnlocked = Boolean(
+    runtime?.kioskModeEnabled && runtime.settings?.pinPages.length && !runtime.pinLocked,
+  );
+
+  // Leaving the PIN pages locks them again.
+  useEffect(() => {
+    if (pinUnlocked && !onPinPage) void lockPinPages().catch(() => {});
+  }, [lockPinPages, onPinPage, pinUnlocked]);
   // A start of day left for other pages takes over as the inactivity destination.
   const idleTarget = day?.startOfDayLeft ? KIOSK_DAY_PATH : home;
 
@@ -547,6 +575,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     runtime?.settings?.updatedAt,
   ]);
 
+  if (onPinPage && runtime?.pinLocked) return <KioskPinGate />;
   return children;
 }
 

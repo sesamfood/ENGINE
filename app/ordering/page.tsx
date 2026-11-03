@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { useAccess, usePermission } from "@/components/app-shell";
+import { useAccess, useKioskPage, usePermission } from "@/components/app-shell";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,8 +28,9 @@ function OrderingContent() {
   const pathname = usePathname();
   const router = useRouter();
   const access = useAccess();
-  const canPlan =
-    usePermission("ordering.plan") && !access?.kiosk?.kioskModeEnabled;
+  const canPlan = usePermission("ordering.plan");
+  const showNew = useKioskPage("ordering.new");
+  const showHistory = useKioskPage("ordering.history");
   const activeTab = pathname === "/ordering/history" ? "history" : "new";
 
   if (!access) return <Skeleton className="h-96 w-full" />;
@@ -51,12 +52,16 @@ function OrderingContent() {
       aria-label="Bestillingssektioner"
       className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
     >
-      <TabsTrigger value="new" appearance="standard" className="min-w-32">
-        Ny bestilling
-      </TabsTrigger>
-      <TabsTrigger value="history" appearance="standard" className="min-w-36">
-        Bestillingshistorik
-      </TabsTrigger>
+      {showNew ? (
+        <TabsTrigger value="new" appearance="standard" className="min-w-32">
+          Ny bestilling
+        </TabsTrigger>
+      ) : null}
+      {showHistory ? (
+        <TabsTrigger value="history" appearance="standard" className="min-w-36">
+          Bestillingshistorik
+        </TabsTrigger>
+      ) : null}
     </TabsList>
   );
 

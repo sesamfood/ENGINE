@@ -441,6 +441,20 @@ export const administrationFeatures: HelpFeature[] = [
             bullets: [
               "Nulstilling sender kiosken til startsiden og rydder igangværende arbejde.",
               "Egenkontroloversigt tillader korrigerende handlinger, og Kontroldokumentation tillader eksport, uanset kontoens rolle.",
+              "Bestilling, Udgift, Varemodtagelse, Wolt-ordrer, Månedsrapport og Staff food-rapport kræver også, at kontoens rolle har adgang.",
+            ],
+          },
+          {
+            id: "pin",
+            title: "Lås sider med PIN-kode",
+            steps: [
+              "Markér Kræver PIN-kode under de aktiverede sider, der skal låses, og vælg Gem kioskopsætning.",
+              "Vælg Angiv PIN-kode ud for hver Lokation under PIN-koder, og angiv 4–8 cifre.",
+            ],
+            bullets: [
+              "Kiosken beder om koden, når en låst side åbnes. Siderne låses igen, når kiosken går til en side uden PIN-kode.",
+              "Lokationer uden PIN-kode låser ikke siderne.",
+              "Efter 5 forkerte forsøg skal kiosken vente 5 minutter.",
             ],
           },
           {
