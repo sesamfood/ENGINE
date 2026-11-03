@@ -322,6 +322,9 @@ export async function requireOpenOrder(
   version: number | undefined,
 ) {
   const order = await getInternalOrder(ctx, auth, orderId);
+  if (order.fulfillmentStatus === "cancelled") {
+    throw new ConvexError("Bestillingen er annulleret");
+  }
   if (order.fulfillmentStatus !== "open") {
     throw new ConvexError(
       "Der er allerede oprettet en transfer for bestillingen",

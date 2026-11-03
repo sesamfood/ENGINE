@@ -1,8 +1,8 @@
 "use client";
 
-import { useConvex, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { DownloadIcon, HistoryIcon, PencilIcon } from "lucide-react";
+import { BanIcon, DownloadIcon, HistoryIcon, PencilIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -101,7 +101,10 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
   const convex = useConvex();
   const canExport = usePermission("ordering.export");
   const canPlace = usePermission("ordering.place");
+  const cancelOrder = useMutation(api.ordering.cancelInternalOrder);
   const [exporting, setExporting] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -110,6 +113,22 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       mounted.current = false;
     };
   }, []);
+
+  async function cancel() {
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      await cancelOrder({ orderId });
+      toast.success("Bestillingen er annulleret");
+      if (mounted.current) setConfirmCancel(false);
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Bestillingen kunne ikke annulleres"),
+      );
+    } finally {
+      if (mounted.current) setCancelling(false);
+    }
+  }
 
   async function exportOrder() {
     if (exporting || !canExport) return;
@@ -195,7 +214,9 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               <dd>
                 {order.fulfillmentStatus === "open"
                   ? "Afventer transfer"
-                  : "Transfer oprettet"}
+                  : order.fulfillmentStatus === "cancelled"
+                    ? "Annulleret"
+                    : "Transfer oprettet"}
               </dd>
             </div>
           ) : null}
@@ -249,6 +270,12 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       </div>
       <DialogFooter showCloseButton>
         {canPlace && order.fulfillmentStatus === "open" ? (
+          <Button variant="outline" onClick={() => setConfirmCancel(true)}>
+            <BanIcon data-icon="inline-start" />
+            Annullér bestilling
+          </Button>
+        ) : null}
+        {canPlace && order.fulfillmentStatus === "open" ? (
           <Button
             variant="outline"
             render={<Link href={`/ordering?order=${order._id}`} />}
@@ -269,6 +296,33 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
           </Button>
         ) : null}
       </DialogFooter>
+      <AlertDialog
+        open={confirmCancel}
+        onOpenChange={(open) => {
+          if (!cancelling) setConfirmCancel(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Annullér bestillingen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {order.supplierName ?? "Leverandøren"} kan ikke længere oprette en
+              transfer for bestillingen. Det kan ikke fortrydes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Behold</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={cancelling}
+              onClick={() => void cancel()}
+            >
+              {cancelling ? <Spinner data-icon="inline-start" /> : null}
+              Annullér bestilling
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
