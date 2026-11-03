@@ -22,6 +22,9 @@ export async function getStorageReferences(
     ctx.db.query("products")
       .withIndex("by_imageStorageId", (q) => q.eq("imageStorageId", storageId))
       .take(2),
+    ctx.db.query("containers")
+      .withIndex("by_imageStorageId", (q) => q.eq("imageStorageId", storageId))
+      .take(2),
     ctx.db.query("badDeliveryAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
       .take(2),

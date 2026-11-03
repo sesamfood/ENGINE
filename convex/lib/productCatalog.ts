@@ -42,7 +42,14 @@ export const activeProductCatalogValidator = v.object({
       name: v.string(),
       pluralName: v.optional(v.string()),
       factorToDefault: v.number(),
-      packagingWeight: v.optional(v.number()),
+      // Set when the unit is an active container.
+      container: v.optional(
+        v.object({
+          id: v.id("containers"),
+          name: v.string(),
+          weightGrams: v.number(),
+        }),
+      ),
     }),
   ),
 });
@@ -300,7 +307,14 @@ async function hydrateActiveProductCatalog(
   const unitIds = [
     ...new Set(productUnits.flatMap((rows) => rows.map((row) => row.unitId))),
   ];
-  const [units, imageUrls] = await Promise.all([
+  const containerIds = [
+    ...new Set(
+      productUnits.flatMap((rows) =>
+        rows.flatMap((row) => (row.containerId ? [row.containerId] : [])),
+      ),
+    ),
+  ];
+  const [units, imageUrls, containers] = await Promise.all([
     knownUnits ?? Promise.all(unitIds.map((unitId) => ctx.db.get("units", unitId))),
     Promise.all(
       products.map((product) =>
@@ -309,7 +323,18 @@ async function hydrateActiveProductCatalog(
           : null,
       ),
     ),
+    Promise.all(
+      containerIds.map((containerId) => ctx.db.get("containers", containerId)),
+    ),
   ]);
+  const containersById = new Map(
+    containers.flatMap((container) =>
+      container?.organizationId === organizationId &&
+      container.status === "active"
+        ? [[container._id, container] as const]
+        : [],
+    ),
+  );
   const unitsById = new Map(
     units.flatMap((unit) =>
       unit?.organizationId === organizationId
@@ -348,6 +373,9 @@ async function hydrateActiveProductCatalog(
       defaultUnitId: product.defaultUnitId,
       units: productUnits[index].flatMap((row) => {
         const unit = unitsById.get(row.unitId);
+        const container = row.containerId
+          ? containersById.get(row.containerId)
+          : undefined;
         return unit
           ? [
               {
@@ -355,7 +383,15 @@ async function hydrateActiveProductCatalog(
                 name: unit.name,
                 pluralName: unit.pluralName,
                 factorToDefault: row.factorToDefault,
-                packagingWeight: row.packagingWeight,
+                ...(container
+                  ? {
+                      container: {
+                        id: container._id,
+                        name: container.name,
+                        weightGrams: container.weightGrams,
+                      },
+                    }
+                  : {}),
               },
             ]
           : [];
