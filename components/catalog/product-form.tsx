@@ -2103,7 +2103,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         </div>
       </div>
 
-      <div className="sticky bottom-0 -mx-5 flex justify-end border-t bg-background/95 px-5 py-4 backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12">
+      <div className="sticky bottom-0 -mx-4 flex justify-end border-t bg-background/95 px-4 py-4 backdrop-blur">
         <div className="flex w-full gap-2 sm:w-auto">
           {isSaving ? (
             <Button
