@@ -418,6 +418,7 @@ export function ProductCatalog() {
       categoryPath: product.categories
         .map((category) => paths.get(category.id) ?? category.name)
         .join(" · "),
+      productType: product.productType,
     })).slice(0, requestedResults);
   }, [categoryOptions, hasSearch, querySearch, requestedResults, results]);
 

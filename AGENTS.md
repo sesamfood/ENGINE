@@ -20,6 +20,7 @@ The system should support practical customization without becoming a general-pur
 - Make frequent and important actions prominent, direct, and easy to understand.
 - Minimize the number of taps or clicks required to complete important actions.
 - Put supplementary settings guidance in the existing question-mark help tooltip pattern when the field label is clear on its own.
+- Check every UI change visually in a browser before calling it done: phone, tablet, and desktop widths, with no horizontal page scroll. Typecheck and lint passing is not a visual check.
 
 ## App terminology
 
