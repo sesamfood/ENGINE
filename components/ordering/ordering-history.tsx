@@ -302,7 +302,7 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
           if (!cancelling) setConfirmCancel(open);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent variant="destructive">
           <AlertDialogHeader>
             <AlertDialogTitle>Annullér bestillingen?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -313,7 +313,7 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={cancelling}>Behold</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="destructive-solid"
               disabled={cancelling}
               onClick={() => void cancel()}
             >
