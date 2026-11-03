@@ -7,6 +7,7 @@ import {
   systemKeyFor,
   unitNameIssueMessage,
   DEFAULT_UNIT_SYSTEM,
+  PRODUCT_TYPES,
   type ProductType,
   type UnitSystemSettings,
 } from "../lib/unit-system";
@@ -183,6 +184,7 @@ const productFormOptionsValidator = v.object({
   ),
   units: v.array(v.object({ id: v.id("units"), name: v.string() })),
   unitSystem: unitSystemValidator,
+  disabledProductTypes: v.array(productTypeValidator),
   standardUnits: v.array(
     v.object({
       productType: productTypeValidator,
@@ -510,6 +512,23 @@ async function getUnitSystemSettings(
 ): Promise<UnitSystemSettings> {
   const settings = await getCatalogSettingsRow(ctx, organizationId);
   return settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM;
+}
+
+async function requireEnabledProductType(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  productType: ProductType,
+) {
+  const settings = await getCatalogSettingsRow(ctx, organizationId);
+  if (settings?.disabledProductTypes?.includes(productType)) {
+    throw new ConvexError(
+      `Produkttypen ${productTypeLabel(productType)} er slået fra`,
+    );
+  }
+}
+
+function productTypeLabel(productType: ProductType) {
+  return PRODUCT_TYPES.find((type) => type.value === productType)!.label;
 }
 
 function requireSensibleUnitName(
@@ -1804,6 +1823,7 @@ export const getSettings = query({
   returns: v.object({
     packagingEnabled: v.boolean(),
     unitSystem: unitSystemValidator,
+    disabledProductTypes: v.array(productTypeValidator),
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
@@ -1811,6 +1831,7 @@ export const getSettings = query({
     return {
       packagingEnabled: settings?.packagingEnabled ?? false,
       unitSystem: settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM,
+      disabledProductTypes: settings?.disabledProductTypes ?? [],
     };
   },
 });
@@ -1819,12 +1840,37 @@ export const setSettings = mutation({
   args: {
     packagingEnabled: v.optional(v.boolean()),
     unitSystem: v.optional(unitSystemValidator),
+    disabledProductTypes: v.optional(v.array(productTypeValidator)),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireCatalogManager(ctx);
     const current = await getCatalogSettingsRow(ctx, organizationId);
+    const disabledProductTypes = args.disabledProductTypes
+      ? [...new Set(args.disabledProductTypes)]
+      : current?.disabledProductTypes;
+    if (
+      disabledProductTypes &&
+      disabledProductTypes.length >= PRODUCT_TYPES.length
+    ) {
+      throw new ConvexError("Mindst én produkttype skal være slået til");
+    }
+    for (const productType of disabledProductTypes ?? []) {
+      if (current?.disabledProductTypes?.includes(productType)) continue;
+      const inUse = await ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_productType", (q) =>
+          q.eq("organizationId", organizationId).eq("productType", productType),
+        )
+        .first();
+      if (inUse) {
+        throw new ConvexError(
+          `${productTypeLabel(productType)} kan ikke slås fra, fordi produkter bruger typen. Skift typen på produkterne først.`,
+        );
+      }
+    }
     const next = {
+      ...(disabledProductTypes ? { disabledProductTypes } : {}),
       packagingEnabled: args.packagingEnabled ?? current?.packagingEnabled ?? false,
       ...(args.unitSystem ?? current?.unitSystem
         ? { unitSystem: args.unitSystem ?? current?.unitSystem }
@@ -1855,7 +1901,8 @@ export const listFormOptions = query({
         .take(MAX_CHILD_ROWS),
     ]);
 
-    const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+    const settings = await getCatalogSettingsRow(ctx, organizationId);
+    const unitSystem = settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM;
     const unitsByNormalizedName = new Map(
       units.map((unit) => [unit.normalizedName, unit._id]),
     );
@@ -1868,6 +1915,7 @@ export const listFormOptions = query({
       })),
       units: units.map((unit) => ({ id: unit._id, name: unit.name })),
       unitSystem,
+      disabledProductTypes: settings?.disabledProductTypes ?? [],
       standardUnits: productTypes.flatMap((productType) =>
         standardUnitsFor(productType, unitSystem).map((def) => ({
           productType,
@@ -2004,6 +2052,9 @@ export async function createProductWithAuth(
     args.categories,
   );
   const categoryId = categoryIds[0];
+  if (args.productType) {
+    await requireEnabledProductType(ctx, organizationId, args.productType);
+  }
   const unitSystem = await getUnitSystemSettings(ctx, organizationId);
   const resolvedUnits = await resolveUnits(ctx, organizationId, args.units, {
     type: args.productType ?? null,
@@ -2128,6 +2179,9 @@ export async function updateProductWithAuth(
   const categoryId = categoryIds[0];
   const unitSystem = await getUnitSystemSettings(ctx, organizationId);
   const effectiveProductType = args.productType ?? product.productType;
+  if (args.productType && args.productType !== product.productType) {
+    await requireEnabledProductType(ctx, organizationId, args.productType);
+  }
   const resolvedUnits = await resolveUnits(ctx, organizationId, args.units, {
     type: effectiveProductType ?? null,
     settings: unitSystem,
@@ -3616,11 +3670,14 @@ export const listUnitMigration = query({
   args: {},
   returns: v.object({
     unitSystem: unitSystemValidator,
+    disabledProductTypes: v.array(productTypeValidator),
     products: v.array(unitMigrationProductValidator),
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
-    const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+    const settings = await getCatalogSettingsRow(ctx, organizationId);
+    const unitSystem = settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM;
+    const disabledProductTypes = settings?.disabledProductTypes ?? [];
     const products = await ctx.db
       .query("products")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -3659,9 +3716,13 @@ export const listUnitMigration = query({
         );
         const defaultUnitName =
           units.find((unit) => unit?.isDefault)?.name ?? null;
-        const suggestion = defaultUnitName
+        const measured = defaultUnitName
           ? suggestMigration(defaultUnitName, unitSystem)
           : null;
+        const suggestion =
+          measured && !disabledProductTypes.includes(measured.productType)
+            ? measured
+            : null;
         return {
           productId: product._id,
           name: product.name,
@@ -3673,7 +3734,7 @@ export const listUnitMigration = query({
         };
       }),
     );
-    return { unitSystem, products: rows };
+    return { unitSystem, disabledProductTypes, products: rows };
   },
 });
 
@@ -3694,6 +3755,7 @@ export const migrateProductUnit = mutation({
       throw new ConvexError("Produktet blev ikke fundet");
     }
     requirePositiveNumber(args.factorToStandard, "Omregningsfaktoren");
+    await requireEnabledProductType(ctx, organizationId, args.productType);
 
     const unitSystem = await getUnitSystemSettings(ctx, organizationId);
     const standardRows = await ensureStandardUnitRows(

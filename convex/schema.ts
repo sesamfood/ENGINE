@@ -935,6 +935,10 @@ export default defineSchema({
       "normalizedName",
     ])
     .index("by_organizationId_and_categoryId", ["organizationId", "categoryId"])
+    .index("by_organizationId_and_productType", [
+      "organizationId",
+      "productType",
+    ])
     .index("by_organizationId_and_status_and_normalizedName", [
       "organizationId",
       "status",
@@ -964,6 +968,9 @@ export default defineSchema({
         drySystem: v.union(v.literal("metric"), v.literal("imperial")),
         wetSystem: v.union(v.literal("metric"), v.literal("imperial")),
       }),
+    ),
+    disabledProductTypes: v.optional(
+      v.array(v.union(v.literal("dry"), v.literal("wet"), v.literal("piece"))),
     ),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),

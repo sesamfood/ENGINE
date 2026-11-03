@@ -31,6 +31,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import {
+  PRODUCT_TYPES,
   standardUnitFor,
   type ProductType,
   type UnitSystemSettings,
@@ -40,12 +41,6 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 type MigrationProduct = FunctionReturnType<
   typeof api.catalog.listUnitMigration
 >["products"][number];
-
-const productTypes: Array<{ value: ProductType; label: string }> = [
-  { value: "dry", label: "Tørvare" },
-  { value: "wet", label: "Væske" },
-  { value: "piece", label: "Styk" },
-];
 
 function formatFactor(value: number) {
   return Number(value.toPrecision(10)).toString().replace(".", ",");
@@ -62,6 +57,10 @@ export function UnitMigration() {
   const [migratingAll, setMigratingAll] = useState(false);
 
   if (!data || data.products.length === 0) return null;
+
+  const productTypes = PRODUCT_TYPES.filter(
+    (type) => !data.disabledProductTypes.includes(type.value),
+  );
 
   const suggested = data.products.filter(
     (product) =>
@@ -147,6 +146,7 @@ export function UnitMigration() {
             key={product.productId}
             product={product}
             unitSystem={data.unitSystem}
+            productTypes={productTypes}
             disabled={migratingAll}
           />
         ))}
@@ -158,10 +158,12 @@ export function UnitMigration() {
 function MigrationRow({
   product,
   unitSystem,
+  productTypes,
   disabled,
 }: {
   product: MigrationProduct;
   unitSystem: UnitSystemSettings;
+  productTypes: typeof PRODUCT_TYPES;
   disabled: boolean;
 }) {
   const migrate = useMutation(api.catalog.migrateProductUnit);

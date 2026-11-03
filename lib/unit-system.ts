@@ -3,6 +3,12 @@
 export type ProductType = "dry" | "wet" | "piece";
 export type UnitSystemId = "metric" | "imperial";
 
+export const PRODUCT_TYPES: Array<{ value: ProductType; label: string }> = [
+  { value: "dry", label: "Tørvare" },
+  { value: "wet", label: "Væske" },
+  { value: "piece", label: "Styk" },
+];
+
 export type UnitSystemSettings = {
   mode: "metric" | "imperial" | "custom";
   drySystem: UnitSystemId;

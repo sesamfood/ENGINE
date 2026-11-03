@@ -16,6 +16,8 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
   FieldTitle,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
@@ -31,7 +33,9 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import {
   DEFAULT_UNIT_SYSTEM,
+  PRODUCT_TYPES,
   standardUnitFor,
+  type ProductType,
   type UnitSystemId,
   type UnitSystemSettings,
 } from "@/lib/unit-system";
@@ -90,7 +94,34 @@ export function ProductSettings({
     }
   }
 
+  async function setProductTypeEnabled(
+    productType: ProductType,
+    enabled: boolean,
+  ) {
+    const current = settings?.disabledProductTypes ?? [];
+    setSaving(true);
+    try {
+      await saveSettings({
+        disabledProductTypes: enabled
+          ? current.filter((type) => type !== productType)
+          : [...current, productType],
+      });
+      toast.success("Produkttyperne er gemt");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Produktindstillingerne kunne ikke gemmes. Prøv igen.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const disabled = settings === undefined || saving;
+  const enabledTypeCount =
+    PRODUCT_TYPES.length - (settings?.disabledProductTypes.length ?? 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -178,6 +209,32 @@ export function ProductSettings({
               />
             </div>
           ) : null}
+          <FieldSet>
+            <div className="flex items-center gap-1">
+              <FieldLegend variant="label">Produkttyper</FieldLegend>
+              <HelpTooltip
+                label="produkttyper"
+                content="Slåede fra typer kan ikke vælges på produkter. En type kan kun slås fra, når ingen produkter bruger den."
+              />
+            </div>
+            {PRODUCT_TYPES.map((type) => {
+              const enabled = !settings?.disabledProductTypes.includes(
+                type.value,
+              );
+              return (
+                <SettingsSwitchField
+                  key={type.value}
+                  label={type.label}
+                  id={`catalog-product-type-${type.value}`}
+                  checked={enabled}
+                  disabled={disabled || (enabled && enabledTypeCount <= 1)}
+                  onCheckedChange={(checked) =>
+                    void setProductTypeEnabled(type.value, checked)
+                  }
+                />
+              );
+            })}
+          </FieldSet>
         </FieldGroup>
       </DialogContent>
     </Dialog>

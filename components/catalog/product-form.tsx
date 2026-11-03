@@ -20,6 +20,7 @@ import type { FunctionReturnType } from "convex/server";
 import {
   checkUnitName,
   normalizeUnitName,
+  PRODUCT_TYPES,
   unitNameIssueMessage,
   type ProductType,
 } from "@/lib/unit-system";
@@ -152,11 +153,6 @@ type ProductMapping = {
   onlinePosProductId: number | null;
 };
 
-const PRODUCT_TYPES: Array<{ value: ProductType; label: string }> = [
-  { value: "dry", label: "Tørvare" },
-  { value: "wet", label: "Væske" },
-  { value: "piece", label: "Styk" },
-];
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -1487,7 +1483,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       if (next) changeProductType(next);
                     }}
                   >
-                    {PRODUCT_TYPES.map((type) => (
+                    {PRODUCT_TYPES.filter(
+                      (type) =>
+                        type.value === productType ||
+                        !options?.disabledProductTypes.includes(type.value),
+                    ).map((type) => (
                       <ToggleGroupItem
                         key={type.value}
                         value={type.value}
