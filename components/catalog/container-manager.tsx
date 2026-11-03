@@ -70,7 +70,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatMeasure, measureUnits } from "@/lib/containers";
+import { formatMeasure, measureUnits, parseDecimal } from "@/lib/containers";
 import { compressImage, productImageOptions } from "@/lib/compress-image";
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -80,14 +80,6 @@ type MeasureUnit = { name: string; size: number };
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-const DECIMAL_INPUT = /^\d+(?:[.,]\d+)?$/;
-
-function parseDecimal(value: string) {
-  const normalized = value.trim();
-  return DECIMAL_INPUT.test(normalized)
-    ? Number(normalized.replace(",", "."))
-    : Number.NaN;
-}
 
 // Splits a stored amount into the input text and unit it is shown in.
 function measureDraft(amount: number | null, units: MeasureUnit[]) {

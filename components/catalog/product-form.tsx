@@ -485,7 +485,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [pendingType, setPendingType] = useState<ProductType | null>(null);
   const [pendingConversion, setPendingConversion] = useState("");
   const [unitRows, setUnitRows] = useState<UnitRow[]>([]);
-  const [containerIds, setContainerIds] = useState<Id<"containers">[]>([]);
   // Text typed into each unit combobox, for the unit name warning.
   const [typedUnitNames, setTypedUnitNames] = useState<
     Record<string, string>
@@ -554,7 +553,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       isDefault: unit.isDefault,
       standard: null,
     }));
-    setContainerIds(product.containerIds);
     setProductType(product.productType);
     setSavedProductType(product.productType);
     setSavedTypeUnits(null);
@@ -726,10 +724,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   );
   const activeContainers =
     containers?.filter((container) => container.status === "active") ?? [];
-  const productContainers = containerIds.flatMap((id) => {
-    const container = containers?.find((item) => item.id === id);
-    return container ? [container] : [];
-  });
   const weightUnits = measureUnits("dry", options?.unitSystem);
 
   // Containers offered as units, filtered by the text typed in the row.
@@ -746,31 +740,18 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   }
 
   // A container picked as a unit becomes a unit with its name.
-  function unitValueFor(value: string | null) {
+  function unitSelection(value: string | null) {
     const container = value?.startsWith("container:")
       ? activeContainers.find((item) => `container:${item.id}` === value)
       : undefined;
-    if (!container) return value;
-    addContainer(container.id);
+    if (!container) return { unitValue: value, containerId: null };
     const unit = options?.units.find(
       (item) => normalizeUnitName(item.name) === normalizeUnitName(container.name),
     );
-    return unit ? `existing:${unit.id}` : `new:${container.name}`;
-  }
-
-  function addContainer(containerId: Id<"containers">) {
-    setContainerIds((current) =>
-      current.includes(containerId) ? current : [...current, containerId],
-    );
-  }
-
-  function removeContainer(containerId: Id<"containers">) {
-    setContainerIds((current) => current.filter((id) => id !== containerId));
-    setUnitRows((current) =>
-      current.map((row) =>
-        row.containerId === containerId ? { ...row, containerId: null } : row,
-      ),
-    );
+    return {
+      unitValue: unit ? `existing:${unit.id}` : `new:${container.name}`,
+      containerId: container.id,
+    };
   }
 
   const activeProductOptions = useMemo<ProductOption[]>(
@@ -878,10 +859,19 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     );
   }
 
-  // Container weights are only subtracted in products with a weight unit.
+  // Not-full containers can only be counted in products with a weight unit.
   const hasWeightUnit = unitRows.some(
     (row) => knownMeasure(unitName(row))?.type === "dry",
   );
+
+  function containerDescription(containerId: Id<"containers">) {
+    const container = containers?.find((item) => item.id === containerId);
+    if (!container) return "Beholder";
+    const text = `Beholder · vejer ${formatMeasure(container.weightGrams, weightUnits)}${container.status === "archived" ? " · arkiveret" : ""}`;
+    return hasWeightUnit
+      ? text
+      : `${text}. Tilføj en vægtenhed, så ikke fulde beholdere kan vejes ved Count.`;
+  }
 
   function changeProductType(type: ProductType) {
     if (!options || type === productType) return;
@@ -1197,7 +1187,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
             productType: productType ?? undefined,
-            containerIds,
             unconvertedStock,
           })
         : await createProduct({
@@ -1219,7 +1208,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
             productType: productType ?? undefined,
-            containerIds,
           });
 
       let imageError: unknown;
@@ -1659,11 +1647,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                                 delete next[row.key];
                                 return next;
                               });
-                              const unitValue = unitValueFor(value);
+                              const selection = unitSelection(value);
                               setUnitRows((current) =>
                                 current.map((item) =>
                                   item.key === row.key
-                                    ? { ...item, unitValue }
+                                    ? { ...item, ...selection }
                                     : item,
                                 ),
                               );
@@ -1680,6 +1668,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                             ariaLabel="Produktenhed"
                             ariaInvalid={Boolean(nameIssue)}
                           />
+                          {row.containerId ? (
+                            <FieldDescription>
+                              {containerDescription(row.containerId)}
+                            </FieldDescription>
+                          ) : null}
                         </Field>
                         <Field>
                           <FieldLabel htmlFor={`${row.key}-factor`}>
@@ -1744,113 +1737,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   <PlusIcon data-icon="inline-start" />
                   Tilføj enhed
                 </Button>
-              </FieldSet>
-              <FieldSet className="mt-6">
-                <div className="flex items-center gap-1">
-                  <FieldLegend variant="label" className="mb-0">
-                    Beholdere
-                  </FieldLegend>
-                  <HelpTooltip
-                    label="beholdere"
-                    content="Beholderne kan vælges ved Count, så deres vægt trækkes fra. Markér de enheder, hvor beholderen skal være valgt på forhånd. Beholdere oprettes under Produkter → Beholdere."
-                  />
-                </div>
-                {productContainers.map((container) => (
-                  <div
-                    key={container.id}
-                    className="flex flex-col gap-3 rounded-xl border p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="flex items-center gap-2 font-medium">
-                          <span className="truncate">{container.name}</span>
-                          {container.status === "archived" ? (
-                            <Badge variant="secondary">Arkiveret</Badge>
-                          ) : null}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          {formatMeasure(container.weightGrams, weightUnits)}
-                        </span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-lg"
-                        className="size-11"
-                        aria-label={`Fjern beholderen ${container.name}`}
-                        onClick={() => removeContainer(container.id)}
-                      >
-                        <Trash2Icon />
-                      </Button>
-                    </div>
-                    {hasWeightUnit ? (
-                      <Field>
-                        <FieldTitle>Valgt på forhånd ved Count i</FieldTitle>
-                        <ToggleGroup
-                          multiple
-                          variant="outline"
-                          spacing={2}
-                          className="flex-wrap justify-start"
-                          aria-label={`Enheder, hvor ${container.name} er valgt på forhånd`}
-                          value={unitRows
-                            .filter((row) => row.containerId === container.id)
-                            .map((row) => row.key)}
-                          onValueChange={(keys) =>
-                            setUnitRows((current) =>
-                              current.map((row) =>
-                                keys.includes(row.key)
-                                  ? { ...row, containerId: container.id }
-                                  : row.containerId === container.id
-                                    ? { ...row, containerId: null }
-                                    : row,
-                              ),
-                            )
-                          }
-                        >
-                          {unitRows.map((row) => (
-                            <ToggleGroupItem
-                              key={row.key}
-                              value={row.key}
-                              className="min-h-11 min-w-16"
-                            >
-                              {unitName(row)}
-                            </ToggleGroupItem>
-                          ))}
-                        </ToggleGroup>
-                      </Field>
-                    ) : null}
-                  </div>
-                ))}
-                {productContainers.length > 0 && !hasWeightUnit ? (
-                  <FieldDescription>
-                    Tilføj en vægtenhed på produktet, så beholderne kan trækkes
-                    fra ved Count.
-                  </FieldDescription>
-                ) : null}
-                <CreatableCombobox
-                  // Remount to clear the input after adding a container.
-                  key={containerIds.length}
-                  options={activeContainers
-                    .filter((container) => !containerIds.includes(container.id))
-                    .map((container) => ({
-                      value: container.id,
-                      label: container.name,
-                    }))}
-                  value={null}
-                  onValueChange={(value) => {
-                    const container = activeContainers.find(
-                      (item) => item.id === value,
-                    );
-                    if (container) addContainer(container.id);
-                  }}
-                  placeholder={
-                    activeContainers.length === 0
-                      ? "Ingen beholdere oprettet"
-                      : "Tilføj beholder"
-                  }
-                  disabled={activeContainers.length === 0}
-                  ariaLabel="Tilføj beholder"
-                />
               </FieldSet>
             </CardContent>
           </Card>

@@ -92,28 +92,19 @@ async function getOwnContainer(
   return container;
 }
 
-// Checks product container references. Archived containers may stay on a
-// product that already used them.
-export async function resolveProductContainerIds(
+// Checks a container newly set on a product unit.
+export async function requireUnitContainer(
   ctx: MutationCtx,
   organizationId: string,
-  containerIds: Id<"containers">[],
-  keptIds: Id<"containers">[] = [],
+  containerId: Id<"containers">,
 ) {
-  const unique = [...new Set(containerIds)];
-  if (unique.length > 20) {
-    throw new ConvexError("Et produkt kan højst have 20 beholdere");
+  const container = await ctx.db.get("containers", containerId);
+  if (!container || container.organizationId !== organizationId) {
+    throw new ConvexError("Beholderen blev ikke fundet");
   }
-  for (const containerId of unique) {
-    const container = await ctx.db.get("containers", containerId);
-    if (!container || container.organizationId !== organizationId) {
-      throw new ConvexError("Beholderen blev ikke fundet");
-    }
-    if (container.status === "archived" && !keptIds.includes(containerId)) {
-      throw new ConvexError(`Beholderen ${container.name} er arkiveret`);
-    }
+  if (container.status === "archived") {
+    throw new ConvexError(`Beholderen ${container.name} er arkiveret`);
   }
-  return unique;
 }
 
 export const list = query({

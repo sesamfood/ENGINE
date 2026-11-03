@@ -41,15 +41,14 @@ export const activeProductCatalogValidator = v.object({
       id: v.id("units"),
       name: v.string(),
       factorToDefault: v.number(),
-      containerId: v.optional(v.id("containers")),
-    }),
-  ),
-  // Active containers that can be subtracted when counting.
-  containers: v.array(
-    v.object({
-      id: v.id("containers"),
-      name: v.string(),
-      weightGrams: v.number(),
+      // Set when the unit is an active container.
+      container: v.optional(
+        v.object({
+          id: v.id("containers"),
+          name: v.string(),
+          weightGrams: v.number(),
+        }),
+      ),
     }),
   ),
 });
@@ -308,7 +307,11 @@ async function hydrateActiveProductCatalog(
     ...new Set(productUnits.flatMap((rows) => rows.map((row) => row.unitId))),
   ];
   const containerIds = [
-    ...new Set(products.flatMap((product) => product.containerIds ?? [])),
+    ...new Set(
+      productUnits.flatMap((rows) =>
+        rows.flatMap((row) => (row.containerId ? [row.containerId] : [])),
+      ),
+    ),
   ];
   const [units, imageUrls, containers] = await Promise.all([
     knownUnits ?? Promise.all(unitIds.map((unitId) => ctx.db.get("units", unitId))),
@@ -369,27 +372,24 @@ async function hydrateActiveProductCatalog(
       defaultUnitId: product.defaultUnitId,
       units: productUnits[index].flatMap((row) => {
         const unit = unitsById.get(row.unitId);
+        const container = row.containerId
+          ? containersById.get(row.containerId)
+          : undefined;
         return unit
           ? [
               {
                 id: unit._id,
                 name: unit.name,
                 factorToDefault: row.factorToDefault,
-                ...(row.containerId && containersById.has(row.containerId)
-                  ? { containerId: row.containerId }
+                ...(container
+                  ? {
+                      container: {
+                        id: container._id,
+                        name: container.name,
+                        weightGrams: container.weightGrams,
+                      },
+                    }
                   : {}),
-              },
-            ]
-          : [];
-      }),
-      containers: (product.containerIds ?? []).flatMap((containerId) => {
-        const container = containersById.get(containerId);
-        return container
-          ? [
-              {
-                id: container._id,
-                name: container.name,
-                weightGrams: container.weightGrams,
               },
             ]
           : [];

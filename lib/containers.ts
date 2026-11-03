@@ -43,16 +43,12 @@ export function gramsPerUnit(units: ProductUnit[], unit: ProductUnit) {
   );
 }
 
-// Product containers that can be subtracted in the unit, weighed in the unit.
-export function containerTares<T extends { weightGrams: number }>(
-  units: ProductUnit[],
-  unit: ProductUnit,
-  containers: T[],
-) {
-  const grams = gramsPerUnit(units, unit);
-  if (!grams) return [];
-  return containers.map((container) => ({
-    ...container,
-    tare: container.weightGrams / grams,
-  }));
+const DECIMAL_INPUT = /^\d+(?:[.,]\d+)?$/;
+
+// Parses "0,45" or "0.45"; anything else is NaN.
+export function parseDecimal(value: string) {
+  const normalized = value.trim();
+  return DECIMAL_INPUT.test(normalized)
+    ? Number(normalized.replace(",", "."))
+    : Number.NaN;
 }

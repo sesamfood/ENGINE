@@ -85,8 +85,8 @@ export const backfillSalesDailyPaymentTypes = migrations.define({
   },
 });
 
-// Moves unit packaging weights to containers. Units without a weight
-// conversion keep their old value.
+// Turns unit packaging weights into unlinked containers so the weights are
+// kept. Units without a weight conversion keep their old value.
 export const packagingWeightsToContainers = migrations.define({
   table: "productUnits",
   batchSize: 50,
@@ -126,9 +126,8 @@ export const packagingWeightsToContainers = migrations.define({
           .eq("normalizedName", normalizedName),
       )
       .first();
-    const containerId =
-      existing?._id ??
-      (await ctx.db.insert("containers", {
+    if (!existing) {
+      await ctx.db.insert("containers", {
         organizationId: row.organizationId,
         name,
         normalizedName,
@@ -136,16 +135,8 @@ export const packagingWeightsToContainers = migrations.define({
         status: "active",
         createdBy: product.createdBy,
         updatedAt: Date.now(),
-      }));
-    const containerIds = product.containerIds ?? [];
-    if (!containerIds.includes(containerId)) {
-      await ctx.db.patch("products", product._id, {
-        containerIds: [...containerIds, containerId],
       });
     }
-    await ctx.db.patch("productUnits", row._id, {
-      containerId,
-      packagingWeight: undefined,
-    });
+    await ctx.db.patch("productUnits", row._id, { packagingWeight: undefined });
   },
 });

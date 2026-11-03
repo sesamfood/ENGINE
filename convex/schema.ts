@@ -920,8 +920,6 @@ export default defineSchema({
       v.object({ quantity: v.number(), unitId: v.id("units") }),
     ),
     imageStorageId: v.optional(v.id("_storage")),
-    // Containers that can be subtracted when the product is counted.
-    containerIds: v.optional(v.array(v.id("containers"))),
     maxTemperatureCelsius: v.optional(v.number()),
     expiry: v.optional(expiryValidator),
     // Including VAT, in integer minor units.
@@ -998,7 +996,7 @@ export default defineSchema({
     factorToDefault: v.number(),
     // Legacy packaging weight in this unit; moved to containers by migration.
     packagingWeight: v.optional(v.number()),
-    // Container preselected when this unit is counted.
+    // Set when the unit is a container, e.g. one bucket.
     containerId: v.optional(v.id("containers")),
   })
     .index("by_organizationId_and_productId", ["organizationId", "productId"])
