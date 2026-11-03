@@ -5,6 +5,7 @@ import { getCurrentCount } from "./countWindow";
 
 const MAX_PRODUCTS = 500;
 const MAX_INGREDIENTS_PER_PRODUCT = 500;
+const MAX_COUNT_ITEMS = 5000;
 
 type LocationProductCtx = QueryCtx | MutationCtx;
 
@@ -224,27 +225,6 @@ export async function setLocationProducts(
     throw new ConvexError("Et Produkt blev ikke fundet");
   }
 
-  const { count: currentCount } = await getCurrentCount(
-    ctx,
-    organizationId,
-    location,
-    Date.now(),
-  );
-  if (currentCount?.status === "open") {
-    const countItem = await ctx.db
-      .query("countItems")
-      .withIndex("by_organizationId_and_countId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("countId", currentCount._id),
-      )
-      .first();
-    if (countItem) {
-      throw new ConvexError(
-        "Produktvalget kan ikke ændres, mens der er en åben Count",
-      );
-    }
-  }
   for (const change of changes) {
     for (const row of change.removed) {
       await ctx.db.delete(change.table, row._id);
@@ -255,6 +235,39 @@ export async function setLocationProducts(
         locationId: location._id,
         productId,
       });
+    }
+  }
+
+  // Counted lines must stay on the location; throwing rolls the writes back.
+  const { count: currentCount } = await getCurrentCount(
+    ctx,
+    organizationId,
+    location,
+    Date.now(),
+  );
+  if (currentCount?.status === "open") {
+    const countItems = await ctx.db
+      .query("countItems")
+      .withIndex("by_organizationId_and_countId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("countId", currentCount._id),
+      )
+      .take(MAX_COUNT_ITEMS + 1);
+    if (countItems.length > MAX_COUNT_ITEMS) {
+      throw new ConvexError("Count har for mange linjer");
+    }
+    if (countItems.length > 0) {
+      const access = await getLocationProductAccess(
+        ctx,
+        organizationId,
+        location._id,
+      );
+      if (countItems.some((item) => !locationHasProduct(access, item.productId))) {
+        throw new ConvexError(
+          "Et Produkt, der er talt i den åbne Count, kan ikke fjernes fra lokationen",
+        );
+      }
     }
   }
   return true;

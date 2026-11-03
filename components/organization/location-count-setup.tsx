@@ -525,6 +525,20 @@ export function LocationCountSetup({
     });
   }
 
+  // Moves every shown Ikke brugt Produkt at once, e.g. after new Produkter are created.
+  function moveAllUnused(to: Exclude<ColumnKey, "unused">) {
+    const ids = unusedIds.filter(matches);
+    if (ids.length === 0) return;
+    update((next) => {
+      for (const id of ids) next.unused.delete(id);
+      if (!isCountColumn(to)) return;
+      next.columns.set(to, [
+        ...(next.columns.get(to) ?? []),
+        ...ids.filter((id) => !organizationExcluded.has(id)),
+      ]);
+    });
+  }
+
   function removeFromColumn(productId: ProductId, key: CountColumnKey) {
     update((next) => {
       next.columns.set(
@@ -981,6 +995,42 @@ export function LocationCountSetup({
                     description="Bruges ikke på lokationen."
                     count={unusedIds.length}
                     tone="muted"
+                    actions={
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-lg"
+                              className="size-11 shrink-0"
+                              aria-label="Flyt alle viste Produkter"
+                              disabled={
+                                isBusy || !unusedIds.some((id) => matches(id))
+                              }
+                            />
+                          }
+                        >
+                          <EllipsisVerticalIcon />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-56">
+                          <DropdownMenuGroup>
+                            <DropdownMenuLabel>
+                              Flyt alle viste til
+                            </DropdownMenuLabel>
+                            {[...countKeys, "waste" as const].map((key) => (
+                              <DropdownMenuItem
+                                key={key}
+                                className="min-h-11"
+                                onClick={() => moveAllUnused(key)}
+                              >
+                                {columnTitles.get(key)}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    }
                     sortableIds={visibleGroupedIds("unused", unusedIds).map(
                       (id) => itemId("unused", id),
                     )}

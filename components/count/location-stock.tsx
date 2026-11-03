@@ -37,6 +37,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import { useKiosk, usePermission } from "@/components/app-shell";
 import { dateTimeFormatter, DEFAULT_TIME_ZONE } from "@/lib/date";
+import { unitNameFor } from "@/lib/unit-system";
 
 const quantityFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
@@ -45,7 +46,7 @@ const quantityFormatter = new Intl.NumberFormat("da-DK", {
 function formatStockQuantity(
   quantity: number,
   defaultUnitName: string,
-  units: Array<{ name: string; factorToDefault: number }>,
+  units: Array<{ name: string; pluralName?: string; factorToDefault: number }>,
 ) {
   const largestUnit = units
     .filter(
@@ -64,7 +65,7 @@ function formatStockQuantity(
   const remainder = Number(
     (quantity - wholeUnits * largestUnit.factorToDefault).toPrecision(12),
   );
-  const largest = `${quantityFormatter.format(wholeUnits)} ${largestUnit.name}`;
+  const largest = `${quantityFormatter.format(wholeUnits)} ${unitNameFor(largestUnit, wholeUnits)}`;
 
   return Math.abs(remainder) < 1e-9
     ? largest

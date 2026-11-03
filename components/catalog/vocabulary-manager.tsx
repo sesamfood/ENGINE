@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -85,6 +86,7 @@ type VocabularyKind = "unit" | "location";
 type VocabularyItem = {
   id: string;
   name: string;
+  pluralName?: string;
   inUse: boolean;
   isStandard?: boolean;
 };
@@ -163,8 +165,10 @@ function UnitManager() {
       <VocabularyList
         kind="unit"
         items={items}
-        onCreate={(name) => create({ name })}
-        onRename={(item, name) => rename({ unitId: item.id, name })}
+        onCreate={(name, pluralName) => create({ name, pluralName })}
+        onRename={(item, name, pluralName) =>
+          rename({ unitId: item.id, name, pluralName })
+        }
         onRemove={(item) => remove({ unitId: item.id })}
         renderActions={(item) => (
           <>
@@ -342,8 +346,8 @@ function VocabularyList<Item extends VocabularyItem>({
 }: {
   kind: VocabularyKind;
   items: Item[] | undefined;
-  onCreate: (name: string) => Promise<unknown>;
-  onRename: (item: Item, name: string) => Promise<unknown>;
+  onCreate: (name: string, pluralName: string) => Promise<unknown>;
+  onRename: (item: Item, name: string, pluralName: string) => Promise<unknown>;
   onRemove: (item: Item) => Promise<unknown>;
   renderActions: (item: Item) => ReactNode;
 }) {
@@ -351,6 +355,7 @@ function VocabularyList<Item extends VocabularyItem>({
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
   const [name, setName] = useState("");
+  const [pluralName, setPluralName] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -359,6 +364,7 @@ function VocabularyList<Item extends VocabularyItem>({
   function openEditor(item: Item | "new") {
     setEditing(item);
     setName(item === "new" ? "" : item.name);
+    setPluralName(item === "new" ? "" : (item.pluralName ?? ""));
     setError("");
   }
 
@@ -371,9 +377,9 @@ function VocabularyList<Item extends VocabularyItem>({
     setError("");
     try {
       if (editing === "new") {
-        await onCreate(name);
+        await onCreate(name, pluralName);
       } else if (editing) {
-        await onRename(editing, name);
+        await onRename(editing, name, pluralName);
       }
       toast.success(`${config.definite} er gemt`);
       setEditing(null);
@@ -461,14 +467,17 @@ function VocabularyList<Item extends VocabularyItem>({
               {items.map((item) => (
                 <TableRow key={item.id} className={cn(kind === "location" && "flex flex-col lg:table-row")}>
                   <TableCell appearance="label">
-                    {item.isStandard ? (
-                      <span className="flex items-center gap-2">
-                        {item.name}
+                    <span className="flex items-center gap-2">
+                      {item.name}
+                      {item.pluralName ? (
+                        <span className="font-normal text-muted-foreground">
+                          {item.pluralName}
+                        </span>
+                      ) : null}
+                      {item.isStandard ? (
                         <Badge variant="secondary">Standard</Badge>
-                      </span>
-                    ) : (
-                      item.name
-                    )}
+                      ) : null}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className={cn("flex gap-2", kind === "location" ? "flex-wrap lg:justify-end" : "justify-end")}>
@@ -574,6 +583,28 @@ function VocabularyList<Item extends VocabularyItem>({
               />
               <FieldError>{error}</FieldError>
             </Field>
+            {kind === "unit" ? (
+              <Field>
+                <FieldLabel htmlFor="unit-plural-name">
+                  Navn i flertal (valgfrit)
+                </FieldLabel>
+                <Input
+                  id="unit-plural-name"
+                  value={pluralName}
+                  placeholder={name.trim() || undefined}
+                  onChange={(event) => setPluralName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void save();
+                    }
+                  }}
+                />
+                <FieldDescription>
+                  Bruges ved alle antal undtagen 1, fx 2 kasser.
+                </FieldDescription>
+              </Field>
+            ) : null}
           </FieldGroup>
           <DialogFooter>
             <Button

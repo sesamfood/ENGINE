@@ -59,6 +59,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { searchProducts } from "@/lib/product-search";
+import { unitNameFor } from "@/lib/unit-system";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -414,7 +415,7 @@ export function WasteRegistration() {
           result.registeredAt + UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS,
       };
       toast.success(
-        `Waste registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
+        `Waste registreret: ${formatQuantity(shortcut.quantity)} ${unit ? unitNameFor(unit, shortcut.quantity) : ""} ${product.name}`,
         {
           duration: 10_000,
           action: {
@@ -702,7 +703,8 @@ export function WasteRegistration() {
                             register(product, shortcut, "shortcut")
                           }
                         >
-                          {formatQuantity(shortcut.quantity)} {unit?.name}
+                          {formatQuantity(shortcut.quantity)}{" "}
+                          {unit && unitNameFor(unit, shortcut.quantity)}
                         </Button>
                       );
                     })}
