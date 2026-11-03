@@ -2013,8 +2013,25 @@ export default defineSchema({
     inactivitySeconds: v.union(v.number(), v.null()),
     // Lets the kiosk leave a due start of day and use its other pages.
     allowLeavingStartOfDay: v.optional(v.boolean()),
+    // Modules whose kiosk pages ask for the location's PIN code.
+    pinFeatures: v.optional(v.array(v.string())),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  kioskPins: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    pinHash: v.string(),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  // PIN unlock state for one kiosk session; it locks again when the kiosk leaves PIN pages.
+  kioskPinUnlocks: defineTable({
+    sessionId: v.string(),
+    unlocked: v.boolean(),
+    failedAttempts: v.number(),
+    blockedUntil: v.union(v.number(), v.null()),
+  }).index("by_sessionId", ["sessionId"]),
 
   // Kiosk mode started by a regular user's own session, bound to one location.
   kioskSessions: defineTable({

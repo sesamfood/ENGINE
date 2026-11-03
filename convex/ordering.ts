@@ -31,7 +31,11 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { requireLocationAccess, requirePermission } from "./lib/auth";
+import {
+  requireKioskDestination,
+  requireLocationAccess,
+  requirePermission,
+} from "./lib/auth";
 import { recordAudit } from "./lib/audit";
 import schema from "./schema";
 import {
@@ -56,8 +60,7 @@ import {
 
 async function requireOrdering(ctx: QueryCtx | MutationCtx) {
   const auth = await requirePermission(ctx, "ordering.plan");
-  if (auth.kioskModeEnabled)
-    throw new ConvexError("Du har ikke adgang til bestilling i kiosktilstand");
+  await requireKioskDestination(ctx, auth, ["ordering.new", "ordering.history"]);
   return auth;
 }
 

@@ -9,6 +9,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
+  requireKioskDestination,
   requireLocationAccess,
   requirePermission,
   requireStaffFoodManager,
@@ -1656,6 +1657,7 @@ export const exportRegistrations = query({
   returns: paginationResultValidator(registrationRowValidator),
   handler: async (ctx, args) => {
     const auth = await requirePermission(ctx, "staffFood.report");
+    await requireKioskDestination(ctx, auth, "staffFood.report");
     const { organizationId } = auth;
     const locationFilter = resolveLocationFilter(auth, args.locationId);
     if (

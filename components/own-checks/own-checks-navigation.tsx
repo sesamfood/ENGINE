@@ -27,7 +27,9 @@ export function OwnChecksNavigation() {
   const showDocumentation = kioskMode
     ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.documentation"))
     : canDocumentation;
-  const showGuidance = !kioskMode && (canToday || canOverview || canDocumentation);
+  const showGuidance = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.guidance"))
+    : canToday || canOverview || canDocumentation;
   const sectionCount =
     Number(showToday) + Number(showOverview) + Number(showDocumentation) + Number(showGuidance);
   const value = pathname.startsWith("/own-checks/guidance") && showGuidance

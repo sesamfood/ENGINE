@@ -142,8 +142,7 @@ function Planner({
   editOrderId: Id<"orders"> | null;
 }) {
   const access = useAccess();
-  const canPlan =
-    usePermission("ordering.plan") && !access?.kiosk?.kioskModeEnabled;
+  const canPlan = usePermission("ordering.plan");
   const canExport = usePermission("ordering.export");
   const canPlace = usePermission("ordering.place");
   const router = useRouter();

@@ -333,7 +333,7 @@ function MonthlyReportAccess() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
-  const allowed = canView && canViewFinancials && access?.granularity === "detail" && !access.kiosk?.kioskModeEnabled;
+  const allowed = canView && canViewFinancials && access?.granularity === "detail";
   const context = useQuery(api.monthlyKpi.getContext, allowed && organization.data ? {} : "skip");
   if (!access) return <Skeleton className="h-96 w-full" />;
   if (!allowed) return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til månedsrapportens økonomiske data.</AlertDescription></Alert>;
