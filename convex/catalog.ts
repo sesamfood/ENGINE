@@ -201,6 +201,7 @@ const productFormOptionsValidator = v.object({
 const managedUnitValidator = v.object({
   id: v.id("units"),
   name: v.string(),
+  pluralName: v.optional(v.string()),
   inUse: v.boolean(),
   isStandard: v.boolean(),
 });
@@ -2040,6 +2041,7 @@ export const listUnits = query({
       units.map(async (unit) => ({
         id: unit._id,
         name: unit.name,
+        pluralName: unit.pluralName,
         isStandard: unit.systemKey !== undefined,
         inUse: Boolean(
           await ctx.db
@@ -3200,6 +3202,7 @@ export async function createUnitWithAuth(
   ctx: MutationCtx,
   auth: OrganizationAuth,
   nameInput: string,
+  pluralNameInput?: string,
 ): Promise<Id<"units">> {
   const { organizationId } = auth;
   const { name, normalizedName } = normalizeName(nameInput, "Enhedsnavnet");
@@ -3221,6 +3224,7 @@ export async function createUnitWithAuth(
     organizationId,
     name,
     normalizedName,
+    pluralName: pluralUnitName(pluralNameInput),
   });
   await recordAudit(ctx, auth, {
     action: "catalog.unitCreated",
@@ -3231,10 +3235,15 @@ export async function createUnitWithAuth(
   return unitId;
 }
 
+// Blank input clears the plural name.
+function pluralUnitName(input: string | undefined) {
+  return input?.trim() ? normalizeName(input, "Flertalsnavnet").name : undefined;
+}
+
 export async function renameUnitWithAuth(
   ctx: MutationCtx,
   auth: OrganizationAuth,
-  args: { unitId: Id<"units">; name: string },
+  args: { unitId: Id<"units">; name: string; pluralName?: string },
 ): Promise<null> {
   const { organizationId } = auth;
   const unit = await ctx.db.get("units", args.unitId);
@@ -3263,7 +3272,13 @@ export async function renameUnitWithAuth(
       await getUnitSystemSettings(ctx, organizationId),
     );
   }
-  await ctx.db.patch("units", unit._id, { name, normalizedName });
+  await ctx.db.patch("units", unit._id, {
+    name,
+    normalizedName,
+    ...(args.pluralName !== undefined && {
+      pluralName: pluralUnitName(args.pluralName),
+    }),
+  });
   await recordAudit(ctx, auth, {
     action: "catalog.unitRenamed",
     entityTable: "units",
@@ -3583,11 +3598,11 @@ export const deleteCategory = mutation({
 });
 
 export const createUnit = mutation({
-  args: { name: v.string() },
+  args: { name: v.string(), pluralName: v.optional(v.string()) },
   returns: v.id("units"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    return await createUnitWithAuth(ctx, auth, args.name);
+    return await createUnitWithAuth(ctx, auth, args.name, args.pluralName);
   },
 });
 
@@ -3670,7 +3685,11 @@ export const addProductUnit = mutation({
 });
 
 export const renameUnit = mutation({
-  args: { unitId: v.id("units"), name: v.string() },
+  args: {
+    unitId: v.id("units"),
+    name: v.string(),
+    pluralName: v.optional(v.string()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);

@@ -103,6 +103,7 @@ const locationStockValidator = v.object({
     v.object({
       id: v.id("units"),
       name: v.string(),
+      pluralName: v.optional(v.string()),
       factorToDefault: v.number(),
     }),
   ),
@@ -1544,6 +1545,7 @@ async function hydrateLocationStock(
                 {
                   id: unit._id,
                   name: unit.name,
+                  pluralName: unit.pluralName,
                   factorToDefault: row.factorToDefault,
                 },
               ]
