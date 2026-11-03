@@ -32,6 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -81,7 +82,12 @@ import {
 } from "@/components/ui/tooltip";
 
 type VocabularyKind = "unit" | "location";
-type VocabularyItem = { id: string; name: string; inUse: boolean };
+type VocabularyItem = {
+  id: string;
+  name: string;
+  inUse: boolean;
+  isStandard?: boolean;
+};
 type Unit = FunctionReturnType<typeof api.catalog.listUnits>[number];
 type Location = FunctionReturnType<typeof api.locations.listLocations>[number];
 
@@ -169,7 +175,7 @@ function UnitManager() {
                     variant="ghost"
                     size="icon-lg"
                     aria-label={`Sammenlæg ${item.name} med en anden enhed`}
-                    disabled={(items?.length ?? 0) < 2}
+                    disabled={item.isStandard || (items?.length ?? 0) < 2}
                     onClick={() => openMerge(item)}
                   />
                 }
@@ -454,7 +460,16 @@ function VocabularyList<Item extends VocabularyItem>({
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id} className={cn(kind === "location" && "flex flex-col lg:table-row")}>
-                  <TableCell appearance="label">{item.name}</TableCell>
+                  <TableCell appearance="label">
+                    {item.isStandard ? (
+                      <span className="flex items-center gap-2">
+                        {item.name}
+                        <Badge variant="secondary">Standard</Badge>
+                      </span>
+                    ) : (
+                      item.name
+                    )}
+                  </TableCell>
                   <TableCell>
                     <div className={cn("flex gap-2", kind === "location" ? "flex-wrap lg:justify-end" : "justify-end")}>
                       {renderActions(item)}
@@ -465,6 +480,7 @@ function VocabularyList<Item extends VocabularyItem>({
                               variant="ghost"
                               size="icon-lg"
                               aria-label={`Omdøb ${item.name}`}
+                              disabled={item.isStandard}
                               onClick={() => openEditor(item)}
                             />
                           }
@@ -505,7 +521,7 @@ function VocabularyList<Item extends VocabularyItem>({
                                 variant="ghost"
                                 size="icon-lg"
                                 aria-label={`Fjern ${item.name}`}
-                                disabled={item.inUse}
+                                disabled={item.inUse || item.isStandard}
                                 onClick={() => setPendingDelete(item)}
                               />
                             }

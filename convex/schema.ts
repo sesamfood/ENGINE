@@ -859,6 +859,8 @@ export default defineSchema({
     organizationId: v.string(),
     name: v.string(),
     normalizedName: v.string(),
+    // Set on built-in standard units, e.g. "dry:g". See lib/unit-system.ts.
+    systemKey: v.optional(v.string()),
   }).index("by_organizationId_and_normalizedName", [
     "organizationId",
     "normalizedName",
@@ -908,6 +910,10 @@ export default defineSchema({
     name: v.string(),
     normalizedName: v.string(),
     categoryId: v.id("categories"),
+    // Absent on products created before standard units; see unit migration.
+    productType: v.optional(
+      v.union(v.literal("dry"), v.literal("wet"), v.literal("piece")),
+    ),
     defaultUnitId: v.id("units"),
     // Amount the ingredient list produces; absent means one default unit.
     recipeYield: v.optional(
@@ -948,6 +954,17 @@ export default defineSchema({
   catalogSettings: defineTable({
     organizationId: v.string(),
     packagingEnabled: v.boolean(),
+    unitSystem: v.optional(
+      v.object({
+        mode: v.union(
+          v.literal("metric"),
+          v.literal("imperial"),
+          v.literal("custom"),
+        ),
+        drySystem: v.union(v.literal("metric"), v.literal("imperial")),
+        wetSystem: v.union(v.literal("metric"), v.literal("imperial")),
+      }),
+    ),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
