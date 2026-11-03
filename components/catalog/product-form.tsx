@@ -30,11 +30,13 @@ import {
 import {
   ArrowLeftIcon,
   ImageIcon,
+  PackageOpenIcon,
   PlusIcon,
   SaveIcon,
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -1625,6 +1627,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   {unitRows.filter((row) => row.standard === null).map((row) => {
                     const locked = !productType;
                     const typedName = typedUnitNames[row.key];
+                    const container = containers?.find(
+                      (item) => item.id === row.containerId,
+                    );
                     const nameIssue = newUnitNameIssue(
                       row,
                       typedName || newUnitName(row),
@@ -1634,40 +1639,60 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         key={row.key}
                         className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-unit) md:items-start"
                       >
-                        <Field className="md:self-center">
-                          <FieldLabel className="sr-only">Enhed</FieldLabel>
-                          <CreatableCombobox
-                            options={customUnitOptions}
-                            suggestionOptions={containerUnitOptions(typedName)}
-                            suggestionLabel="Beholdere"
-                            value={row.unitValue}
-                            onValueChange={(value) => {
-                              setTypedUnitNames((current) => {
-                                const next = { ...current };
-                                delete next[row.key];
-                                return next;
-                              });
-                              const selection = unitSelection(value);
-                              setUnitRows((current) =>
-                                current.map((item) =>
-                                  item.key === row.key
-                                    ? { ...item, ...selection }
-                                    : item,
-                                ),
-                              );
-                            }}
-                            onInputValueChange={(value) =>
-                              setTypedUnitNames((current) => ({
-                                ...current,
-                                [row.key]: value,
-                              }))
-                            }
-                            placeholder="Vælg eller opret en enhed"
-                            allowCreate
-                            disabled={locked}
-                            ariaLabel="Produktenhed"
-                            ariaInvalid={Boolean(nameIssue)}
-                          />
+                        <Field>
+                          {/* Invisible on wide screens to align with the factor field. */}
+                          <FieldLabel className="max-md:sr-only md:invisible">
+                            Enhed
+                          </FieldLabel>
+                          <div className="flex items-center gap-2">
+                            {container ? (
+                              <div className="relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
+                                {container.imageUrl ? (
+                                  <Image
+                                    src={container.imageUrl}
+                                    alt={`Billede af ${container.name}`}
+                                    fill
+                                    sizes="44px"
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <PackageOpenIcon aria-hidden="true" />
+                                )}
+                              </div>
+                            ) : null}
+                            <CreatableCombobox
+                              options={customUnitOptions}
+                              suggestionOptions={containerUnitOptions(typedName)}
+                              suggestionLabel="Beholdere"
+                              value={row.unitValue}
+                              onValueChange={(value) => {
+                                setTypedUnitNames((current) => {
+                                  const next = { ...current };
+                                  delete next[row.key];
+                                  return next;
+                                });
+                                const selection = unitSelection(value);
+                                setUnitRows((current) =>
+                                  current.map((item) =>
+                                    item.key === row.key
+                                      ? { ...item, ...selection }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              onInputValueChange={(value) =>
+                                setTypedUnitNames((current) => ({
+                                  ...current,
+                                  [row.key]: value,
+                                }))
+                              }
+                              placeholder="Vælg eller opret en enhed"
+                              allowCreate
+                              disabled={locked}
+                              ariaLabel="Produktenhed"
+                              ariaInvalid={Boolean(nameIssue)}
+                            />
+                          </div>
                           {row.containerId ? (
                             <FieldDescription>
                               {containerDescription(row.containerId)}
