@@ -1644,7 +1644,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           <FieldLabel className="max-md:sr-only md:invisible">
                             Enhed
                           </FieldLabel>
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-center gap-3">
                             {container ? (
                               <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
                                 {container.imageUrl ? (
