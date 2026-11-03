@@ -2,7 +2,13 @@
 
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { BanIcon, DownloadIcon, HistoryIcon, PencilIcon } from "lucide-react";
+import {
+  BanIcon,
+  DownloadIcon,
+  HistoryIcon,
+  PencilIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -19,9 +25,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -70,7 +78,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { dateKey, DEFAULT_TIME_ZONE, inclusiveDateRangeDays } from "@/lib/date";
 import { downloadCsv } from "@/lib/download-csv";
@@ -110,9 +118,11 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
   const canExport = usePermission("ordering.export");
   const canPlace = usePermission("ordering.place");
   const cancelOrder = useMutation(api.ordering.cancelInternalOrder);
+  const reopenOrder = useMutation(api.ordering.reopenInternalOrder);
   const [exporting, setExporting] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -135,6 +145,21 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       );
     } finally {
       if (mounted.current) setCancelling(false);
+    }
+  }
+
+  async function reopen() {
+    if (reopening) return;
+    setReopening(true);
+    try {
+      await reopenOrder({ orderId });
+      toast.success("Bestillingen er genåbnet");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Bestillingen kunne ikke genåbnes"),
+      );
+    } finally {
+      if (mounted.current) setReopening(false);
     }
   }
 
@@ -293,7 +318,7 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
                 <PopoverTitle>Annullér bestillingen?</PopoverTitle>
                 <PopoverDescription>
                   {order.supplierName ?? "Leverandøren"} kan ikke længere
-                  oprette en transfer for bestillingen. Det kan ikke fortrydes.
+                  oprette en transfer for bestillingen, før du genåbner den.
                 </PopoverDescription>
               </PopoverHeader>
               <div className="flex justify-end gap-2">
@@ -315,6 +340,20 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               </div>
             </PopoverContent>
           </Popover>
+        ) : null}
+        {canPlace && order.fulfillmentStatus === "cancelled" ? (
+          <Button
+            variant="outline"
+            disabled={reopening}
+            onClick={() => void reopen()}
+          >
+            {reopening ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RotateCcwIcon data-icon="inline-start" />
+            )}
+            Genåbn bestilling
+          </Button>
         ) : null}
         {canPlace && order.fulfillmentStatus === "open" ? (
           <Button
@@ -339,6 +378,30 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       </DialogFooter>
     </>
   );
+}
+
+function FulfillmentBadge({
+  status,
+  className,
+}: {
+  status: Doc<"orders">["fulfillmentStatus"];
+  className?: string;
+}) {
+  if (status === "cancelled") {
+    return (
+      <Badge variant="destructive" className={className}>
+        Annulleret
+      </Badge>
+    );
+  }
+  if (status === "transferred") {
+    return (
+      <Badge variant="success" className={className}>
+        Transfer oprettet
+      </Badge>
+    );
+  }
+  return null;
 }
 
 function HistoryList({
@@ -417,6 +480,10 @@ function HistoryList({
                     <TableCell className="max-w-60 whitespace-normal break-words">
                       {order.supplierName ?? "Ingen"}
                       {order.fulfillingLocationId ? " (intern)" : ""}
+                      <FulfillmentBadge
+                        status={order.fulfillmentStatus}
+                        className="ml-2"
+                      />
                     </TableCell>
                     <TableCell appearance="numeric" className="text-right">
                       {numberFormatter.format(order.itemCount)}
@@ -448,6 +515,12 @@ function HistoryList({
                     <CardTitle>
                       {timestampFormatter.format(order.createdAt)}
                     </CardTitle>
+                    {order.fulfillmentStatus === "cancelled" ||
+                    order.fulfillmentStatus === "transferred" ? (
+                      <CardAction>
+                        <FulfillmentBadge status={order.fulfillmentStatus} />
+                      </CardAction>
+                    ) : null}
                     <CardDescription>
                       Dækker {formatPeriod(order.fromDate, order.toDate)}
                     </CardDescription>

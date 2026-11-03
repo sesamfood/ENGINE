@@ -1091,6 +1091,33 @@ export const cancelInternalOrder = mutation({
   },
 });
 
+export const reopenInternalOrder = mutation({
+  args: { orderId: v.id("orders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "ordering.place");
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId
+    ) {
+      throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    requireLocationAccess(auth, order.locationId);
+    if (order.fulfillmentStatus !== "cancelled") return null;
+    await ctx.db.patch("orders", order._id, { fulfillmentStatus: "open" });
+    await recordAudit(ctx, auth, {
+      action: "ordering.reopen",
+      entityTable: "orders",
+      entityId: order._id,
+      locationId: order.locationId,
+      summary: `Intern bestilling genåbnet${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
+    });
+    return null;
+  },
+});
+
 export const exportHistory = query({
   args: { orderId: v.id("orders") },
   returns: historyDetailValidator,
