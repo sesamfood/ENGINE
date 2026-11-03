@@ -1639,7 +1639,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         key={row.key}
                         className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-unit) md:items-start"
                       >
-                        <div className="flex items-center gap-3 md:self-stretch">
+                        <div className="flex items-center gap-3">
                           {container ? (
                             <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
                               {container.imageUrl ? (
@@ -1730,7 +1730,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                             {row.isDefault ? "Basisværdi" : defaultUnitName}
                           </FieldDescription>
                         </Field>
-                        <div className="flex md:mt-6">
+                        <div className="flex md:mt-7">
                           <Button
                             type="button"
                             variant="ghost"
