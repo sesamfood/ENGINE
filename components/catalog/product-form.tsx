@@ -1527,11 +1527,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       <ToggleGroupItem
                         key={type.value}
                         value={type.value}
-                        className="min-h-11 flex-1"
+                        className="min-h-11 min-w-0 flex-1 flex-wrap whitespace-normal"
                       >
-                        {options
-                          ? `${type.label} (${standardUnitFor(type.value, options.unitSystem).name})`
-                          : type.label}
+                        {type.label}
+                        {options ? (
+                          <span>
+                            ({standardUnitFor(type.value, options.unitSystem).name})
+                          </span>
+                        ) : null}
                       </ToggleGroupItem>
                     ))}
                   </ToggleGroup>
