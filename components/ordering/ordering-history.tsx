@@ -51,6 +51,14 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -270,10 +278,43 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       </div>
       <DialogFooter showCloseButton>
         {canPlace && order.fulfillmentStatus === "open" ? (
-          <Button variant="outline" onClick={() => setConfirmCancel(true)}>
-            <BanIcon data-icon="inline-start" />
-            Annullér bestilling
-          </Button>
+          <Popover
+            open={confirmCancel}
+            onOpenChange={(open) => {
+              if (!cancelling) setConfirmCancel(open);
+            }}
+          >
+            <PopoverTrigger render={<Button variant="destructive" />}>
+              <BanIcon data-icon="inline-start" />
+              Annullér bestilling
+            </PopoverTrigger>
+            <PopoverContent side="top" align="start">
+              <PopoverHeader>
+                <PopoverTitle>Annullér bestillingen?</PopoverTitle>
+                <PopoverDescription>
+                  {order.supplierName ?? "Leverandøren"} kan ikke længere
+                  oprette en transfer for bestillingen. Det kan ikke fortrydes.
+                </PopoverDescription>
+              </PopoverHeader>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  disabled={cancelling}
+                  onClick={() => setConfirmCancel(false)}
+                >
+                  Behold
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={cancelling}
+                  onClick={() => void cancel()}
+                >
+                  {cancelling ? <Spinner data-icon="inline-start" /> : null}
+                  Annullér bestilling
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         ) : null}
         {canPlace && order.fulfillmentStatus === "open" ? (
           <Button
@@ -296,33 +337,6 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
           </Button>
         ) : null}
       </DialogFooter>
-      <AlertDialog
-        open={confirmCancel}
-        onOpenChange={(open) => {
-          if (!cancelling) setConfirmCancel(open);
-        }}
-      >
-        <AlertDialogContent variant="destructive">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Annullér bestillingen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {order.supplierName ?? "Leverandøren"} kan ikke længere oprette en
-              transfer for bestillingen. Det kan ikke fortrydes.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelling}>Behold</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive-solid"
-              disabled={cancelling}
-              onClick={() => void cancel()}
-            >
-              {cancelling ? <Spinner data-icon="inline-start" /> : null}
-              Annullér bestilling
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }
