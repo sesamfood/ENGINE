@@ -102,6 +102,7 @@ const cardHeaderAppearance = cva("", {
       inset: "pb-4",
       product: "py-3 lg:py-4",
       hero: "gap-3 px-5 py-5 sm:px-8 sm:py-7",
+      heroCompact: "gap-2 px-5 py-3 sm:px-8 sm:py-7",
       spaced: "gap-3",
       relaxed: "gap-4",
       compact: "gap-2",

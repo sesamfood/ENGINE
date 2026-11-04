@@ -63,7 +63,7 @@ function CountHeaderControls({
       </div>
 
       <Field>
-        <FieldLabel htmlFor="count-location">Lokation</FieldLabel>
+        <FieldLabel htmlFor="count-location" className="sr-only">Lokation</FieldLabel>
         <LocationField
           id="count-location"
           locations={locations}

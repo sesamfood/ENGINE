@@ -13,6 +13,7 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ChevronRightIcon,
   DownloadIcon,
   PackageOpenIcon,
   PlusIcon,
@@ -47,6 +48,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -605,7 +607,7 @@ function Planner({
             </Field>
           ) : null}
           <Field className="sm:w-72">
-            <FieldLabel htmlFor="ordering-location">Lokation</FieldLabel>
+            <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="ordering-location"
               locations={locations}
@@ -1005,6 +1007,9 @@ function Planner({
                     </span>
                   </CardTitle>
                   <CardDescription>{option.description}</CardDescription>
+                  <CardAction>
+                    <ChevronRightIcon aria-hidden="true" className="text-muted-foreground" />
+                  </CardAction>
                 </CardHeader>
               </Card>
             ))}

@@ -123,9 +123,13 @@ export function DashboardTabs({
         <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1">
           <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFadeBelowLg" aria-label="Dashboards">
             {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} appearance="standard" className="min-w-28 shrink-0">{dashboard.name}</TabsTrigger>)}
-            {canCreate ? <TabsTrigger value="new" appearance="icon" className="w-12 min-w-12 flex-none shrink-0" aria-label="Opret dashboard"><PlusIcon /></TabsTrigger> : null}
           </TabsList>
         </Tabs>
+        {canCreate ? (
+          <Button type="button" variant="ghost" size="icon-lg" className="size-11 shrink-0" aria-label="Opret dashboard" onClick={() => setCreateOpen(true)}>
+            <PlusIcon />
+          </Button>
+        ) : null}
         {canManage && activeDashboard && String(activeDashboard.id) === activeId ? (
           <>
             <Button

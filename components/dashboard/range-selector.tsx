@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -32,6 +33,26 @@ export function RangeSelector({
   onChange: (range: DashboardRange) => void;
   timeZone?: string;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const update = () =>
+      setCanScrollRight(
+        node.scrollWidth - node.clientWidth - node.scrollLeft > 4,
+      );
+    update();
+    node.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => {
+      node.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, []);
+
   function select(values: string[]) {
     const preset = values[0] as RangePreset | undefined;
     if (!preset) return;
@@ -60,7 +81,7 @@ export function RangeSelector({
           </SelectGroup>
         </SelectContent>
       </Select>
-      <div className="no-scrollbar max-lg:scroll-fade-x hidden overflow-x-auto pb-1 sm:block">
+      <div ref={scrollRef} data-scroll-right={canScrollRight ? "true" : undefined} className="no-scrollbar max-lg:scroll-fade-x hidden overflow-x-auto pb-1 sm:block">
         <ToggleGroup value={[range.preset]} onValueChange={select} variant="outline" size="lg" spacing={0} className="min-w-max">
           {presets.map((preset) => <ToggleGroupItem key={preset.value} value={preset.value} className="min-h-11">{preset.label}</ToggleGroupItem>)}
         </ToggleGroup>

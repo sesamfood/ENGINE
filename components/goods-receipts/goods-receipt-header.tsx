@@ -48,7 +48,7 @@ function HeaderContent({
         </h1>
       </div>
       <Field>
-        <FieldLabel htmlFor={controlId}>Lokation</FieldLabel>
+        <FieldLabel htmlFor={controlId} className="sr-only">Lokation</FieldLabel>
         <LocationField
           id={controlId}
           locations={locations}

@@ -531,7 +531,7 @@ function SingleProductCounter({
         className="h-full min-h-0"
       >
         <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
-          <div className="relative h-36 overflow-hidden bg-muted sm:h-60 lg:h-auto lg:min-h-full">
+          <div className="relative h-20 overflow-hidden bg-muted sm:h-60 lg:h-auto lg:min-h-full">
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
@@ -539,7 +539,7 @@ function SingleProductCounter({
                 fill
                 loading="eager"
                 sizes="(max-width: 1023px) 100vw, 50vw"
-                className="object-cover"
+                className="object-contain sm:object-cover"
               />
             ) : (
               <div className="flex size-full items-center justify-center text-muted-foreground">
@@ -549,7 +549,7 @@ function SingleProductCounter({
           </div>
 
           <div className="flex min-h-0 flex-col">
-            <CardHeader appearance="hero">
+            <CardHeader appearance="heroCompact">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge variant="secondary" aria-live="polite">
                   {position + 1} af {productCount}
@@ -1211,6 +1211,7 @@ export function CountSheet() {
     Record<string, Id<"units">>
   >({});
   const [overrides, setOverrides] = useState<Record<string, number>>({});
+  const [quantitySaveFailed, setQuantitySaveFailed] = useState(false);
   const [viewMode, setViewMode] = useState<CountViewMode>("single");
   const [singleProductSelection, setSingleProductSelection] = useState<{
     key: string;
@@ -1408,6 +1409,9 @@ export function CountSheet() {
       throw error;
     } finally {
       if (inFlight.current.get(key) === request) inFlight.current.delete(key);
+      if (!pendingValues.current.size && !inFlight.current.size) {
+        setQuantitySaveFailed(false);
+      }
     }
   }
 
@@ -1431,14 +1435,15 @@ export function CountSheet() {
     timers.current.set(
       key,
       window.setTimeout(() => {
-        void persistQuantity(key).catch((error) =>
+        void persistQuantity(key).catch((error) => {
+          setQuantitySaveFailed(true);
           toast.error(
             getUserErrorMessage(
               error,
               "Count-handlingen kunne ikke gennemføres. Prøv igen.",
             ),
-          ),
-        );
+          );
+        });
       }, 300),
     );
   }
@@ -2059,14 +2064,43 @@ export function CountSheet() {
             </>
           ) : null}
 
+          {quantitySaveFailed ? (
+            <Alert variant="destructive">
+              <AlertTitle>Ændringer er ikke gemt</AlertTitle>
+              <AlertDescription>
+                Nogle mængder kunne ikke gemmes. De vises stadig her, men er
+                først registreret, når de er gemt.
+              </AlertDescription>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void flushPending()
+                    .then(() => setQuantitySaveFailed(false))
+                    .catch((error) =>
+                      toast.error(
+                        getUserErrorMessage(
+                          error,
+                          "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+                        ),
+                      ),
+                    )
+                }
+              >
+                Prøv at gemme igen
+              </Button>
+            </Alert>
+          ) : null}
+
           {isClosed && state ? (
             <Alert variant="paused">
               <LockKeyholeIcon />
               <AlertTitle>Count er låst</AlertTitle>
               <AlertDescription>
                 <CountOpenCountdown target={state.opensAt} />. Du kan se
-                produkterne, men først registrere mængder, når Count-vinduet
-                åbner.
+                produkterne, men du kan først registrere mængder, når
+                Count-vinduet åbner.
               </AlertDescription>
             </Alert>
           ) : null}

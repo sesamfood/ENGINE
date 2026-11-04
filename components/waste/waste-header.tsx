@@ -67,7 +67,7 @@ function Controls({
         </h1>
       </div>
       <Field>
-        <FieldLabel htmlFor="waste-location">Lokation</FieldLabel>
+        <FieldLabel htmlFor="waste-location" className="sr-only">Lokation</FieldLabel>
         <LocationField
           id="waste-location"
           locations={locations}

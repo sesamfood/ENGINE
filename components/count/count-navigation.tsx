@@ -34,7 +34,7 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
     <AppBottomBar>
       <div
         className={cn(
-          "mx-auto flex w-full max-w-(--container-page) flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3",
+          "mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3",
           showSectionTabs ? "justify-between" : "justify-end",
         )}
       >

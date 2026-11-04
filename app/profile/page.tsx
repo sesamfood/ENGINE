@@ -10,7 +10,7 @@ export default function ProfilePage() {
             Profil
           </h1>
           <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-            Administrér dine personlige oplysninger her.
+            Se dine personlige oplysninger her.
           </p>
         </div>
       </AppPageHeader>

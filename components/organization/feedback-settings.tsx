@@ -271,7 +271,7 @@ export function FeedbackSettings() {
               onCheckedChange={setEnabledDraft}
               help={{
                 label: "Tillad feedback",
-                content: "Slår knappen “Send feedback” til for hele organisationen.",
+                content: "Slår knappen “Giv feedback” til for hele organisationen.",
               }}
             />
 

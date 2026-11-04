@@ -961,7 +961,7 @@ function NavigationList() {
     <SidebarGroup>
       <SidebarGroupContent>
         <nav ref={navRef} aria-label="Primær navigation">
-          <SidebarMenu appearance="spaced">
+          <SidebarMenu>
             {navigation.map((item) => {
               const Icon = navigationIcons[item.id];
               const active =
@@ -976,7 +976,7 @@ function NavigationList() {
                     size="lg"
                     isActive={active}
                     tooltip={item.label}
-                    className="text-base [&_svg]:size-4 group-data-[collapsible=icon]:h-14! group-data-[collapsible=icon]:w-full! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:p-1! group-data-[collapsible=icon]:[&_svg]:size-5"
+                    className="text-base [&_svg]:size-4 group-data-[collapsible=icon]:h-16! group-data-[collapsible=icon]:w-full! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:p-1! group-data-[collapsible=icon]:[&_svg]:size-5"
                     render={
                       <Link
                         href={item.href}
@@ -990,7 +990,7 @@ function NavigationList() {
                     }
                   >
                     <Icon aria-hidden="true" />
-                    <span className="group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:whitespace-nowrap">
+                    <span className="group-data-[collapsible=icon]:line-clamp-2 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:overflow-hidden group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:wrap-break-word group-data-[collapsible=icon]:whitespace-normal">
                       {item.label}
                     </span>
                   </SidebarMenuButton>
@@ -1448,11 +1448,11 @@ function SidebarAccount({
             size="lg"
             appearance="icon"
             tooltip="Hjælp"
-            className="text-base group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
+            className="text-base group-data-[collapsible=icon]:h-16! group-data-[collapsible=icon]:w-full! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:p-1!"
             render={<Link href="/help" />}
           >
             <CircleHelpIcon aria-hidden="true" />
-            <span className="group-data-[collapsible=icon]:hidden">Hjælp</span>
+            <span className="group-data-[collapsible=icon]:line-clamp-2 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:overflow-hidden group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:wrap-break-word group-data-[collapsible=icon]:whitespace-normal">Hjælp</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : null}
@@ -1797,11 +1797,17 @@ export function AppShell({
                     style={
                       {
                         "--sidebar-width": "15.5rem",
-                        "--sidebar-width-icon": "6.5rem",
+                        "--sidebar-width-icon": "8rem",
                       } as CSSProperties
                     }
                   >
                     <TabletSidebarDefault />
+                    <a
+                      href="#main-content"
+                      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+                    >
+                      Spring til indhold
+                    </a>
                     <Sidebar collapsible="icon">
                       <SidebarHeader className="h-16 items-center justify-center">
                         <OrganizationHome />
@@ -1817,7 +1823,7 @@ export function AppShell({
                       />
                     </Sidebar>
 
-                    <SidebarInset className="min-w-0">
+                    <SidebarInset id="main-content" tabIndex={-1} className="min-w-0">
                       <header
                         className={cn(
                           "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",

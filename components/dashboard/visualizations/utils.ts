@@ -92,6 +92,14 @@ export function chartModel(result: MetricResult) {
   };
 }
 
+function niceCeil(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return value;
+  const base = 10 ** Math.floor(Math.log10(value));
+  const fraction = value / base;
+  const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 2.5 ? 2.5 : fraction <= 5 ? 5 : 10;
+  return nice * base;
+}
+
 function valueDomain(values: number[], yAxisMin?: number, yAxisMax?: number) {
   if (!values.length) {
     const lower = yAxisMin ?? 0;
@@ -102,8 +110,8 @@ function valueDomain(values: number[], yAxisMin?: number, yAxisMax?: number) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const automatic = min === max
-    ? [min - Math.max(Math.abs(min) * 0.1, 1), max + Math.max(Math.abs(max) * 0.1, 1)] as const
-    : [min >= 0 ? Math.max(0, min - (max - min) * 0.1) : min - (max - min) * 0.1, max + (max - min) * 0.1] as const;
+    ? [min - Math.max(Math.abs(min) * 0.1, 1), niceCeil(max + Math.max(Math.abs(max) * 0.1, 1))] as const
+    : [min >= 0 ? Math.max(0, min - (max - min) * 0.1) : min - (max - min) * 0.1, niceCeil(max + (max - min) * 0.1)] as const;
   const lower = yAxisMin ?? 0;
   const upper = yAxisMax ?? automatic[1];
   return lower < upper ? ([lower, upper] as const) : automatic;

@@ -259,7 +259,7 @@ function FeedbackForm({
         </DialogClose>
         <Button type="submit" form="feedback-form" disabled={submitting}>
           {submitting ? <Spinner data-icon="inline-start" /> : null}
-          Send feedback
+          Giv feedback
         </Button>
       </DialogFooter>
     </>
@@ -298,30 +298,29 @@ export function FeedbackDialog({
               type="button"
               variant="ghost"
               size="icon-lg"
-              aria-label="Send feedback"
+              aria-label="Giv feedback"
             />
           ) : (
             <SidebarMenuButton
-              size="lg"
-              aria-label="Send feedback"
-              tooltip="Send feedback"
+              size="rail"
+              aria-label="Giv feedback"
+              tooltip="Giv feedback"
               appearance="icon"
-              className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
             />
           )
         }
       >
         <MessageSquarePlusIcon aria-hidden="true" />
         {!compact ? (
-          <span className="group-data-[collapsible=icon]:hidden">
-            Send feedback
+          <span className="group-data-[collapsible=icon]:line-clamp-2 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:overflow-hidden group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:wrap-break-word group-data-[collapsible=icon]:whitespace-normal">
+            Giv feedback
           </span>
         ) : null}
       </DialogTrigger>
 
       <DialogContent className="grid max-h-(--spacing-viewport-inset) min-h-0 grid-rows-(--grid-rows-panel) overflow-hidden sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Send feedback</DialogTitle>
+          <DialogTitle>Giv feedback</DialogTitle>
           <DialogDescription>
             Fortæl hvad der driller, eller hvad du savner. Vi læser det hele.
           </DialogDescription>
