@@ -113,13 +113,13 @@ function TransfersContent() {
       appearance="scrollFadeBelowLg"
     >
       {showNew ? (
-        <TabsTrigger value="new" appearance="compact" className="min-w-0 sm:min-w-36">
+        <TabsTrigger value="new" appearance="compact" className="min-w-0 sm:min-w-28">
           <ArrowRightLeftIcon data-icon="inline-start" />
           Ny transfer
         </TabsTrigger>
       ) : null}
       {showOrders ? (
-        <TabsTrigger value="orders" appearance="compact" className="min-w-0 sm:min-w-36">
+        <TabsTrigger value="orders" appearance="compact" className="min-w-0 sm:min-w-28">
           <ShoppingCartIcon data-icon="inline-start" />
           Bestillinger
           {openOrders?.length ? (
@@ -128,7 +128,7 @@ function TransfersContent() {
         </TabsTrigger>
       ) : null}
       {showHistory ? (
-        <TabsTrigger value="history" appearance="compact" className="min-w-0 sm:min-w-36">
+        <TabsTrigger value="history" appearance="compact" className="min-w-0 sm:min-w-28">
           <HistoryIcon data-icon="inline-start" />
           Transferhistorik
         </TabsTrigger>

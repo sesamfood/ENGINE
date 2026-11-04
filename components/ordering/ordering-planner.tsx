@@ -577,7 +577,7 @@ function Planner({
     <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          {editing ? "Redigér bestilling" : "Planlæg bestilling"}
+          {editing ? "Redigér bestilling" : "Bestilling"}
         </h1>
       </div>
       {canPlan ? (

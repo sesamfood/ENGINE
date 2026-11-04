@@ -773,7 +773,7 @@ export function TransferForm({
           : null
     : null;
   const actions = (
-    <div className="flex flex-col-reverse gap-2 lg:ml-auto lg:flex-row lg:items-center">
+    <div className="flex flex-col-reverse gap-2 md:ml-auto md:flex-row md:items-center">
       {missingForSave ? (
         <p className="text-xs whitespace-nowrap text-muted-foreground max-lg:order-first max-lg:text-center">
           {missingForSave}
@@ -842,9 +842,10 @@ export function TransferForm({
                   placeholder="Søg efter lokation"
                   ariaLabel="Fra lokation"
                   ariaInvalid={Boolean(errors.fromLocation)}
+                  ariaDescribedBy={errors.fromLocation ? `${inputIdPrefix}-from-error` : undefined}
                   disabled={locations === undefined || locationsLocked}
                 />
-                <FieldError>{errors.fromLocation}</FieldError>
+                <FieldError id={`${inputIdPrefix}-from-error`}>{errors.fromLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
@@ -864,9 +865,10 @@ export function TransferForm({
                   placeholder="Søg efter lokation"
                   ariaLabel="Til lokation"
                   ariaInvalid={Boolean(errors.toLocation)}
+                  ariaDescribedBy={errors.toLocation ? `${inputIdPrefix}-to-error` : undefined}
                   disabled={locations === undefined || locationsLocked}
                 />
-                <FieldError>{errors.toLocation}</FieldError>
+                <FieldError id={`${inputIdPrefix}-to-error`}>{errors.toLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.responsible)}>
@@ -885,9 +887,10 @@ export function TransferForm({
                   placeholder="Søg efter ansvarlig"
                   ariaLabel="Ansvarlig"
                   ariaInvalid={Boolean(errors.responsible)}
+                  ariaDescribedBy={errors.responsible || membersError ? `${inputIdPrefix}-responsible-error` : undefined}
                   disabled={membersLoading}
                 />
-                <FieldError>{errors.responsible ?? membersError}</FieldError>
+                <FieldError id={`${inputIdPrefix}-responsible-error`}>{errors.responsible ?? membersError}</FieldError>
               </Field>
 
             </FieldGroup>
@@ -922,8 +925,9 @@ export function TransferForm({
                   placeholder="Kommentar"
                   rows={3}
                   aria-invalid={Boolean(errors.comment)}
+                  aria-describedby={errors.comment ? `${inputIdPrefix}-comment-error` : undefined}
                 />
-                <FieldError>{errors.comment}</FieldError>
+                <FieldError id={`${inputIdPrefix}-comment-error`}>{errors.comment}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.transferredAt)}>
@@ -939,8 +943,9 @@ export function TransferForm({
                   }
                   className="h-11"
                   aria-invalid={Boolean(errors.transferredAt)}
+                  aria-describedby={errors.transferredAt ? `${inputIdPrefix}-at-error` : undefined}
                 />
-                <FieldError>{errors.transferredAt}</FieldError>
+                <FieldError id={`${inputIdPrefix}-at-error`}>{errors.transferredAt}</FieldError>
               </Field>
                   </FieldGroup>
                 </div>
@@ -1227,7 +1232,7 @@ export function TransferForm({
         </div>
       ) : (
         <AppBottomBar>
-          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 lg:flex-row lg:items-center">
+          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 md:flex-row md:items-center">
             {navigation ? (
               <div className="min-w-0" inert={isSaving}>
                 {navigation}

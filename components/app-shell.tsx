@@ -1162,10 +1162,7 @@ function ProfileMenu({
         {!compact ? (
           <>
             <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate font-semibold">{displayName}</span>
-              <span className="truncate text-xs text-muted-foreground">
-                {email}
-              </span>
+              <span className="line-clamp-2 font-semibold wrap-break-word whitespace-normal">{displayName}</span>
             </div>
             <ChevronsUpDownIcon
               className="ml-auto group-data-[collapsible=icon]:hidden"
@@ -1827,7 +1824,7 @@ export function AppShell({
                       <header
                         className={cn(
                           "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                          showPageHeader && "md:h-auto md:min-h-24 md:py-3 md:px-4",
+                          showPageHeader && "md:h-auto md:min-h-24 md:items-start md:py-3 md:px-4",
                         )}
                       >
                         <SidebarTrigger size="icon-lg" />

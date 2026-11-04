@@ -115,7 +115,7 @@ function FreshnessNotice({
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             className="shrink-0"
             aria-label={label}
           />
@@ -162,7 +162,7 @@ function WarningNotice({ warning }: { warning: NonNullable<MetricResult["warning
   return (
     <Popover>
       <PopoverTrigger
-        render={<Button type="button" variant="ghost" size="icon-sm" className="shrink-0" aria-label={warning.title} />}
+        render={<Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={warning.title} />}
       >
         <CircleAlertIcon className="text-destructive" />
       </PopoverTrigger>

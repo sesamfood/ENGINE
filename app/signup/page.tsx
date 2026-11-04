@@ -12,7 +12,7 @@ export default async function SignupPage({
   return (
     <AuthCard
       title="Opret konto"
-      description="Opret din konto. Du skal bekræfte din e-mail, før du kan logge ind."
+      description="Du skal bekræfte din e-mail, før du kan logge ind."
     >
       <SignupForm redirectTo={safeRedirect(params.redirect)} />
     </AuthCard>

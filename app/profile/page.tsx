@@ -9,9 +9,6 @@ export default function ProfilePage() {
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             Profil
           </h1>
-          <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-            Se dine personlige oplysninger her.
-          </p>
         </div>
       </AppPageHeader>
       <ProfileSettings />

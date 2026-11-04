@@ -25,8 +25,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import Link from "next/link";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -562,6 +564,11 @@ export function WasteRegistration() {
             Opret en lokation, før Waste kan registreres.
           </EmptyDescription>
         </EmptyHeader>
+        <EmptyContent>
+          <Button render={<Link href="/administration/locations" />}>
+            Opret lokation
+          </Button>
+        </EmptyContent>
       </Empty>
     );
   }
@@ -586,6 +593,11 @@ export function WasteRegistration() {
             Der er ingen aktive produkter at registrere Waste for.
           </EmptyDescription>
         </EmptyHeader>
+        <EmptyContent>
+          <Button render={<Link href="/administration/products" />}>
+            Gå til produkter
+          </Button>
+        </EmptyContent>
       </Empty>
     );
   }
@@ -599,11 +611,11 @@ export function WasteRegistration() {
           appearance="scrollFade"
           aria-label="Produktkategorier"
         >
-          <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
+          <TabsTrigger value="all" appearance="standard" className="shrink-0 flex-none">
             Alle
           </TabsTrigger>
           {categories.map(([id, name]) => (
-            <TabsTrigger key={id} value={id} appearance="standard" className="min-w-28 shrink-0">
+            <TabsTrigger key={id} value={id} appearance="standard" className="shrink-0 flex-none">
               {name}
             </TabsTrigger>
           ))}
@@ -669,6 +681,9 @@ export function WasteRegistration() {
                             .join(" · ")}
                         </CardDescription>
                       </div>
+                      <span className="text-xs text-muted-foreground">
+                        Tryk på produktet for anden mængde
+                      </span>
                     </CardHeader>
                     <DialogTrigger
                       type="button"
@@ -700,7 +715,7 @@ export function WasteRegistration() {
                     </Button>
                   </div>
                   <CardContent appearance="productGrid" className="grid grid-cols-2">
-                    {shortcuts.map((shortcut, index) => {
+                    {shortcuts.map((shortcut) => {
                       const unit = product.units.find(
                         (item) => item.id === shortcut.unitId,
                       );
@@ -708,7 +723,7 @@ export function WasteRegistration() {
                       return (
                         <Button
                           key={`${shortcut.unitId}:${shortcut.quantity}`}
-                          variant={index === 0 ? "default" : "outline"}
+                          variant="outline"
                           appearance={
                             recent === key ? "recentQuantity" : "quantity"
                           }

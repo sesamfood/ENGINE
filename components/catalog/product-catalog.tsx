@@ -527,6 +527,7 @@ export function ProductCatalog() {
           <ToggleGroup
             aria-label="Produktstatus"
             variant="outline"
+            spacing={0}
             size="lg"
             value={[status]}
             onValueChange={(values) => {

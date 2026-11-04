@@ -125,7 +125,7 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
         <SearchIcon aria-hidden="true" />
         <span className="hidden sm:inline">Søg i hjælpen…</span>
         <span className="sm:hidden">Søg</span>
-        <kbd className="ml-auto hidden rounded border px-1.5 py-0.5 text-xs text-muted-foreground md:block">
+        <kbd className="ml-auto hidden rounded border px-1.5 py-0.5 text-xs text-muted-foreground md:pointer-fine:block">
           Ctrl / ⌘ K
         </kbd>
       </DialogTrigger>
