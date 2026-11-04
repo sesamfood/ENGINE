@@ -17,6 +17,21 @@ import { Spinner } from "@/components/ui/spinner";
 import posthog from "posthog-js";
 import { authClient } from "@/lib/auth-client";
 
+function signupError(error: { code?: string; message?: string }) {
+  const code = error.code ?? "";
+  const message = (error.message ?? "").toLowerCase();
+  if (code.includes("USER_ALREADY_EXISTS") || message.includes("already exists")) {
+    return "Der findes allerede en konto med denne e-mail. Log ind i stedet.";
+  }
+  if (code.includes("PASSWORD_TOO_SHORT") || message.includes("password")) {
+    return "Adgangskoden er for kort. Brug mindst 12 tegn.";
+  }
+  if (code.includes("INVALID_EMAIL") || message.includes("email")) {
+    return "E-mailen ser ikke gyldig ud. Kontrollér den og prøv igen.";
+  }
+  return "Kontoen kunne ikke oprettes. Kontrollér oplysningerne og prøv igen.";
+}
+
 export function SignupForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter();
   const [error, setError] = useState<string>();
@@ -39,9 +54,7 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
       });
 
       if (result.error) {
-        setError(
-          "Kontoen kunne ikke oprettes. Kontrollér oplysningerne og prøv igen.",
-        );
+        setError(signupError(result.error));
         return;
       }
 

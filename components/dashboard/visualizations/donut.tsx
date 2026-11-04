@@ -38,7 +38,7 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
         </PieChart>
       </ChartContainer>
       {!compact ? (
-        <ul className="flex max-h-18 shrink-0 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto pt-2 pb-1 text-xs">
+        <ul className="scroll-fade-y flex max-h-18 shrink-0 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto pt-2 pb-1 text-xs">
           {data.map((item) => (
             <li key={item.key} className="flex min-w-0 items-center gap-1.5">
               <span
@@ -47,7 +47,7 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
                 // eslint-disable-next-line shadcn/no-inline-styles -- Slice color is generated per index at runtime.
                 style={{ backgroundColor: item.color }}
               />
-              <span className="truncate">{item.label}</span>
+              <span className="truncate" title={item.label}>{item.label}</span>
               <span className="shrink-0 text-muted-foreground tabular-nums">
                 {formatMetricValue(item.value, result)}
                 {totalValue > 0 ? ` (${percent.format((item.value / totalValue) * 100)} %)` : ""}

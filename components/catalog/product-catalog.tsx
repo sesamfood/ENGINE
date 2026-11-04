@@ -12,6 +12,7 @@ import {
   ArchiveRestoreIcon,
   BoxesIcon,
   PackageOpenIcon,
+  PencilIcon,
   PlusIcon,
   MoreHorizontalIcon,
   SearchIcon,
@@ -234,7 +235,10 @@ function ProductCard({
             "Uden kategori"}
         </CardDescription>
         {!isSelectionMode ? (
-        <CardAction appearance="compact" className="relative z-20 flex">
+        <CardAction appearance="compact" className="relative z-20 flex items-center">
+          <span aria-hidden="true" className="pointer-events-none grid size-11 place-items-center text-muted-foreground">
+            <PencilIcon className="size-4" />
+          </span>
           <Button
             type="button"
             variant="ghost"

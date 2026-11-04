@@ -188,10 +188,16 @@
   grid-row: span var(--dashboard-row-span);
 }
 
-@media (min-width: 40rem) {
+@container dashboard (min-width: 40rem) {
+  .dashboard-grid {
+    --dashboard-visible-columns: 2;
+    grid-auto-rows: min(12rem, max(10rem, calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns) * 0.62)));
+  }
+}
+
+@container dashboard (min-width: 56rem) {
   .dashboard-grid {
     --dashboard-visible-columns: 4;
-    grid-auto-rows: min(12rem, max(10rem, calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns) * 0.62)));
   }
 
   .dashboard-grid-item {
@@ -199,10 +205,14 @@
   }
 }
 
-@media (min-width: 64rem) {
+@container dashboard (min-width: 64rem) {
   .dashboard-grid {
     --dashboard-visible-columns: 6;
     grid-auto-rows: min(20rem, max(12rem, calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns) * 0.8)));
+  }
+
+  .dashboard-grid-item {
+    grid-column: span min(var(--dashboard-column-span), var(--dashboard-visible-columns));
   }
 }
 

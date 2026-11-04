@@ -105,6 +105,13 @@ function formatQuantity(quantity: number) {
   );
 }
 
+const FALLBACK_QUANTITIES: Record<string, [number, number]> = {
+  g: [100, 500],
+  ml: [100, 500],
+  oz: [1, 4],
+  "fl oz": [4, 8],
+};
+
 function shortcutsFor(
   product: Product,
   learned: Shortcut[] | undefined,
@@ -116,7 +123,10 @@ function shortcutsFor(
   );
   if (override) return result.slice(0, 2);
   const fillUnitId = result[0]?.unitId ?? product.defaultUnitId;
-  for (const quantity of [1, 0.5]) {
+  const fillUnit = product.units.find((unit) => unit.id === fillUnitId);
+  const fallbackQuantities =
+    FALLBACK_QUANTITIES[fillUnit?.name.trim().toLowerCase() ?? ""] ?? [1, 0.5];
+  for (const quantity of fallbackQuantities) {
     if (result.length === 2) break;
     if (
       !result.some(
@@ -255,7 +265,7 @@ function WasteUndoControls({
 }
 
 export function WasteRegistration() {
-  const { locationId, locations } = useWasteContext();
+  const { locationId, locations, setDraftState } = useWasteContext();
   const catalog = useCompleteCatalog(
     api.waste.listCatalogPage,
     locationId ? { locationId } : "skip",
@@ -397,6 +407,17 @@ export function WasteRegistration() {
 
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(
     new Set(),
+  );
+
+  const draftDirty =
+    selectedId !== null || undoDialogOpen || editingShortcuts;
+  const draftBusy = pendingKeys.size > 0 || undoingIds.length > 0;
+  useEffect(() => {
+    setDraftState({ dirty: draftDirty, busy: draftBusy });
+  }, [draftBusy, draftDirty, setDraftState]);
+  useEffect(
+    () => () => setDraftState({ dirty: false, busy: false }),
+    [setDraftState],
   );
 
   async function register(

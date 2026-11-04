@@ -169,6 +169,13 @@ export function ProfileSettings() {
               <AlertDescription>{nameError}</AlertDescription>
             </Alert>
           ) : null}
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveName();
+            }}
+          >
           <Field data-invalid={Boolean(nameError)}>
             <FieldLabel htmlFor="profile-name">Navn</FieldLabel>
             <Input
@@ -187,19 +194,19 @@ export function ProfileSettings() {
           </div>
           <div>
             <Button
-              type="button"
+              type="submit"
               size="lg"
               disabled={
                 namePending ||
                 !nameDraft.trim() ||
                 nameDraft.trim() === session.data.user.name
               }
-              onClick={() => void saveName()}
             >
               {namePending ? <Spinner data-icon="inline-start" /> : null}
               Gem navn
             </Button>
           </div>
+          </form>
         </CardContent>
       </Card>
 
@@ -216,6 +223,13 @@ export function ProfileSettings() {
               <AlertDescription>{passwordError}</AlertDescription>
             </Alert>
           ) : null}
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void changePassword();
+            }}
+          >
           <Field data-invalid={Boolean(passwordError)}>
             <FieldLabel htmlFor="profile-current-password">
               Nuværende adgangskode
@@ -248,19 +262,19 @@ export function ProfileSettings() {
           </Field>
           <div>
             <Button
-              type="button"
+              type="submit"
               size="lg"
               disabled={
                 passwordPending ||
                 currentPassword.length < 1 ||
                 newPassword.length < 12
               }
-              onClick={() => void changePassword()}
             >
               {passwordPending ? <Spinner data-icon="inline-start" /> : null}
               Opdatér adgangskode
             </Button>
           </div>
+          </form>
         </CardContent>
       </Card>
 

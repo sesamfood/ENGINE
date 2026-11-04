@@ -109,7 +109,7 @@ function TransfersContent() {
       ? [{ href: "/transfers", label: "Ny transfer", shortLabel: "Ny", icon: ArrowRightLeftIcon, active: selectedTab === "new" }]
       : []),
     ...(showOrders
-      ? [{ href: "/transfers/orders", label: "Transferbestillinger", shortLabel: "Ordrer", badgeLabel: "åbne transferbestillinger", icon: ShoppingCartIcon, active: selectedTab === "orders", badge: openOrders?.length || undefined }]
+      ? [{ href: "/transfers/orders", label: "Transferbestillinger", shortLabel: "Bestillinger", badgeLabel: "åbne transferbestillinger", icon: ShoppingCartIcon, active: selectedTab === "orders", badge: openOrders?.length || undefined }]
       : []),
     ...(showHistory
       ? [{ href: "/transfers/history", label: "Transferhistorik", shortLabel: "Historik", icon: HistoryIcon, active: selectedTab === "history" }]

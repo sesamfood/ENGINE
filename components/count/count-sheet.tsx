@@ -577,9 +577,22 @@ function SingleProductCounter({
                     .join(" · ")}
                 </CardDescription>
               </div>
-              <CardTitle appearance="hero">
-                {product.name}
-              </CardTitle>
+              <div className="flex items-center gap-3">
+                {product.imageUrl ? (
+                  <span className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted sm:hidden">
+                    <Image
+                      src={product.imageUrl}
+                      alt=""
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                    />
+                  </span>
+                ) : null}
+                <CardTitle appearance="hero">
+                  {product.name}
+                </CardTitle>
+              </div>
             </CardHeader>
 
             <CardContent appearance="hero" className="flex flex-1 flex-col lg:justify-center">
