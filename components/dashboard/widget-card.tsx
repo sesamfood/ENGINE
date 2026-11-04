@@ -371,7 +371,7 @@ export function WidgetCard({
                       <Badge
                         variant="secondary"
                         appearance={
-                          financial || change === 0
+                          change === 0
                             ? undefined
                             : definition?.direction === "up-good" || definition?.direction === "down-good"
                               ? (definition.direction === "down-good" ? change < 0 : change > 0)

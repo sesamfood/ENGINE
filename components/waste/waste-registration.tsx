@@ -126,7 +126,11 @@ function shortcutsFor(
       result.push({ unitId: fillUnitId, quantity });
     }
   }
-  return result.slice(0, 2);
+  const sliced = result.slice(0, 2);
+  if (sliced.length === 2 && sliced[0].unitId === sliced[1].unitId) {
+    sliced.sort((a, b) => a.quantity - b.quantity);
+  }
+  return sliced;
 }
 
 function WasteUndoControls({

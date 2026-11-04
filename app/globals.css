@@ -190,8 +190,12 @@
 
 @media (min-width: 40rem) {
   .dashboard-grid {
-    --dashboard-visible-columns: 2;
+    --dashboard-visible-columns: 4;
     grid-auto-rows: min(12rem, max(10rem, calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns) * 0.62)));
+  }
+
+  .dashboard-grid-item {
+    grid-column: span min(4, max(1, round(down, var(--dashboard-column-span) * 4 / var(--dashboard-columns), 1)));
   }
 }
 

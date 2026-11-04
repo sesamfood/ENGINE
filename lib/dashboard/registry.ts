@@ -78,6 +78,7 @@ const definitions = {
   cogsPercent: {
     ...financialDefaults,
     id: "cogsPercent",
+    direction: "down-good",
     label: "Vareforbrug",
     description: "Vareforbrug som andel af månedens nettoomsætning.",
     formula: "Lagerreguleret vareforbrug ÷ nettoomsætning × 100. Bruger et manuelt godkendt beløb eller e-conomic-konti med bekræftet lagerregulering. Bogførte beløb er foreløbige, indtil måneden er godkendt.",
@@ -85,6 +86,7 @@ const definitions = {
   labourPercent: {
     ...financialDefaults,
     id: "labourPercent",
+    direction: "down-good",
     label: "Lønprocent",
     description: "Lønomkostninger som andel af månedens nettoomsætning.",
     formula: "Lønomkostninger ÷ nettoomsætning × 100. Godkendt bogført løn fra e-conomic erstatter Workfeeds estimat for den enkelte lokation og måned.",
@@ -92,6 +94,7 @@ const definitions = {
   grossMarginPercent: {
     ...financialDefaults,
     id: "grossMarginPercent",
+    direction: "up-good",
     label: "Bruttoavance",
     description: "Nettoomsætning efter vareforbrug, vist i procent.",
     formula: "(Nettoomsætning − vareforbrug) ÷ nettoomsætning × 100. Bruger samme vareforbrug og periode som månedsrapporten.",
@@ -99,6 +102,7 @@ const definitions = {
   wastePercent: {
     ...financialDefaults,
     id: "wastePercent",
+    direction: "down-good",
     label: "Waste-procent",
     description: "Godkendt Waste-værdi som andel af månedens nettoomsætning.",
     formula: "Godkendt Waste-værdi ÷ nettoomsætning × 100. Waste trækkes ikke fra EBITDA igen, når værdien allerede indgår i vareforbruget.",
@@ -106,6 +110,7 @@ const definitions = {
   rentPercent: {
     ...financialDefaults,
     id: "rentPercent",
+    direction: "down-good",
     label: "Huslejeprocent",
     description: "Husleje som andel af månedens nettoomsætning.",
     formula: "Husleje fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
@@ -113,6 +118,7 @@ const definitions = {
   utilitiesPercent: {
     ...financialDefaults,
     id: "utilitiesPercent",
+    direction: "down-good",
     label: "Forbrugsprocent",
     description: "El, vand og varme som andel af månedens nettoomsætning.",
     formula: "Forbrugsomkostninger fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
@@ -120,6 +126,7 @@ const definitions = {
   primeCostPercent: {
     ...financialDefaults,
     id: "primeCostPercent",
+    direction: "down-good",
     label: "Primære omkostninger",
     description: "Vareforbrug og løn som andel af månedens nettoomsætning.",
     formula: "(Vareforbrug + lønomkostninger) ÷ nettoomsætning × 100.",
@@ -127,6 +134,7 @@ const definitions = {
   ebitdaPercent: {
     ...financialDefaults,
     id: "ebitdaPercent",
+    direction: "up-good",
     label: "Lokationens EBITDA",
     description: "Månedens resultat før renter, skat og afskrivninger, vist i procent.",
     formula: "(Nettoomsætning − vareforbrug − løn − husleje − forbrug − øvrige driftsomkostninger) ÷ nettoomsætning × 100. Fællesomkostninger kræver en tilknytning til lokationen.",

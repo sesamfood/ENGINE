@@ -658,8 +658,15 @@ export function ProductCatalog() {
         </Empty>
       ) : null}
 
+      {loading && !showSkeleton && displayedResults.length > 0 ? (
+        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner />
+          Opdaterer produkter…
+        </p>
+      ) : null}
+
       {!showSkeleton && displayedResults.length > 0 ? (
-        <div className="grid gap-5 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+        <div aria-busy={loading} className="grid gap-5 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
           {displayedResults.map((product) => (
             <ProductCard
               key={product.id}

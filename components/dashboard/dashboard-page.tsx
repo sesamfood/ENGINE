@@ -398,7 +398,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button type="button" variant="ghost" className="min-h-11 lg:hidden" aria-label="Vælg sammenligningsperiode" />
+                <Button type="button" variant="ghost" className="min-h-11 self-start lg:hidden" aria-label="Vælg sammenligningsperiode" />
               }
             >
               Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}
@@ -434,7 +434,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
           {canManage ? (
-            <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
+            <Button type="button" size="lg" className="min-h-11 max-sm:hidden" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
               <PencilIcon data-icon="inline-start" />
               {editing ? "Færdig" : "Redigér"}
             </Button>
@@ -451,6 +451,12 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-56">
               <DropdownMenuGroup>
+                {canManage ? (
+                  <DropdownMenuItem className="sm:hidden" onClick={() => setEditing((value) => !value)}>
+                    <PencilIcon />
+                    {editing ? "Færdig" : "Redigér"}
+                  </DropdownMenuItem>
+                ) : null}
                 {canViewFinancials && access.granularity === "detail" && showMonthly ? (
                   <DropdownMenuItem onClick={() => router.push("/dashboard/monthly")}>
                     <FileTextIcon />

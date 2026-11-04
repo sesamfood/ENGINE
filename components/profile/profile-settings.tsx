@@ -165,7 +165,7 @@ export function ProfileSettings() {
         </CardHeader>
         <CardContent appearance="stacked">
           {nameError ? (
-            <Alert variant="destructive">
+            <Alert variant="destructive" id="profile-name-error">
               <AlertDescription>{nameError}</AlertDescription>
             </Alert>
           ) : null}
@@ -177,6 +177,7 @@ export function ProfileSettings() {
               value={nameDraft}
               onChange={(event) => setNameDraft(event.target.value)}
               aria-invalid={Boolean(nameError)}
+              aria-describedby={nameError ? "profile-name-error" : undefined}
               disabled={namePending}
             />
           </Field>
@@ -211,7 +212,7 @@ export function ProfileSettings() {
         </CardHeader>
         <CardContent appearance="stacked">
           {passwordError ? (
-            <Alert variant="destructive">
+            <Alert variant="destructive" id="profile-password-error">
               <AlertDescription>{passwordError}</AlertDescription>
             </Alert>
           ) : null}
@@ -225,6 +226,7 @@ export function ProfileSettings() {
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.target.value)}
               aria-invalid={Boolean(passwordError)}
+              aria-describedby={passwordError ? "profile-password-error" : undefined}
               disabled={passwordPending}
             />
           </Field>
@@ -239,9 +241,10 @@ export function ProfileSettings() {
               onChange={(event) => setNewPassword(event.target.value)}
               minLength={12}
               maxLength={256}
+              aria-describedby="profile-new-password-hint"
               disabled={passwordPending}
             />
-            <FieldDescription>Brug mindst 12 tegn.</FieldDescription>
+            <FieldDescription id="profile-new-password-hint">Brug mindst 12 tegn.</FieldDescription>
           </Field>
           <div>
             <Button
