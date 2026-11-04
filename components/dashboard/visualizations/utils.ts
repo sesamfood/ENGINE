@@ -85,9 +85,14 @@ export function chartModel(result: MetricResult) {
       data.set(point.t, row);
     }
   });
+  const rows = [...data.values()].sort((left, right) => left.t - right.t);
+  // The current day is incomplete; plotting it reads as a collapse.
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const completeRows = rows.length > 1 && rows[rows.length - 1].t >= startOfToday ? rows.slice(0, -1) : rows;
   return {
     config,
-    data: [...data.values()].sort((left, right) => left.t - right.t),
+    data: completeRows,
     keys: result.series.map((_, index) => `series${index}`),
   };
 }

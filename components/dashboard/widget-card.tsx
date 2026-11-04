@@ -347,7 +347,7 @@ export function WidgetCard({
               <CardDescription appearance="inline" className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center overflow-hidden">
                 {change !== null ? (
                   <Tooltip>
-                    <TooltipTrigger render={<button type="button" aria-label={`Ændring sammenlignet med ${comparisonLabel}`} className="inline-flex min-w-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
+                    <TooltipTrigger render={<button type="button" aria-label={`Ændring: ${change >= 0 ? "steget" : "faldet"} ${new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} ${financial ? "procentpoint" : "procent"} sammenlignet med ${comparisonLabel}`} className="inline-flex min-w-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
                       <Badge
                         variant="secondary"
                         appearance={

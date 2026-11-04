@@ -91,7 +91,7 @@ const categories: AdministrationCategory[] = [
     sections: [
       {
         title: "Lokationer",
-        description: "Administrér de lokationer, der bruges i Transfer.",
+        description: "Opret og redigér organisationens lokationer.",
         href: "/administration/locations",
         icon: StoreIcon,
         permissions: ["locations.manage"],

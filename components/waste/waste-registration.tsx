@@ -635,6 +635,10 @@ export function WasteRegistration() {
         />
       </InputGroup>
 
+      <p className="text-sm text-muted-foreground">
+        Tryk på et produkt for at registrere en anden mængde.
+      </p>
+
       <Dialog
         open={Boolean(selected)}
         onOpenChange={(open) => !open && setSelectedId(null)}
@@ -681,9 +685,6 @@ export function WasteRegistration() {
                             .join(" · ")}
                         </CardDescription>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        Tryk på produktet for anden mængde
-                      </span>
                     </CardHeader>
                     <DialogTrigger
                       type="button"

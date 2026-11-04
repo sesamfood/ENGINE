@@ -6,6 +6,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppPageHeader } from "@/components/app-page-header";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { usePermission } from "@/components/app-shell";
 
 const administrationPath = "/administration";
@@ -147,11 +155,38 @@ export function AdministrationHeader() {
       <AppPageHeader>{header}</AppPageHeader>
 
       {inCatalog ? (
+        <>
+        <Select
+          items={visibleCatalogSections.map((item) => ({
+            value: item.value,
+            label: item.label,
+          }))}
+          value={activeCatalogSection}
+          onValueChange={(value) => {
+            if (value) {
+              router.push(`${administrationPath}/${value}`, { scroll: false });
+            }
+          }}
+        >
+          <SelectTrigger className="h-12 w-full md:hidden" aria-label="Katalogsektion">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {visibleCatalogSections.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         <Tabs
           value={activeCatalogSection}
           onValueChange={(value) =>
             router.push(`${administrationPath}/${value}`, { scroll: false })
           }
+          className="max-md:hidden"
         >
           <TabsList
             aria-label="Katalogsektioner"
@@ -162,14 +197,15 @@ export function AdministrationHeader() {
               <TabsTrigger
                 key={item.value}
                 value={item.value}
-                appearance="wide"
-                className="min-w-36"
+                appearance="standard"
+                className="shrink-0 flex-none"
               >
                 {item.label}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
+        </>
       ) : null}
       {inUsers && visibleUserSections.length > 1 ? (
         <Tabs

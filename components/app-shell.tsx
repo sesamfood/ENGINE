@@ -1824,10 +1824,15 @@ export function AppShell({
                       <header
                         className={cn(
                           "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                          showPageHeader && "md:h-auto md:min-h-24 md:items-start md:py-3 md:px-4",
+                          showPageHeader && "md:h-auto md:items-start md:py-3 md:px-4",
                         )}
                       >
-                        <SidebarTrigger size="icon-lg" />
+                        <span className="flex items-center gap-1">
+                          <SidebarTrigger size="icon-lg" />
+                          <span aria-hidden="true" className="text-sm font-medium md:hidden">
+                            Menu
+                          </span>
+                        </span>
                         {showPageHeader ? <AppPageHeaderTarget /> : null}
                         {showAdministrationBack ? (
                           <Button
@@ -1863,7 +1868,7 @@ export function AppShell({
                       </header>
                       {/* Sticks below the sticky header, so offsets match its heights. */}
                       <SupportBanner
-                        className={cn("top-16", showPageHeader && "md:top-24")}
+                        className={cn("top-16", showPageHeader && "md:top-20")}
                       />
                       <TestOrganizationBanner />
 

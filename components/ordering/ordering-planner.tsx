@@ -956,7 +956,7 @@ function Planner({
       ) : choosingSupplier ? (
         <section
           aria-labelledby="ordering-choose-supplier"
-          className="mt-2 flex flex-col gap-4 pb-40"
+          className="mt-4 flex flex-col gap-4 pb-40"
         >
           <h2 id="ordering-choose-supplier" className="text-xl font-semibold">
             Hvem vil du bestille hos?

@@ -52,7 +52,13 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { useActiveOrganization } from "@/lib/active-organization";
 import { selectedLocationId } from "@/lib/location-preference";
-import { setTransferLocation, useTransferLocation } from "@/lib/transfer-prefs";
+import {
+  clearTransferDraft,
+  readTransferDraft,
+  setTransferLocation,
+  useTransferLocation,
+  writeTransferDraft,
+} from "@/lib/transfer-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { ChevronDownIcon, PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
@@ -240,6 +246,7 @@ export function TransferForm({
   const organizationId = organization.data?.id;
   const storedFromLocationId = useTransferLocation(organizationId);
   const prefilledFromLocation = useRef(false);
+  const draftRestored = useRef(false);
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const productSearchOptions = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
@@ -296,6 +303,67 @@ export function TransferForm({
   const [isTemperatureDialogOpen, setIsTemperatureDialogOpen] = useState(false);
   const sessionUserId = session?.user.id;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
+
+  // Restore an unfinished draft after section navigation remounted the form.
+  useEffect(() => {
+    if (transfer || order || draftRestored.current) return;
+    if (!organizationId || !locations) return;
+    draftRestored.current = true;
+    const draft = readTransferDraft(organizationId);
+    if (!draft) return;
+    const locationIds = new Set(locations.map((location) => location.id));
+    const from = draft.fromLocationId && locationIds.has(draft.fromLocationId as Id<"locations">) ? draft.fromLocationId : null;
+    const to = draft.toLocationId && locationIds.has(draft.toLocationId as Id<"locations">) ? draft.toLocationId : null;
+    const timeout = window.setTimeout(() => {
+      if (from) {
+        prefilledFromLocation.current = true;
+        setFromLocationId(from);
+      }
+      if (to) setToLocationId(to);
+      if (draft.responsibleUserId) setResponsibleUserId(draft.responsibleUserId);
+      if (draft.comment) {
+        setComment(draft.comment);
+        setOptionalOpen(true);
+      }
+      if (draft.lines.length) {
+        setLines(
+          draft.lines.map((line) => ({
+            key: line.key,
+            productId: line.productId as Id<"products">,
+            productName: line.productName,
+            imageUrl: null,
+            unitId: line.unitId as Id<"units">,
+            units: line.units as Array<{ id: Id<"units">; name: string }>,
+            unitsLoaded: false,
+            quantity: line.quantity,
+          })),
+        );
+      }
+    });
+    return () => window.clearTimeout(timeout);
+  }, [locations, order, organizationId, transfer]);
+
+  useEffect(() => {
+    if (transfer || order || !organizationId || !draftRestored.current) return;
+    if (!lines.length && !toLocationId && !comment) {
+      clearTransferDraft(organizationId);
+      return;
+    }
+    writeTransferDraft(organizationId, {
+      fromLocationId,
+      toLocationId,
+      responsibleUserId,
+      comment,
+      lines: lines.map((line) => ({
+        key: line.key,
+        productId: line.productId,
+        productName: line.productName,
+        unitId: line.unitId,
+        units: line.units,
+        quantity: line.quantity,
+      })),
+    });
+  }, [comment, fromLocationId, lines, order, organizationId, responsibleUserId, toLocationId, transfer]);
 
   useEffect(() => {
     if (transfer || order || prefilledFromLocation.current) return;
@@ -380,6 +448,7 @@ export function TransferForm({
   const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   function resetForm() {
+    if (organizationId) clearTransferDraft(organizationId);
     setFromLocationId((current) => kiosk?.isKioskAccount ? kiosk.locationId : current);
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
@@ -773,7 +842,7 @@ export function TransferForm({
           : null
     : null;
   const actions = (
-    <div className="flex flex-col-reverse gap-2 md:ml-auto md:flex-row md:items-center">
+    <div className="flex flex-col-reverse gap-2 lg:ml-auto lg:flex-row lg:items-center">
       {missingForSave ? (
         <p className="text-xs whitespace-nowrap text-muted-foreground max-lg:order-first max-lg:text-center">
           {missingForSave}
@@ -1232,7 +1301,7 @@ export function TransferForm({
         </div>
       ) : (
         <AppBottomBar>
-          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 md:flex-row md:items-center">
+          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 lg:flex-row lg:items-center">
             {navigation ? (
               <div className="min-w-0" inert={isSaving}>
                 {navigation}

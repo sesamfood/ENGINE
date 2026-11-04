@@ -6,7 +6,7 @@ export const administrationFeatures: HelpFeature[] = [
     slug: "administration",
     label: "Administration",
     summary:
-      "Klargør lokationer og Produkter, vælg funktioner, tilpas udseendet, og giv eksterne systemer API-adgang.",
+      "Klargør lokationer og produkter, vælg funktioner, tilpas udseendet, og giv eksterne systemer API-adgang.",
     icon: SettingsIcon,
     guides: [
       {
@@ -319,7 +319,7 @@ export const administrationFeatures: HelpFeature[] = [
     slug: "adgang-og-profil",
     label: "Adgang og profil",
     summary:
-      "Opret konto og organisation, invitér Brugere, vælg roller og lokationsadgang, og klargør fælles tablets.",
+      "Opret konto og organisation, invitér brugere, vælg roller og lokationsadgang, og klargør fælles tablets.",
     icon: UserRoundIcon,
     guides: [
       {
@@ -355,7 +355,7 @@ export const administrationFeatures: HelpFeature[] = [
         slug: "brugere-og-roller",
         label: "Brugere, invitationer og roller",
         summary:
-          "Vælg rollernes handlinger, invitér Brugere, og giv dem adgang til de rigtige lokationer.",
+          "Vælg rollernes handlinger, invitér brugere, og giv dem adgang til de rigtige lokationer.",
         appHref: "/administration/users",
         appLinkLabel: "Åbn Brugere",
         sections: [
