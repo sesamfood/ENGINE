@@ -68,7 +68,12 @@ function withEmptyState(Visualization: ComponentType<VisualizationProps>) {
         createElement(
           EmptyDescription,
           { className: "my-auto w-full shrink-0 wrap-anywhere" },
-          "Ingen data at vise",
+          createElement("p", null, "Ingen data at vise"),
+          createElement(
+            "p",
+            { className: "text-xs" },
+            "Prøv en længere periode, eller kontrollér datakilden i Administration.",
+          ),
         ),
       );
     }

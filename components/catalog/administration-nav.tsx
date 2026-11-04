@@ -152,12 +152,17 @@ export function AdministrationHeader() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
       {pathname === administrationPath ? null : (
-        <Link
-          href={administrationPath}
-          className="w-fit text-sm font-semibold uppercase tracking-widest text-primary hover:underline"
-        >
-          Administration
-        </Link>
+        <>
+          <Link
+            href={administrationPath}
+            className="w-fit text-sm font-semibold uppercase tracking-widest text-primary hover:underline max-md:hidden"
+          >
+            Administration
+          </Link>
+          <p className="text-sm font-semibold uppercase tracking-widest text-primary md:hidden">
+            Administration
+          </p>
+        </>
       )}
       <PageTitle>
         {title}

@@ -68,7 +68,7 @@ export function RangeSelector({
           if (value) select([value]);
         }}
       >
-        <SelectTrigger className="h-11 w-full min-w-44 lg:hidden" aria-label="Periode">
+        <SelectTrigger className="h-11 w-full min-w-32 sm:min-w-44 lg:hidden" aria-label="Periode">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

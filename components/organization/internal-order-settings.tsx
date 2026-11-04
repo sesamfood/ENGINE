@@ -602,7 +602,7 @@ function ProductPicker({
                       key={product.id}
                       type="button"
                       aria-pressed={checked}
-                      className="group rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                      className="group rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring"
                       onClick={() => toggle([product.id], !checked)}
                     >
                       <Card

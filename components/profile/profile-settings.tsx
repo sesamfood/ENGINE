@@ -162,7 +162,7 @@ export function ProfileSettings() {
     <div className="flex w-full max-w-2xl flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Profiloplysninger</CardTitle>
+          <CardTitle role="heading" aria-level={2}>Profiloplysninger</CardTitle>
           <CardDescription>
             Dine personlige oplysninger.
           </CardDescription>
@@ -226,7 +226,7 @@ export function ProfileSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Adgangskode</CardTitle>
+          <CardTitle role="heading" aria-level={2}>Adgangskode</CardTitle>
           <CardDescription>
             Skift din adgangskode. Dine andre sessioner logges ud.
           </CardDescription>
@@ -294,7 +294,7 @@ export function ProfileSettings() {
 
       <Card appearance="danger">
         <CardHeader>
-          <CardTitle>Slet konto</CardTitle>
+          <CardTitle role="heading" aria-level={2}>Slet konto</CardTitle>
           <CardDescription>
             Slet din personlige konto, dine sessioner og din adgang permanent.
           </CardDescription>

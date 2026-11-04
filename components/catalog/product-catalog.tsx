@@ -64,6 +64,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -238,33 +243,49 @@ function ProductCard({
       </CardHeader>
         {!isSelectionMode ? (
         <CardFooter appearance="product" className="relative z-20 mt-auto flex items-center justify-end">
-          <Button
-            variant="ghost"
-            size="icon-lg"
-            className="size-11"
-            nativeButton={false}
-            render={<Link href={editHref} tabIndex={-1} aria-label={`Redigér ${product.name}`} />}
-          >
-            <PencilIcon />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-lg"
-            className="size-11"
-            aria-label={`${product.status === "active" ? "Arkivér" : "Gendan"} ${product.name}`}
-            onClick={() =>
-              product.status === "active"
-                ? onArchive(product)
-                : onRestore(product)
-            }
-          >
-            {product.status === "active" ? (
-              <ArchiveIcon />
-            ) : (
-              <ArchiveRestoreIcon />
-            )}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
+                  className="size-11"
+                  nativeButton={false}
+                  render={<Link href={editHref} tabIndex={-1} aria-label={`Redigér ${product.name}`} />}
+                />
+              }
+            >
+              <PencilIcon />
+            </TooltipTrigger>
+            <TooltipContent>Redigér</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="size-11"
+                  aria-label={`${product.status === "active" ? "Arkivér" : "Gendan"} ${product.name}`}
+                  onClick={() =>
+                    product.status === "active"
+                      ? onArchive(product)
+                      : onRestore(product)
+                  }
+                />
+              }
+            >
+              {product.status === "active" ? (
+                <ArchiveIcon />
+              ) : (
+                <ArchiveRestoreIcon />
+              )}
+            </TooltipTrigger>
+            <TooltipContent>
+              {product.status === "active" ? "Arkivér" : "Gendan"}
+            </TooltipContent>
+          </Tooltip>
           {product.status === "archived" ? (
             <Button
               type="button"
@@ -431,8 +452,14 @@ export function ProductCatalog() {
   const [catalogView, setCatalogView] = useState<"grid" | "list">("grid");
   useEffect(() => {
     const stored = window.localStorage.getItem("catalog-view");
-    if (stored === "list" || stored === "grid") {
-      const timer = window.setTimeout(() => setCatalogView(stored), 0);
+    const initial =
+      stored === "list" || stored === "grid"
+        ? stored
+        : window.matchMedia("(min-width: 768px)").matches
+          ? "list"
+          : null;
+    if (initial) {
+      const timer = window.setTimeout(() => setCatalogView(initial), 0);
       return () => window.clearTimeout(timer);
     }
   }, []);

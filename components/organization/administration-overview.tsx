@@ -466,7 +466,7 @@ export function AdministrationOverview() {
                   key={section.href}
                   href={href}
                   aria-label={`Åbn ${section.title.toLocaleLowerCase("da")}`}
-                  className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring"
                 >
                   <Card size="sm" appearance="link" className="h-full"
                   >

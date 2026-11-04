@@ -355,7 +355,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   }
 
   const title = currentScope ? (
-    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>Dashboard</PageTitle>
       </div>
@@ -389,9 +389,9 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         onDeleted={() => router.replace("/dashboard")}
         onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
       />
-      <div className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-sm sm:p-4 lg:items-end">
-        <div className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-3 lg:items-end lg:gap-x-6">
-          <div className="min-w-44 flex-1 lg:flex-none">
+      <div className="flex flex-row flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-3 shadow-sm sm:gap-3 sm:p-4 lg:items-end">
+        <div className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-2 sm:gap-3 lg:items-end lg:gap-x-6">
+          <div className="min-w-32 flex-1 sm:min-w-44 lg:flex-none">
             <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
           </div>
           <div className="max-lg:hidden">
@@ -403,7 +403,8 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
                 <Button type="button" variant="ghost" className="min-h-11 self-start max-lg:-ml-2.5 lg:hidden" aria-label={`Sammenlignet med ${comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}. Vælg sammenligningsperiode`} />
               }
             >
-              Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}
+              <span className="sm:hidden">{comparisonPeriodLabels[currentComparison]}</span>
+              <span className="max-sm:hidden">Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}</span>
               <ChevronDownIcon data-icon="inline-end" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-56">
@@ -445,11 +446,11 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button type="button" size="lg" variant="outline" className="min-h-11" />
+                <Button type="button" size="lg" variant="outline" className="min-h-11 max-sm:min-w-11" aria-label="Mere" />
               }
             >
               <EllipsisVerticalIcon data-icon="inline-start" />
-              Mere
+              <span className="max-sm:sr-only">Mere</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-56">
               <DropdownMenuGroup>

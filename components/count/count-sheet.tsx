@@ -2315,7 +2315,12 @@ export function CountSheet() {
                 Eksportér Waste
               </Button>
             ) : (
-              <UnavailableTooltip reason={disabledReason}>
+              <>
+                {disabledReason ? (
+                  <p className="text-xs text-muted-foreground max-sm:order-first max-sm:col-span-2 max-sm:text-center">
+                    {disabledReason}
+                  </p>
+                ) : null}
                 <Button
                   type="button"
                   size="lg"
@@ -2327,7 +2332,7 @@ export function CountSheet() {
                   {submitting ? <Spinner data-icon="inline-start" /> : null}
                   Registrér Count
                 </Button>
-              </UnavailableTooltip>
+              </>
             )}
           </div>
         }

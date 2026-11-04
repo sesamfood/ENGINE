@@ -264,7 +264,8 @@ export function WidgetCard({
   const sourceSuffix = definition?.live ? ` (${definition.live.sourceLabel})` : "";
   const hasSourceSuffix = Boolean(sourceSuffix) && metricLabel.endsWith(sourceSuffix);
   const hasAttributions = live?.kind === "ready" && live.data.attributions.length > 0;
-  const compactLive = Boolean(definition?.live) && widgetSizeSpans[widget.size].rows === 1;
+  const compactHeader = widgetSizeSpans[widget.size].rows === 1;
+  const compactLive = Boolean(definition?.live) && compactHeader;
   const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
   const salesSource = definition && supportsSalesSource(definition.id)
     ? widget.options?.salesSource ?? defaultSalesSource(definition.id)
@@ -357,10 +358,10 @@ export function WidgetCard({
       <CardHeader appearance={compactLive ? "liveWidget" : "widget"} className="shrink-0">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-            <CardTitle title={metricLabel} role="heading" aria-level={2} appearance={hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix ? "flex flex-wrap items-baseline" : "")}>
-              {hasSourceSuffix ? <>
-                <span className="line-clamp-2 max-w-full">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
-                <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal">{sourceSuffix.trimStart()}</span>
+            <CardTitle title={metricLabel} role="heading" aria-level={2} appearance={compactHeader ? "widgetCompact" : hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix && !compactHeader ? "flex flex-wrap items-baseline" : "")}>
+              {hasSourceSuffix && !compactHeader ? <>
+                <span className="line-clamp-2 max-w-full @max-xs/card-header:line-clamp-1">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
+                <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal @max-xs/card-header:hidden">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
             {change !== null || result?.truncated || hasFreshness || result?.warning ? (
@@ -571,7 +572,7 @@ export function WidgetCard({
             </div>
           ) : null}
         </div>
-        {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
+        {definition?.live && !compactLive ? <CardDescription className="@max-xs/card-header:hidden">{definition.live.currentLabel}</CardDescription> : null}
         {financial ? <CardDescription>Månedsrapport · {financialRange?.preset === "thisMonth" ? "Denne måned"
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
         {current !== null && result && visualizationHasYAxis(widget.visualization) ? (

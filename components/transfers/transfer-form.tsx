@@ -841,19 +841,26 @@ export function TransferForm({
     await submit(confirmation.validated, confirmation.deviations);
   }
 
-  const missingForSave = !transfer
-    ? !fromLocationId
-      ? "Vælg fra-lokation for at gemme"
-      : !toLocationId
-        ? "Vælg til-lokation for at gemme"
-        : lines.length === 0
-          ? "Tilføj et produkt for at gemme"
-          : null
+  const missingParts = transfer
+    ? []
+    : [
+        !fromLocationId && !toLocationId
+          ? "vælg fra- og til-lokation"
+          : !fromLocationId
+            ? "vælg fra-lokation"
+            : !toLocationId
+              ? "vælg til-lokation"
+              : null,
+        lines.length === 0 ? "tilføj et produkt" : null,
+      ].filter(Boolean);
+  const missingText = missingParts.join(" og ");
+  const missingForSave = missingText
+    ? `${missingText.charAt(0).toUpperCase()}${missingText.slice(1)} for at gemme`
     : null;
   const actions = (
     <div className="flex flex-col-reverse gap-2 lg:ml-auto lg:flex-row lg:items-center">
       {missingForSave ? (
-        <p className="text-xs whitespace-nowrap text-muted-foreground max-lg:order-first max-lg:text-center">
+        <p className="text-xs text-muted-foreground max-lg:order-first max-lg:text-center lg:whitespace-nowrap">
           {missingForSave}
         </p>
       ) : null}
@@ -899,7 +906,7 @@ export function TransferForm({
       <div className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)">
         <Card>
           <CardHeader>
-            <CardTitle>Detaljer</CardTitle>
+            <CardTitle role="heading" aria-level={2}>Detaljer</CardTitle>
           </CardHeader>
           <CardContent>
             <FieldGroup>
@@ -1037,7 +1044,7 @@ export function TransferForm({
 
         <Card>
           <CardHeader>
-            <CardTitle>Produkter</CardTitle>
+            <CardTitle role="heading" aria-level={2}>Produkter</CardTitle>
             <CardAction>
               <p className="text-sm text-muted-foreground">
                 {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"}

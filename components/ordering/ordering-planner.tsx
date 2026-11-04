@@ -610,7 +610,7 @@ function Planner({
   }));
 
   const supplierItems = [
-    { value: NO_SUPPLIER, label: "Ingen leverandør" },
+    { value: NO_SUPPLIER, label: "Alle produkter" },
     ...(suppliers ?? []).map((item) => ({ value: item.id, label: item.name })),
     ...(internalSuppliers ?? []).map((item) => ({
       value: item.locationId,
@@ -1033,8 +1033,8 @@ function Planner({
               })),
               {
                 value: NO_SUPPLIER,
-                label: "Ingen leverandør",
-                description: "Alle produkter, der kan bestilles",
+                label: "Alle produkter",
+                description: "Uden leverandørpriser",
                 Icon: LayoutGridIcon,
               },
             ].map((option) => (

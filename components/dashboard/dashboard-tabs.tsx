@@ -13,6 +13,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -152,25 +153,35 @@ export function DashboardTabs({
           </TabsList>
         </Tabs>
         {canCreate ? (
-          <Button type="button" variant="ghost" size="icon-lg" className="size-11 shrink-0" aria-label="Opret dashboard" onClick={() => setCreateOpen(true)}>
-            <PlusIcon />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11 shrink-0" aria-label="Opret dashboard" onClick={() => setCreateOpen(true)} />}>
+              <PlusIcon />
+            </TooltipTrigger>
+            <TooltipContent>Opret dashboard</TooltipContent>
+          </Tooltip>
         ) : null}
         {canManage && activeDashboard && String(activeDashboard.id) === activeId ? (
           <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              className="size-11"
-              aria-label={`Indstillinger for ${activeDashboard.name}`}
-              onClick={() => {
-                setSettingsMountedId(String(activeDashboard.id));
-                setSettingsId(String(activeDashboard.id));
-              }}
-            >
-              <SettingsIcon />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-lg"
+                    className="size-11"
+                    aria-label={`Indstillinger for ${activeDashboard.name}`}
+                    onClick={() => {
+                      setSettingsMountedId(String(activeDashboard.id));
+                      setSettingsId(String(activeDashboard.id));
+                    }}
+                  />
+                }
+              >
+                <SettingsIcon />
+              </TooltipTrigger>
+              <TooltipContent>Indstillinger</TooltipContent>
+            </Tooltip>
             {settingsMountedId === String(activeDashboard.id) ? (
               <DashboardSettingsDialog
                 key={`${activeDashboard.id}:${activeDashboard.updatedAt}`}

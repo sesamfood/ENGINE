@@ -90,6 +90,11 @@ export function LoginForm({
     }
   }
 
+  const showError = Boolean(error) && !pending;
+  // Only credential errors point at the fields; rate limits and network errors do not.
+  const credentialsInvalid =
+    showError && Boolean(error?.includes("adgangskode er forkert"));
+
   return (
     <form action={formAction} className="flex flex-col gap-5">
       {verified ? (
@@ -111,8 +116,8 @@ export function LoginForm({
           <AlertDescription>Din konto er slettet.</AlertDescription>
         </Alert>
       ) : null}
-      {error && !pending ? (
-        <Alert variant="destructive">
+      {showError ? (
+        <Alert id="login-error" variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
@@ -127,6 +132,8 @@ export function LoginForm({
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
             required
+            aria-invalid={credentialsInvalid || undefined}
+            aria-describedby={showError ? "login-error" : undefined}
           />
         </Field>
         <Field>
@@ -138,6 +145,8 @@ export function LoginForm({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
+            aria-invalid={credentialsInvalid || undefined}
+            aria-describedby={showError ? "login-error" : undefined}
           />
         </Field>
       </FieldGroup>

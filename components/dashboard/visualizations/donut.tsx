@@ -28,7 +28,7 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
   const totalValue = data.reduce((sum, item) => sum + item.value, 0);
   const percent = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 });
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="@container flex h-full min-h-0 flex-col">
       <ChartContainer config={config} className="min-h-0 w-full flex-1 aspect-auto">
         <PieChart accessibilityLayer>
           <ChartTooltip content={<ChartTooltipContent nameKey="key" tooltipTitle={tooltipLabel} hideLabel={!tooltipLabel} />} />
@@ -38,7 +38,7 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
         </PieChart>
       </ChartContainer>
       {!compact ? (
-        <ul className="flex shrink-0 flex-wrap justify-center gap-x-3 gap-y-1 pt-2 pb-1 text-xs">
+        <ul className="grid shrink-0 grid-cols-1 gap-x-4 gap-y-1 pt-2 pb-1 text-sm @sm:grid-cols-2">
           {data.map((item) => (
             <li key={item.key} className="flex min-w-0 items-center gap-1.5">
               <span

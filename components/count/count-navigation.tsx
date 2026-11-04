@@ -33,7 +33,7 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
   const onStock = pathname.startsWith("/count/stock");
   const items = [
     ...(showCount
-      ? [{ href: "/count", label: "Count", icon: ClipboardListIcon, active: !onStock }]
+      ? [{ href: "/count", label: "Registrér", icon: ClipboardListIcon, active: !onStock }]
       : []),
     ...(showStock
       ? [{ href: "/count/stock", label: "Lager", icon: BoxesIcon, active: onStock }]

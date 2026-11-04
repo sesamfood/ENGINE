@@ -59,6 +59,11 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { searchProducts } from "@/lib/product-search";
@@ -665,7 +670,8 @@ export function WasteRegistration() {
       </InputGroup>
 
       <p className="text-sm text-muted-foreground">
-        Tryk på et produkt for at registrere en anden mængde.
+        Tryk på en mængde for at registrere med det samme, eller tryk på
+        produktet for en anden mængde.
       </p>
 
       <Dialog
@@ -723,26 +729,35 @@ export function WasteRegistration() {
                       aria-label={`Registrér en anden mængde Waste for ${product.name}`}
                       onClick={() => openProduct(product)}
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      appearance="imageAction"
-                      className="absolute right-1 top-1 z-10 size-11"
-                      aria-label={
-                        config?.pinnedAt
-                          ? `Fjern ${product.name} fra fastgjorte produkter`
-                          : `Fastgør ${product.name}`
-                      }
-                      aria-pressed={Boolean(config?.pinnedAt)}
-                      onClick={() => togglePin(product)}
-                    >
-                      <PinIcon
-                        className={cn(
-                          config?.pinnedAt && "fill-current text-primary",
-                        )}
-                      />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-lg"
+                            appearance="imageAction"
+                            className="absolute right-1 top-1 z-10 size-11"
+                            aria-label={
+                              config?.pinnedAt
+                                ? `Fjern ${product.name} fra fastgjorte produkter`
+                                : `Fastgør ${product.name}`
+                            }
+                            aria-pressed={Boolean(config?.pinnedAt)}
+                            onClick={() => togglePin(product)}
+                          />
+                        }
+                      >
+                        <PinIcon
+                          className={cn(
+                            config?.pinnedAt && "fill-current text-primary",
+                          )}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {config?.pinnedAt ? "Fjern fra fastgjorte" : "Fastgør"}
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   <CardContent appearance="productGrid" className="grid grid-cols-2">
                     {shortcuts.map((shortcut) => {
