@@ -531,7 +531,7 @@ function SingleProductCounter({
         className="h-full min-h-0"
       >
         <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
-          <div className="relative h-16 overflow-hidden bg-muted sm:h-60 lg:h-auto lg:min-h-full">
+          <div className="relative h-28 overflow-hidden bg-muted sm:h-60 lg:h-auto lg:min-h-full">
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
@@ -539,7 +539,7 @@ function SingleProductCounter({
                 fill
                 loading="eager"
                 sizes="(max-width: 1023px) 100vw, 50vw"
-                className="object-cover"
+                className="object-contain sm:object-cover"
               />
             ) : (
               <div className="flex size-full items-center justify-center text-muted-foreground">

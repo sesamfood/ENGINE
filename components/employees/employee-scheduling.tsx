@@ -8,7 +8,7 @@ import { selectedLocationId } from "@/lib/location-preference";
 
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { cn } from "@/lib/utils";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { EmployeeAvatar } from "@/components/employees/employee-avatar";
 import { EmployeeEditor, type DirectoryEmployee } from "@/components/employees/employee-editor";
@@ -736,9 +736,9 @@ export function EmployeeScheduling() {
   const header = (
     <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+        <PageTitle>
           Medarbejdere
-        </h1>
+        </PageTitle>
       </div>
       <Field>
         <FieldLabel htmlFor="employees-location">Lokation</FieldLabel>

@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import {
@@ -709,9 +709,9 @@ function History({ organizationId }: { organizationId: string }) {
             <p className="text-sm font-semibold uppercase tracking-widest text-primary">
               Bestilling
             </p>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            <PageTitle>
               Bestillingshistorik
-            </h1>
+            </PageTitle>
           </div>
           <Field>
             <FieldLabel htmlFor="ordering-history-location">Lokation</FieldLabel>

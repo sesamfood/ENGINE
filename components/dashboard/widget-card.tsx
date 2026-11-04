@@ -158,6 +158,27 @@ function FreshnessNotice({
   );
 }
 
+function TruncatedNotice() {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={<Button type="button" variant="outline" size="sm" className="min-h-11 shrink-0" aria-label="Begrænset data: se forklaring" />}
+      >
+        Begrænset data
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <PopoverHeader>
+          <PopoverTitle>Begrænset data</PopoverTitle>
+          <PopoverDescription>
+            Ikke alle data i perioden er med i beregningen, så tallet kan være
+            lavere end det faktiske.
+          </PopoverDescription>
+        </PopoverHeader>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function WarningNotice({ warning }: { warning: NonNullable<MetricResult["warning"]> }) {
   return (
     <Popover>
@@ -254,7 +275,7 @@ export function WidgetCard({
   const current = result && result.emptyMessage === undefined && result.series.length > 0 ? total(result) : null;
   const previous = result && result.emptyMessage === undefined && result.series.length > 0 ? previousTotal(result) : null;
   const freshness = result?.freshness;
-  const hasFreshness = Boolean(freshness);
+  const hasFreshness = Boolean(freshness && (freshness.errorLocationCount > 0 || freshness.staleLocationCount > 0));
   const change = !definition?.live && widget.visualization !== "goal" && current !== null && previous !== null && (financial || previous !== 0)
     ? financial ? current - previous : ((current - previous) / Math.abs(previous)) * 100
     : null;
@@ -366,7 +387,7 @@ export function WidgetCard({
                     <TooltipContent>Sammenlignet med {comparisonLabel}</TooltipContent>
                   </Tooltip>
                 ) : null}
-                {result?.truncated ? <Badge variant="outline" className="max-w-full"><span className="truncate">Begrænset data</span></Badge> : null}
+                {result?.truncated ? <TruncatedNotice /> : null}
                 {hasFreshness ? <FreshnessNotice freshness={freshness!} /> : null}
                 {result?.warning ? <WarningNotice warning={result.warning} /> : null}
               </CardDescription>

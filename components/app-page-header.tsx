@@ -31,6 +31,25 @@ export function AppPageHeaderTarget() {
   );
 }
 
+export function PageTitle({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <h1
+      className={cn(
+        "text-3xl font-semibold tracking-tight sm:text-4xl",
+        className,
+      )}
+    >
+      {children}
+    </h1>
+  );
+}
+
 export function AppPageHeader({
   children,
   className,

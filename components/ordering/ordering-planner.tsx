@@ -7,7 +7,7 @@ import { selectedLocationId } from "@/lib/location-preference";
 import { useLastDefined } from "@/lib/use-last-defined";
 
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { useConvex, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
@@ -576,9 +576,9 @@ function Planner({
   const header = (
     <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+        <PageTitle>
           {editing ? "Redigér bestilling" : "Bestilling"}
-        </h1>
+        </PageTitle>
       </div>
       {canPlan ? (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">

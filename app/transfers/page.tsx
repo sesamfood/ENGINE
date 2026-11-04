@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -121,7 +121,7 @@ function TransfersContent() {
       {showOrders ? (
         <TabsTrigger value="orders" appearance="compact" className="shrink-0 sm:min-w-28">
           <ShoppingCartIcon data-icon="inline-start" />
-          Bestillinger
+          Transferbestillinger
           {openOrders?.length ? (
             <Badge>{openOrders.length}</Badge>
           ) : null}
@@ -176,9 +176,9 @@ function TransfersContent() {
 export default function TransfersPage() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+      <PageTitle>
         Transfer
-      </h1>
+      </PageTitle>
     </div>
   );
 

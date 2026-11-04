@@ -40,7 +40,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import type { PermissionId } from "@/lib/auth-permissions";
@@ -377,20 +381,19 @@ export function AdministrationOverview() {
 
   return (
     <div className="flex flex-col gap-10 pb-10">
-      <div className="relative max-w-xl">
-        <SearchIcon
-          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <Input
+      <InputGroup className="h-12 max-w-xl">
+        <InputGroupAddon>
+          <SearchIcon />
+          <span className="sr-only">Søg</span>
+        </InputGroupAddon>
+        <InputGroupInput
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Søg i administration"
           aria-label="Søg i administration"
-          appearance="search"
           type="search"
         />
-      </div>
+      </InputGroup>
       {availableCategories.length === 0 ? (
         <Empty appearance="outlined">
           <EmptyHeader>
@@ -434,16 +437,15 @@ export function AdministrationOverview() {
                     className="h-full"
                   >
                     <CardHeader>
-                      <CardTitle>{section.title}</CardTitle>
+                      <CardTitle>
+                        <span className="flex items-center gap-2">
+                          <Icon aria-hidden="true" className="text-muted-foreground" />
+                          {section.title}
+                        </span>
+                      </CardTitle>
                       <CardDescription>
                         Ikke en del af jeres abonnement.
                       </CardDescription>
-                      <CardAction>
-                        <Icon
-                          className="text-muted-foreground"
-                          aria-hidden="true"
-                        />
-                      </CardAction>
                     </CardHeader>
                   </Card>
                 );
@@ -463,13 +465,15 @@ export function AdministrationOverview() {
                   <Card size="sm" appearance="link" className="h-full"
                   >
                     <CardHeader>
-                      <CardTitle>{section.title}</CardTitle>
+                      <CardTitle>
+                        <span className="flex items-center gap-2">
+                          <Icon aria-hidden="true" className="text-muted-foreground" />
+                          {section.title}
+                        </span>
+                      </CardTitle>
                       <CardDescription>{section.description}</CardDescription>
                       <CardAction>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <Icon aria-hidden="true" />
-                          <ChevronRightIcon aria-hidden="true" />
-                        </span>
+                        <ChevronRightIcon aria-hidden="true" className="text-muted-foreground" />
                       </CardAction>
                     </CardHeader>
                   </Card>

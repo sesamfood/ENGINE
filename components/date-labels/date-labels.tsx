@@ -15,7 +15,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import {
   useKiosk,
   useLocationAccess,
@@ -151,9 +151,9 @@ export function DateLabels() {
       <AppPageHeader>
         <div className="grid gap-4 sm:grid-cols-(--grid-cols-settings-header) sm:items-end">
           <div className="flex flex-col gap-1">
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            <PageTitle>
               Datomærkning
-            </h1>
+            </PageTitle>
           </div>
           <Field>
             <FieldLabel htmlFor="date-label-location">Lokation</FieldLabel>

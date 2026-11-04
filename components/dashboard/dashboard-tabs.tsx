@@ -13,6 +13,14 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 
 const DashboardSettingsDialog = dynamic(() => import("./dashboard-settings-dialog").then((module) => module.DashboardSettingsDialog));
@@ -120,7 +128,25 @@ export function DashboardTabs({
   return (
     <>
       <div className="flex min-w-0 items-center gap-2" aria-label="Dashboardnavigation">
-        <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1">
+        <Select
+          items={order.map((dashboard) => ({ value: String(dashboard.id), label: dashboard.name }))}
+          value={activeId}
+          onValueChange={(value) => { if (value) onChange(value); }}
+        >
+          <SelectTrigger className="h-12 min-w-0 flex-1 md:hidden" aria-label="Vælg dashboard">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {order.map((dashboard) => (
+                <SelectItem key={dashboard.id} value={String(dashboard.id)}>
+                  {dashboard.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1 max-md:hidden">
           <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFadeBelowLg" aria-label="Dashboards">
             {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} appearance="standard" className="min-w-28 shrink-0">{dashboard.name}</TabsTrigger>)}
           </TabsList>

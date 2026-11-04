@@ -2,9 +2,10 @@
 
 import { useIntegrations } from "@/integrations/use-integrations";
 
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -140,13 +141,16 @@ export function AdministrationHeader() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
       {pathname === administrationPath ? null : (
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+        <Link
+          href={administrationPath}
+          className="w-fit text-sm font-semibold uppercase tracking-widest text-primary hover:underline"
+        >
           Administration
-        </p>
+        </Link>
       )}
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+      <PageTitle>
         {title}
-      </h1>
+      </PageTitle>
     </div>
   );
 
@@ -189,9 +193,10 @@ export function AdministrationHeader() {
           className="max-md:hidden"
         >
           <TabsList
+            variant="line"
             aria-label="Katalogsektioner"
-            className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
-            appearance="scrollFadeBelowLg"
+            className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
+            appearance="scrollFade"
           >
             {visibleCatalogSections.map((item) => (
               <TabsTrigger
@@ -219,16 +224,17 @@ export function AdministrationHeader() {
           }
         >
           <TabsList
+            variant="line"
             aria-label="Brugersektioner"
-            className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
-            appearance="scrollFadeBelowLg"
+            className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
+            appearance="scrollFade"
           >
             {visibleUserSections.map((item) => (
               <TabsTrigger
                 key={item.value}
                 value={item.value}
-                appearance="wide"
-                className="min-w-36"
+                appearance="standard"
+                className="shrink-0 flex-none"
               >
                 {item.label}
               </TabsTrigger>

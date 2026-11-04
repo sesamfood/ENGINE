@@ -15,7 +15,7 @@ import { previousKpiMonth, type MonthlyKpiCell, type MonthlyKpiRow } from "@/lib
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAccess, usePermission } from "@/components/app-shell";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -286,7 +286,7 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
   return (
     <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AppPageHeader><div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Månedsrapport</h1>
+        <PageTitle>Månedsrapport</PageTitle>
         <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard" />}><ArrowLeftIcon data-icon="inline-start" />Dashboard</Button>
       </div></AppPageHeader>
       {context.locations.length === 0 ? (

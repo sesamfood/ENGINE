@@ -58,7 +58,7 @@ export function QuantityInput({
         aria-label={label}
         aria-invalid={invalid}
         disabled={disabled}
-        appearance="numeric"
+        appearance="quantity"
         className="text-center"
         onFocus={() => {
           if (typeof value === "number") setDraft(String(value));

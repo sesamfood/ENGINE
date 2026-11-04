@@ -25,6 +25,7 @@ import {
   chartYAxisWidth,
   formatMetricValue,
   isMixedCurrency,
+  seriesSummary,
   shortDate,
 } from "./utils";
 
@@ -109,6 +110,8 @@ export function TimeSeriesVisualization({
   const model = chartModel(result);
   const domain = chartValueDomain(model, yAxisMin, yAxisMax);
   return (
+    <>
+      <p className="sr-only">{seriesSummary(result)}</p>
     <ChartContainer
       config={model.config}
       className="h-full min-h-0 w-full aspect-auto"
@@ -181,5 +184,6 @@ export function TimeSeriesVisualization({
         )}
       </ComposedChart>
     </ChartContainer>
+    </>
   );
 }

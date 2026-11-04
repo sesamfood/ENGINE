@@ -52,7 +52,11 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -510,20 +514,18 @@ export function ProductCatalog() {
     <div className="flex flex-col gap-7">
       <div className="z-30 -mx-4 bg-background px-4 py-3 max-sm:static sm:sticky sm:top-16 md:top-24 md:py-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative w-full sm:min-w-48 sm:flex-1">
-            <SearchIcon
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
+          <InputGroup className="h-11 w-full sm:min-w-48 sm:flex-1">
+            <InputGroupAddon>
+              <SearchIcon />
+              <span className="sr-only">Søg</span>
+            </InputGroupAddon>
+            <InputGroupInput
               value={searchValue}
               onChange={(event) => changeSearch(event.target.value)}
               placeholder="Søg efter produkter"
               aria-label="Søg efter produkter eller kategorier"
-              appearance="search"
-              className="h-11"
             />
-          </div>
+          </InputGroup>
           <ToggleGroup
             aria-label="Produktstatus"
             variant="outline"

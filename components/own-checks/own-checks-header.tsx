@@ -1,6 +1,6 @@
 "use client";
 
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 export function OwnChecksHeader() {
   const title = (
@@ -8,9 +8,9 @@ export function OwnChecksHeader() {
       <p className="text-sm font-semibold uppercase tracking-widest text-primary">
         Fødevaresikkerhed
       </p>
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+      <PageTitle>
         Egenkontrol
-      </h1>
+      </PageTitle>
     </div>
   );
 

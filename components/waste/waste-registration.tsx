@@ -675,11 +675,11 @@ export function WasteRegistration() {
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                     />
                     <CardHeader appearance="product">
-                      <div className="flex min-w-0 items-baseline gap-2">
-                        <CardTitle appearance="truncate" className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <CardTitle appearance="productName" className="min-w-0">
                           {product.name}
                         </CardTitle>
-                        <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
+                        <CardDescription appearance="truncate">
                           {product.categories
                             .map((category) => category.name)
                             .join(" · ")}

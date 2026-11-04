@@ -120,6 +120,7 @@ const inputGroupInputAppearance = cva("", {
   variants: {
     appearance: {
       numeric: "tabular-nums",
+      quantity: "tabular-nums disabled:opacity-100",
     },
   },
 })

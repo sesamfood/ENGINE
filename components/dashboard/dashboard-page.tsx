@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { EllipsisVerticalIcon, FileTextIcon, LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -358,7 +358,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const title = currentScope ? (
     <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h1>
+        <PageTitle>Dashboard</PageTitle>
       </div>
       <ScopeSelector scope={currentScope} locations={locations} onChange={updateScope} />
     </div>

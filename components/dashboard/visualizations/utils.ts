@@ -70,6 +70,16 @@ export function formatMetricValue(
   }).format(value);
 }
 
+export function seriesSummary(result: MetricResult) {
+  return result.series
+    .map((series) => {
+      if (!series.points.length) return `${series.label}: ingen data i perioden`;
+      const values = series.points.map((point) => point.value);
+      return `${series.label}: i alt ${formatMetricValue(series.total, result)}, højeste ${formatMetricValue(Math.max(...values), result)}, laveste ${formatMetricValue(Math.min(...values), result)}`;
+    })
+    .join(". ");
+}
+
 export function chartModel(result: MetricResult) {
   const data = new Map<number, Record<string, number>>();
   const config: ChartConfig = {};

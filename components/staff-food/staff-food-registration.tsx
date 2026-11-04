@@ -11,7 +11,7 @@ import { selectedLocationId } from "@/lib/location-preference";
 
 import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { EmployeeAvatar } from "@/components/employees/employee-avatar";
 
@@ -185,9 +185,9 @@ function StaffFoodHeader({
   return (
     <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-end">
       <div className="flex min-w-0 flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+        <PageTitle>
           Staff food
-        </h1>
+        </PageTitle>
       </div>
       <div
         className={cn(

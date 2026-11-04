@@ -2,7 +2,7 @@
 
 import { CheckCircle2Icon, ClipboardListIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { LocationField } from "@/components/location-field";
@@ -51,9 +51,9 @@ function CountHeaderControls({
     <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          <PageTitle>
             Count
-          </h1>
+          </PageTitle>
           {periodLabel ? (
             <p className="text-lg capitalize text-muted-foreground">
               {periodLabel}

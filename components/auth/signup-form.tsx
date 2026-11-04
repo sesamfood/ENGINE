@@ -100,8 +100,9 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
             minLength={12}
             maxLength={256}
             required
+            aria-describedby="password-hint"
           />
-          <FieldDescription>Brug mindst 12 tegn.</FieldDescription>
+          <FieldDescription id="password-hint">Brug mindst 12 tegn.</FieldDescription>
         </Field>
       </FieldGroup>
       <Button type="submit" size="lg" disabled={pending}>

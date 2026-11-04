@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -122,9 +122,9 @@ function InvoicesContent() {
 export default function InvoicesPage() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+      <PageTitle>
         Salg
-      </h1>
+      </PageTitle>
     </div>
   );
 

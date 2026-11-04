@@ -136,6 +136,7 @@ const cardTitleAppearance = cva("", {
     appearance: {
       auth: "text-2xl",
       truncate: "truncate",
+      productName: "line-clamp-2 leading-snug",
       hero: "text-3xl leading-tight tracking-tight sm:text-4xl",
       widget: "line-clamp-2 text-base",
       inline: "gap-2",

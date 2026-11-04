@@ -2,7 +2,7 @@
 
 import { selectedLocationId } from "@/lib/location-preference";
 
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import {
   useKiosk,
   useLocationAccess,
@@ -62,9 +62,9 @@ function Controls({
   return (
     <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+        <PageTitle>
           Waste
-        </h1>
+        </PageTitle>
       </div>
       <Field>
         <FieldLabel htmlFor="waste-location" className="sr-only">Lokation</FieldLabel>
