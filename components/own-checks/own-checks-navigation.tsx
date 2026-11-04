@@ -3,7 +3,6 @@
 import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppSectionNav } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
 import { useKiosk, usePermission } from "@/components/app-shell";
@@ -71,11 +70,6 @@ export function OwnChecksNavigation() {
       <AppSectionNav>
         <SectionNav label="Egenkontrolsektioner" items={items} className="mx-auto w-full max-w-(--container-page)" />
       </AppSectionNav>
-      <AppBottomBar className="md:hidden">
-        <div className="mx-auto w-full max-w-(--container-page)">
-          <SectionNav label="Egenkontrolsektioner" items={items} />
-        </div>
-      </AppBottomBar>
     </>
   );
 }

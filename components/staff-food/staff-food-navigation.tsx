@@ -42,14 +42,13 @@ export function StaffFoodNavigation({ action }: { action?: ReactNode }) {
           <SectionNav label="Staff food-sektioner" items={items} className="mx-auto w-full max-w-(--container-page)" />
         </AppSectionNav>
       ) : null}
-      <AppBottomBar className={!action ? "md:hidden" : undefined}>
-        <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse gap-2 sm:flex-row sm:items-center">
-          {showSectionTabs ? (
-            <SectionNav label="Staff food-sektioner" items={items} className="md:hidden" />
-          ) : null}
-          {action}
-        </div>
-      </AppBottomBar>
+      {action ? (
+        <AppBottomBar>
+          <div className="mx-auto flex w-full max-w-(--container-page) items-center">
+            {action}
+          </div>
+        </AppBottomBar>
+      ) : null}
     </>
   );
 }

@@ -38,6 +38,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
@@ -106,6 +107,7 @@ function formatQuantity(quantity: number) {
 }
 
 const FALLBACK_QUANTITIES: Record<string, [number, number]> = {
+  stk: [1, 2],
   g: [100, 500],
   ml: [100, 500],
   oz: [1, 4],
@@ -303,6 +305,8 @@ export function WasteRegistration() {
   const [category, setCategory] = useState("all");
   const [selectedId, setSelectedId] = useState<Id<"products"> | null>(null);
   const [quantity, setQuantity] = useState("1");
+  const [quantityError, setQuantityError] = useState<string>();
+  const [submittingCustom, setSubmittingCustom] = useState(false);
   const [unitId, setUnitId] = useState<Id<"units"> | null>(null);
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const [shortcutDrafts, setShortcutDrafts] = useState<Shortcut[] | null>(null);
@@ -915,7 +919,7 @@ export function WasteRegistration() {
                 </FieldGroup>
               ) : (
                 <div className="grid grid-cols-(--grid-cols-delivery-product) gap-3">
-                  <Field>
+                  <Field data-invalid={Boolean(quantityError)}>
                     <FieldLabel htmlFor="waste-quantity">Mængde</FieldLabel>
                     <Input
                       id="waste-quantity"
@@ -924,8 +928,16 @@ export function WasteRegistration() {
                       max="1000000"
                       step="any"
                       value={quantity}
-                      onChange={(event) => setQuantity(event.target.value)}
+                      aria-invalid={Boolean(quantityError)}
+                      aria-describedby={quantityError ? "waste-quantity-error" : undefined}
+                      onChange={(event) => {
+                        setQuantity(event.target.value);
+                        setQuantityError(undefined);
+                      }}
                     />
+                    {quantityError ? (
+                      <FieldError id="waste-quantity-error">{quantityError}</FieldError>
+                    ) : null}
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="waste-unit">Enhed</FieldLabel>
@@ -973,23 +985,30 @@ export function WasteRegistration() {
                       </Button>
                     ) : null}
                     <Button
-                      onClick={() => {
+                      disabled={submittingCustom}
+                      onClick={async () => {
                         const parsed = Number(quantity);
                         if (
                           !unitId ||
                           !Number.isFinite(parsed) ||
                           parsed <= 0
                         ) {
-                          toast.error("Angiv en mængde større end 0");
+                          setQuantityError("Angiv en mængde større end 0");
                           return;
                         }
-                        register(
-                          selected,
-                          { unitId, quantity: parsed },
-                          "custom",
-                        );
+                        setSubmittingCustom(true);
+                        try {
+                          await register(
+                            selected,
+                            { unitId, quantity: parsed },
+                            "custom",
+                          );
+                        } finally {
+                          setSubmittingCustom(false);
+                        }
                       }}
                     >
+                      {submittingCustom ? <Spinner data-icon="inline-start" /> : null}
                       Registrér Waste
                     </Button>
                   </>

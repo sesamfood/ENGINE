@@ -14,7 +14,6 @@ import {
   ShieldCheckIcon,
   UsersIcon,
 } from "lucide-react";
-import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader, AppSectionNav, PageTitle } from "@/components/app-page-header";
 import { SectionNav, type SectionNavItem } from "@/components/section-nav";
 import { usePermission } from "@/components/app-shell";
@@ -195,26 +194,13 @@ export function AdministrationHeader() {
     <>
       <AppPageHeader>{header}</AppPageHeader>
       {nav ? (
-        <>
-          <AppSectionNav>
-            <SectionNav
-              equalWidth={false}
-              label={nav.label}
-              items={nav.items}
-              className="mx-auto w-full max-w-(--container-page)"
-            />
-          </AppSectionNav>
-          <AppBottomBar className="md:hidden">
-            <div className="mx-auto w-full max-w-(--container-page)">
-              <SectionNav
-                equalWidth={false}
-                label={nav.label}
-                items={nav.items}
-                className="md:hidden"
-              />
-            </div>
-          </AppBottomBar>
-        </>
+        <AppSectionNav>
+          <SectionNav
+            label={nav.label}
+            items={nav.items}
+            className="mx-auto w-full max-w-(--container-page)"
+          />
+        </AppSectionNav>
       ) : null}
     </>
   );

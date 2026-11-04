@@ -34,17 +34,13 @@ export function AppPageHeaderProvider({ children }: { children: ReactNode }) {
 export function AppSectionNavTarget() {
   const context = useContext(HeaderContext);
   return (
-    <div
-      ref={context?.setSectionTarget}
-      className="hidden px-4 empty:hidden md:block"
-    />
+    <div ref={context?.setSectionTarget} className="px-4 empty:hidden" />
   );
 }
 
 export function AppSectionNav({ children }: { children: ReactNode }) {
   const context = useContext(HeaderContext);
-  const isMobile = useIsMobile();
-  if (isMobile || !context?.sectionTarget) return null;
+  if (!context?.sectionTarget) return null;
   return createPortal(children, context.sectionTarget);
 }
 

@@ -7,7 +7,6 @@ import { useKiosk, usePermission } from "@/components/app-shell";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppSectionNav } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
-import { cn } from "@/lib/utils";
 
 export function CountNavigation({ action }: { action?: ReactNode }) {
   const pathname = usePathname();
@@ -48,19 +47,13 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
           <SectionNav label="Count-sektioner" items={items} className="mx-auto w-full max-w-(--container-page)" />
         </AppSectionNav>
       ) : null}
-      <AppBottomBar>
-        <div
-          className={cn(
-            "mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3",
-            showSectionTabs ? "justify-between" : "justify-end",
-          )}
-        >
-          {showSectionTabs ? (
-            <SectionNav label="Count-sektioner" items={items} className="md:hidden" />
-          ) : null}
-          <div className="sm:ml-auto">{action}</div>
-        </div>
-      </AppBottomBar>
+      {action ? (
+        <AppBottomBar>
+          <div className="mx-auto flex w-full max-w-(--container-page) items-stretch justify-end sm:items-center">
+            <div className="sm:ml-auto">{action}</div>
+          </div>
+        </AppBottomBar>
+      ) : null}
     </>
   );
 }

@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader, AppSectionNav, PageTitle } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
@@ -115,10 +114,6 @@ function TransfersContent() {
       ? [{ href: "/transfers/history", label: "Transferhistorik", shortLabel: "Historik", icon: HistoryIcon, active: selectedTab === "history" }]
       : []),
   ];
-  const navigation = showSectionTabs ? (
-    <SectionNav label="Transfersektioner" items={navItems} className="md:hidden" />
-  ) : null;
-
   return (
     <>
       {showSectionTabs ? (
@@ -127,27 +122,16 @@ function TransfersContent() {
         </AppSectionNav>
       ) : null}
       {showNew && selectedTab === "new" ? (
-        <TransferForm navigation={navigation} />
+        <TransferForm />
       ) : null}
       {selectedTab === "orders" ? (
         openOrders ? (
-          <InternalOrders orders={openOrders} navigation={navigation} />
+          <InternalOrders orders={openOrders} />
         ) : (
           <Skeleton className="h-96 w-full" />
         )
       ) : null}
-      {showHistory && selectedTab === "history" ? (
-        <>
-          <TransferHistory />
-          {navigation ? (
-            <AppBottomBar className="md:hidden">
-              <div className="mx-auto w-full max-w-(--container-page)">
-                {navigation}
-              </div>
-            </AppBottomBar>
-          ) : null}
-        </>
-      ) : null}
+      {showHistory && selectedTab === "history" ? <TransferHistory /> : null}
     </>
   );
 }

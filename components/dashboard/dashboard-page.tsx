@@ -398,7 +398,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button type="button" variant="ghost" className="min-h-11 self-start lg:hidden" aria-label={`Sammenlignet med ${comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}. Vælg sammenligningsperiode`} />
+                <Button type="button" variant="ghost" className="min-h-11 self-start max-lg:-ml-2.5 lg:hidden" aria-label={`Sammenlignet med ${comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}. Vælg sammenligningsperiode`} />
               }
             >
               Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}

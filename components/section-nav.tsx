@@ -19,12 +19,10 @@ export function SectionNav({
   label,
   items,
   className,
-  equalWidth = true,
 }: {
   label: string;
   items: SectionNavItem[];
   className?: string;
-  equalWidth?: boolean;
 }) {
   const navRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -58,7 +56,7 @@ export function SectionNav({
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <li key={item.href} className={cn("flex h-full min-w-0 sm:flex-none", equalWidth ? "flex-1" : "shrink-0 flex-none")}>
+            <li key={item.href} className="flex h-full shrink-0">
               <Link
                 href={item.href}
                 aria-current={item.active ? "page" : undefined}

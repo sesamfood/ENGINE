@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppSectionNav } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
 import { useAccess, useKioskPage, usePermission } from "@/components/app-shell";
@@ -55,26 +54,15 @@ function OrderingContent() {
       ? [{ href: "/ordering/history", label: "Bestillingshistorik", shortLabel: "Historik", icon: HistoryIcon, active: activeTab === "history" }]
       : []),
   ];
-  const navigation = (
-    <SectionNav label="Bestillingssektioner" items={navItems} className="md:hidden" />
-  );
-
   return (
     <>
       <AppSectionNav>
         <SectionNav label="Bestillingssektioner" items={navItems} className="mx-auto w-full max-w-(--container-page)" />
       </AppSectionNav>
       {activeTab === "new" ? (
-        <OrderingPlanner navigation={navigation} />
+        <OrderingPlanner />
       ) : (
-        <>
-          <OrderingHistory />
-          <AppBottomBar className="md:hidden">
-            <div className="mx-auto w-full max-w-(--container-page)">
-              {navigation}
-            </div>
-          </AppBottomBar>
-        </>
+        <OrderingHistory />
       )}
     </>
   );

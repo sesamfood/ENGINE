@@ -100,9 +100,13 @@ export function ProfileSettings() {
       });
       if (result.error) {
         setPasswordError(
-          result.error.message?.toLowerCase().includes("password")
+          result.error.code?.includes("INVALID_PASSWORD")
             ? "Den nuværende adgangskode er forkert."
-            : "Adgangskoden kunne ikke opdateres. Prøv igen.",
+            : result.error.code?.includes("PASSWORD_TOO_SHORT")
+              ? "Den nye adgangskode er for kort. Brug mindst 12 tegn."
+              : result.error.status === 429
+                ? "For mange forsøg. Vent lidt og prøv igen."
+                : "Adgangskoden kunne ikke opdateres. Prøv igen.",
         );
         return;
       }

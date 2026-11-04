@@ -85,19 +85,16 @@ export function WasteNavigation() {
           <SectionNav label="Waste-sektioner" items={items} className="mx-auto w-full max-w-(--container-page)" />
         </AppSectionNav>
       ) : null}
-      <AppBottomBar className={value !== "badDelivery" ? "md:hidden" : undefined}>
-        <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
-          {showSectionTabs ? (
-            <SectionNav label="Waste-sektioner" items={items} className="md:hidden" />
-          ) : null}
-          {value === "badDelivery" ? (
+      {value === "badDelivery" ? (
+        <AppBottomBar>
+          <div className="mx-auto flex w-full max-w-(--container-page) items-center">
             <div
               id="bad-delivery-primary-action"
               className="w-full sm:ml-auto sm:w-auto"
             />
-          ) : null}
-        </div>
-      </AppBottomBar>
+          </div>
+        </AppBottomBar>
+      ) : null}
     </>
   );
 }

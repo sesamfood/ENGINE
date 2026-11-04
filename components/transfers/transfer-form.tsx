@@ -978,19 +978,21 @@ export function TransferForm({
               open={optionalOpen || Boolean(errors.comment || errors.transferredAt)}
               onOpenChange={setOptionalOpen}
             >
-              <CollapsibleTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    appearance="compact"
-                    className="mt-2 min-h-11 w-full justify-between"
-                  />
-                }
-              >
-                Kommentar og tidspunkt
-                <ChevronDownIcon data-icon="inline-end" className="transition-transform [[aria-expanded=true]_&]:rotate-180" />
-              </CollapsibleTrigger>
+              <div className="-ml-3">
+                <CollapsibleTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      appearance="compact"
+                      className="mt-2 min-h-11 w-full justify-between"
+                    />
+                  }
+                >
+                  Kommentar og tidspunkt
+                  <ChevronDownIcon data-icon="inline-end" className="transition-transform [[aria-expanded=true]_&]:rotate-180" />
+                </CollapsibleTrigger>
+              </div>
               <CollapsibleContent>
                 <div className="pt-2">
                   <FieldGroup>
