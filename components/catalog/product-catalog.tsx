@@ -200,18 +200,21 @@ function ProductCard({
 }) {
   return (
     <Card appearance="catalog" className="relative">
-      <Link
-        href={editHref}
-        aria-label={
-          isSelectionMode ? `Vælg ${product.name}` : `Redigér ${product.name}`
-        }
-        className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
-        onClick={(event) => {
-          if (!isSelectionMode) return;
-          event.preventDefault();
-          onSelect(product.id, !isSelected);
-        }}
-      />
+      {isSelectionMode ? (
+        <button
+          type="button"
+          aria-pressed={isSelected}
+          aria-label={`Vælg ${product.name}`}
+          className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
+          onClick={() => onSelect(product.id, !isSelected)}
+        />
+      ) : (
+        <Link
+          href={editHref}
+          aria-label={`Redigér ${product.name}`}
+          className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
+        />
+      )}
       {isSelectionMode ? (
         <div className="absolute left-3 top-3 z-20 rounded-md bg-background/90 p-1 shadow-sm">
           <Checkbox
@@ -230,6 +233,7 @@ function ProductCard({
           {product.categories.map((category) => category.name).join(" · ") ||
             "Uden kategori"}
         </CardDescription>
+        {!isSelectionMode ? (
         <CardAction appearance="compact" className="relative z-20 flex">
           <Button
             type="button"
@@ -262,6 +266,7 @@ function ProductCard({
             </Button>
           ) : null}
         </CardAction>
+        ) : null}
       </CardHeader>
     </Card>
   );

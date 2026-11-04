@@ -1839,6 +1839,7 @@ export function AppShell({
                           <Button
                             variant="outline"
                             size="lg"
+                            className="md:hidden"
                             render={
                               <Link
                                 href={showIntegrationsBack

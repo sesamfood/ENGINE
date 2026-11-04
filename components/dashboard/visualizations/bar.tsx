@@ -36,7 +36,7 @@ function BreakdownAxis({ compact }: { compact: boolean }) {
           textAnchor="end"
           verticalAnchor="middle"
           // eslint-disable-next-line shadcn/no-inline-styles -- Recharts reads this style to measure and truncate tick text.
-          style={{ fontSize: 11 }}
+          style={{ fontSize: 12 }}
           className="fill-muted-foreground"
         >
           {String(payload.value)}

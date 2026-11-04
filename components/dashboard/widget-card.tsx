@@ -161,9 +161,9 @@ function TruncatedNotice() {
   return (
     <Popover>
       <PopoverTrigger
-        render={<Button type="button" variant="outline" size="sm" className="min-h-11 shrink-0" aria-label="Begrænset data: se forklaring" />}
+        render={<button type="button" className="inline-flex min-h-11 shrink-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" aria-label="Begrænset data: se forklaring" />}
       >
-        Begrænset data
+        <Badge variant="secondary">Begrænset data</Badge>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <PopoverHeader>
@@ -184,7 +184,7 @@ function WarningNotice({ warning }: { warning: NonNullable<MetricResult["warning
       <PopoverTrigger
         render={<Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={warning.title} />}
       >
-        <CircleAlertIcon className="text-destructive" />
+        <CircleAlertIcon className="text-warning" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <PopoverHeader>

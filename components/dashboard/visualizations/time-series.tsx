@@ -77,7 +77,7 @@ function TimeSeriesAxes({
         tickLine={false}
         axisLine={false}
         minTickGap={8}
-        tick={{ fontSize: narrow ? 10 : undefined }}
+        tick={{ fontSize: 12 }}
       />
       <YAxis
         hide={compact}
@@ -86,7 +86,7 @@ function TimeSeriesAxes({
         tickFormatter={(value) => formatTick(Number(value))}
         tickLine={false}
         axisLine={false}
-        tick={{ fontSize: narrow ? 10 : undefined }}
+        tick={{ fontSize: 12 }}
       />
     </>
   );

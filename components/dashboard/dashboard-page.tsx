@@ -7,7 +7,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { EllipsisVerticalIcon, FileTextIcon, LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
+import { ChevronDownIcon, EllipsisVerticalIcon, FileTextIcon, LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -24,7 +24,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -390,15 +389,38 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         onDeleted={() => router.replace("/dashboard")}
         onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
       />
-      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm xl:flex-row xl:items-end xl:justify-between">
-        <div className="flex min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-end xl:gap-x-6">
+      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:items-end">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center lg:items-end lg:gap-x-6">
           <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
-          <div className="max-sm:hidden">
+          <div className="max-lg:hidden">
             <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
           </div>
-          <p className="text-sm text-muted-foreground sm:hidden">
-            Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}
-          </p>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button type="button" variant="ghost" className="min-h-11 lg:hidden" aria-label="Vælg sammenligningsperiode" />
+              }
+            >
+              Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}
+              <ChevronDownIcon data-icon="inline-end" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-56">
+              <DropdownMenuLabel>Sammenlign med</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={currentComparison}
+                onValueChange={(value) => {
+                  const next = comparisonPeriods.find((period) => period === value);
+                  if (next) updateComparison(next);
+                }}
+              >
+                {comparisonPeriods.map((period) => (
+                  <DropdownMenuRadioItem key={period} value={period}>
+                    {comparisonPeriodLabels[period]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         {canShare && shareMounted ? (
           <ShareDialog
@@ -460,23 +482,6 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
                   </DropdownMenuItem>
                 ) : null}
               </DropdownMenuGroup>
-              <div className="sm:hidden">
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Sammenlign med</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={currentComparison}
-                  onValueChange={(value) => {
-                    const next = comparisonPeriods.find((period) => period === value);
-                    if (next) updateComparison(next);
-                  }}
-                >
-                  {comparisonPeriods.map((period) => (
-                    <DropdownMenuRadioItem key={period} value={period}>
-                      {comparisonPeriodLabels[period]}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

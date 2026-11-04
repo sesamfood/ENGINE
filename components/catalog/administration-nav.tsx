@@ -5,8 +5,18 @@ import { useIntegrations } from "@/integrations/use-integrations";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { AppPageHeader, PageTitle } from "@/components/app-page-header";
-import { SectionNav } from "@/components/section-nav";
+import {
+  BookOpenIcon,
+  ContainerIcon,
+  LayoutGridIcon,
+  PackageIcon,
+  RulerIcon,
+  ShieldCheckIcon,
+  UsersIcon,
+} from "lucide-react";
+import { AppBottomBar } from "@/components/app-bottom-bar";
+import { AppPageHeader, AppSectionNav, PageTitle } from "@/components/app-page-header";
+import { SectionNav, type SectionNavItem } from "@/components/section-nav";
 import { usePermission } from "@/components/app-shell";
 
 const administrationPath = "/administration";
@@ -25,12 +35,21 @@ const catalogSections: CatalogSection[] = [
   { value: "containers", label: "Beholdere" },
 ];
 
+const catalogIcons: Record<string, SectionNavItem["icon"]> = {
+  products: PackageIcon,
+  menus: BookOpenIcon,
+  categories: LayoutGridIcon,
+  units: RulerIcon,
+  containers: ContainerIcon,
+};
+
 const userSections = [
-  { value: "users", label: "Brugere", permission: "members.manage" },
+  { value: "users", label: "Brugere", permission: "members.manage", icon: UsersIcon },
   {
     value: "users/roles",
     label: "Roller og adgang",
     permission: "roles.manage",
+    icon: ShieldCheckIcon,
   },
 ];
 
@@ -146,35 +165,56 @@ export function AdministrationHeader() {
     </div>
   );
 
-  return (
-    <>
-      <AppPageHeader>{header}</AppPageHeader>
-
-      {inCatalog ? (
-        <SectionNav
-          equalWidth={false}
-          label="Katalogsektioner"
-          items={visibleCatalogSections.map((item) => ({
+  const nav: { label: string; items: SectionNavItem[] } | null = inCatalog
+    ? {
+        label: "Katalogsektioner",
+        items: visibleCatalogSections.map((item) => ({
+          href: `${administrationPath}/${item.value}`,
+          label: item.label,
+          icon: catalogIcons[item.value],
+          active: item.value === activeCatalogSection,
+        })),
+      }
+    : inUsers && visibleUserSections.length > 1
+      ? {
+          label: "Brugersektioner",
+          items: visibleUserSections.map((item) => ({
             href: `${administrationPath}/${item.value}`,
             label: item.label,
-            active: item.value === activeCatalogSection,
-          }))}
-        />
-      ) : null}
-      {inUsers && visibleUserSections.length > 1 ? (
-        <SectionNav
-          equalWidth={false}
-          label="Brugersektioner"
-          items={visibleUserSections.map((item) => ({
-            href: `${administrationPath}/${item.value}`,
-            label: item.label,
+            icon: item.icon,
             active:
               item.value ===
               (pathname.startsWith(`${administrationPath}/users/roles`)
                 ? "users/roles"
                 : "users"),
-          }))}
-        />
+          })),
+        }
+      : null;
+
+  return (
+    <>
+      <AppPageHeader>{header}</AppPageHeader>
+      {nav ? (
+        <>
+          <AppSectionNav>
+            <SectionNav
+              equalWidth={false}
+              label={nav.label}
+              items={nav.items}
+              className="mx-auto w-full max-w-(--container-page)"
+            />
+          </AppSectionNav>
+          <AppBottomBar className="md:hidden">
+            <div className="mx-auto w-full max-w-(--container-page)">
+              <SectionNav
+                equalWidth={false}
+                label={nav.label}
+                items={nav.items}
+                className="md:hidden"
+              />
+            </div>
+          </AppBottomBar>
+        </>
       ) : null}
     </>
   );

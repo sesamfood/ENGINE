@@ -68,7 +68,7 @@ export function RangeSelector({
           if (value) select([value]);
         }}
       >
-        <SelectTrigger className="h-11 w-full sm:hidden" aria-label="Periode">
+        <SelectTrigger className="h-11 w-full min-w-44 lg:hidden" aria-label="Periode">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -81,7 +81,7 @@ export function RangeSelector({
           </SelectGroup>
         </SelectContent>
       </Select>
-      <div ref={scrollRef} data-scroll-right={canScrollRight ? "true" : undefined} className="no-scrollbar max-lg:scroll-fade-x hidden overflow-x-auto pb-1 sm:block">
+      <div ref={scrollRef} data-scroll-right={canScrollRight ? "true" : undefined} className="no-scrollbar hidden overflow-x-auto pb-1 lg:block">
         <ToggleGroup value={[range.preset]} onValueChange={select} variant="outline" size="lg" spacing={0} className="min-w-max">
           {presets.map((preset) => <ToggleGroupItem key={preset.value} value={preset.value} className="min-h-11">{preset.label}</ToggleGroupItem>)}
         </ToggleGroup>

@@ -536,7 +536,7 @@ function SingleProductCounter({
         className="h-full min-h-0"
       >
         <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
-          <div className="relative h-28 overflow-hidden bg-muted sm:h-60 lg:h-auto lg:min-h-full">
+          <div className="relative h-14 overflow-hidden bg-muted sm:h-60 lg:h-auto lg:min-h-full">
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
@@ -544,7 +544,7 @@ function SingleProductCounter({
                 fill
                 loading="eager"
                 sizes="(max-width: 1023px) 100vw, 50vw"
-                className="object-contain sm:object-cover"
+                className="object-cover"
               />
             ) : (
               <div className="flex size-full items-center justify-center text-muted-foreground">
@@ -557,7 +557,7 @@ function SingleProductCounter({
             <CardHeader appearance="heroCompact">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge variant="secondary" aria-live="polite">
-                  {position + 1} af {productCount}
+                  Produkt {position + 1} af {productCount} · {countedCount} talt
                 </Badge>
                 {saveStatus ? (
                   <span aria-live="polite" className="text-xs text-muted-foreground">
@@ -567,12 +567,10 @@ function SingleProductCounter({
               </div>
               <div className="flex flex-col gap-1.5">
                 <Progress
+                  className="max-sm:hidden"
                   value={productCount > 0 ? (countedCount / productCount) * 100 : 0}
                   aria-label={`${countedCount} af ${productCount} produkter talt`}
                 />
-                <span className="text-xs text-muted-foreground">
-                  {countedCount} af {productCount} talt
-                </span>
                 <CardDescription>
                   {product.categories
                     .map((category) => category.name)
@@ -2171,8 +2169,10 @@ export function CountSheet() {
               product={singleProduct}
               position={singleProductIndex}
               productCount={displayedProducts.length}
-              countedCount={displayedProducts.filter((candidate) =>
-                candidate.units.some((unit) => quantityFor(candidate, unit) > 0),
+              countedCount={displayedProducts.filter(
+                (candidate) =>
+                  countedProductIds.has(candidate.id) ||
+                  candidate.units.some((unit) => quantityFor(candidate, unit) > 0),
               ).length}
               saveStatus={
                 quantitySaveFailed

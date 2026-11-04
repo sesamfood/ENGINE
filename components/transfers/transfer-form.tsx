@@ -325,6 +325,12 @@ export function TransferForm({
         setComment(draft.comment);
         setOptionalOpen(true);
       }
+      if (draft.transferredAtLocal) {
+        setTransferredAtLocal(draft.transferredAtLocal);
+      }
+      if (draft.temperatures && Object.keys(draft.temperatures).length) {
+        setTemperatureStates((current) => ({ ...current, ...draft.temperatures }));
+      }
       if (draft.lines.length) {
         setLines(
           draft.lines.map((line) => ({
@@ -353,6 +359,8 @@ export function TransferForm({
       toLocationId,
       responsibleUserId,
       comment,
+      transferredAtLocal,
+      temperatures: temperatureStates,
       lines: lines.map((line) => ({
         key: line.key,
         productId: line.productId,
@@ -362,7 +370,7 @@ export function TransferForm({
         quantity: line.quantity,
       })),
     });
-  }, [comment, fromLocationId, lines, order, organizationId, responsibleUserId, toLocationId, transfer]);
+  }, [comment, fromLocationId, lines, order, organizationId, responsibleUserId, temperatureStates, toLocationId, transfer, transferredAtLocal]);
 
   useEffect(() => {
     if (transfer || order || prefilledFromLocation.current) return;

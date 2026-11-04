@@ -11,6 +11,11 @@ export type TransferDraft = {
   toLocationId: string | null;
   responsibleUserId: string | null;
   comment: string;
+  transferredAtLocal?: string;
+  temperatures?: Record<
+    string,
+    { value: string; maxTemperatureCelsius: number | null }
+  >;
   lines: Array<{
     key: string;
     productId: string;

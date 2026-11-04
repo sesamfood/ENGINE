@@ -115,15 +115,15 @@ function shortcutsFor(
     (shortcut) => valid.has(shortcut.unitId) && shortcut.quantity > 0,
   );
   if (override) return result.slice(0, 2);
+  const fillUnitId = result[0]?.unitId ?? product.defaultUnitId;
   for (const quantity of [1, 0.5]) {
     if (result.length === 2) break;
     if (
       !result.some(
-        (item) =>
-          item.unitId === product.defaultUnitId && item.quantity === quantity,
+        (item) => item.unitId === fillUnitId && item.quantity === quantity,
       )
     ) {
-      result.push({ unitId: product.defaultUnitId, quantity });
+      result.push({ unitId: fillUnitId, quantity });
     }
   }
   return result.slice(0, 2);

@@ -38,7 +38,7 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
         </PieChart>
       </ChartContainer>
       {!compact ? (
-        <ul className="flex max-h-20 shrink-0 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto pt-2 text-xs">
+        <ul className="flex max-h-20 shrink-0 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto pt-2 pb-1 text-xs">
           {data.map((item) => (
             <li key={item.key} className="flex min-w-0 items-center gap-1.5">
               <span
