@@ -29,6 +29,7 @@ export function DashboardWidget({
   onYAxisChange,
   onGoalPercentChange,
   onEditCustomMetric,
+  onLiveRetry,
   onResize,
   onRemove,
 }: {
@@ -49,6 +50,7 @@ export function DashboardWidget({
   onYAxisChange?: (axis: YAxisValues) => void;
   onGoalPercentChange?: (goalPercent: number) => void;
   onEditCustomMetric?: () => void;
+  onLiveRetry?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
 }) {
@@ -75,7 +77,7 @@ export function DashboardWidget({
       onResize={onResize}
       onRemove={onRemove}
     >
-      {live ? <LiveMetricContent widget={widget} state={live} compact={compact} /> : error ? (
+      {live ? <LiveMetricContent widget={widget} state={live} compact={compact} onRetry={onLiveRetry} /> : error ? (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       ) : result == null ? (
         <div className="flex h-full flex-col gap-3" aria-busy="true">

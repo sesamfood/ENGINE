@@ -228,7 +228,7 @@ export function resolveOrganizationTheme(theme: OrganizationTheme) {
     accent,
     accentForeground,
     border,
-    input: border,
+    input: mix(background, foreground, 0.45),
     ring: primary,
     chart1: primary,
     chart2: rotateHue(primary, 70),

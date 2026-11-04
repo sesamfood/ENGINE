@@ -712,7 +712,7 @@ export const setCountQuantity = mutation({
       organizationId,
       userIdentifier,
       location,
-      create: args.quantity > 0,
+      create: true,
     });
     if (!count) return null;
 
@@ -980,11 +980,21 @@ export const submitCount = mutation({
       create: false,
     });
     if (!count) {
-      throw new ConvexError("Indtast mindst én mængde før registrering");
+      throw new ConvexError("Tæl mindst ét produkt før registrering");
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     if (items.length === 0) {
-      throw new ConvexError("Indtast mindst én mængde før registrering");
+      const progress = await listCountAreaProgress(
+        ctx,
+        organizationId,
+        count._id,
+      );
+      const hasCountedProduct = progress.some(
+        (row) => row.countedProductIds.length > 0,
+      );
+      if (!hasCountedProduct) {
+        throw new ConvexError("Tæl mindst ét produkt før registrering");
+      }
     }
 
     const totals = new Map<Id<"products">, number>();

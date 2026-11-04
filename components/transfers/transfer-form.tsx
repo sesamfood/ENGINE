@@ -454,7 +454,6 @@ export function TransferForm({
   }));
 
   const lineCount = lines.length;
-  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   function resetForm() {
     if (organizationId) clearTransferDraft(organizationId);
@@ -1041,8 +1040,7 @@ export function TransferForm({
             <CardTitle>Produkter</CardTitle>
             <CardAction>
               <p className="text-sm text-muted-foreground">
-                {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"}{" "}
-                · {totalQuantity} enheder i alt
+                {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"}
               </p>
             </CardAction>
           </CardHeader>

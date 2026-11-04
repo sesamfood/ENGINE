@@ -14,17 +14,28 @@ import { cn } from "@/lib/utils";
 const HeaderContext = createContext<{
   target: HTMLDivElement | null;
   setTarget: (target: HTMLDivElement | null) => void;
+  mobileTarget: HTMLDivElement | null;
+  setMobileTarget: (target: HTMLDivElement | null) => void;
   sectionTarget: HTMLDivElement | null;
   setSectionTarget: (target: HTMLDivElement | null) => void;
 } | null>(null);
 
 export function AppPageHeaderProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<HTMLDivElement | null>(null);
+  const [mobileTarget, setMobileTarget] =
+    useState<HTMLDivElement | null>(null);
   const [sectionTarget, setSectionTarget] =
     useState<HTMLDivElement | null>(null);
   const value = useMemo(
-    () => ({ target, setTarget, sectionTarget, setSectionTarget }),
-    [sectionTarget, target],
+    () => ({
+      target,
+      setTarget,
+      mobileTarget,
+      setMobileTarget,
+      sectionTarget,
+      setSectionTarget,
+    }),
+    [mobileTarget, sectionTarget, target],
   );
   return (
     <HeaderContext.Provider value={value}>{children}</HeaderContext.Provider>
@@ -48,6 +59,16 @@ export function AppPageHeaderTarget() {
   const context = useContext(HeaderContext);
   return (
     <div ref={context?.setTarget} className="hidden min-w-0 flex-1 md:block" />
+  );
+}
+
+export function AppMobilePageHeaderTarget() {
+  const context = useContext(HeaderContext);
+  return (
+    <div
+      ref={context?.setMobileTarget}
+      className="px-4 pt-4 empty:hidden md:hidden"
+    />
   );
 }
 
@@ -81,5 +102,10 @@ export function AppPageHeader({
   const isMobile = useIsMobile();
   if (!isMobile && context?.target)
     return createPortal(children, context.target);
+  if (isMobile && context?.mobileTarget)
+    return createPortal(
+      <header className={className}>{children}</header>,
+      context.mobileTarget,
+    );
   return <header className={cn("md:hidden", className)}>{children}</header>;
 }

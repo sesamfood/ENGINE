@@ -1773,9 +1773,8 @@ export function CountSheet() {
     if (!key.startsWith(currentLocationPrefix)) continue;
     allQuantities.set(key, quantity);
   }
-  const hasQuantity = [...allQuantities.values()].some(
-    (quantity) => quantity > 0,
-  );
+  const hasQuantity =
+    countedProductIds.size > 0 || allQuantities.size > 0;
   const disabledReason = !locationId
     ? "Vælg en lokation"
     : countAreas === undefined
@@ -1787,7 +1786,7 @@ export function CountSheet() {
           : !state.isOpen
             ? "Count-vinduet er lukket"
             : !hasQuantity
-              ? "Indtast mindst én mængde"
+              ? "Tæl mindst ét produkt"
               : null;
 
   async function confirmSubmit() {

@@ -107,6 +107,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
+  AppMobilePageHeaderTarget,
   AppPageHeaderProvider,
   AppPageHeaderTarget,
   AppSectionNavTarget,
@@ -1868,6 +1869,7 @@ export function AppShell({
                           />
                         </div>
                       </header>
+                      {showPageHeader ? <AppMobilePageHeaderTarget /> : null}
                       <AppSectionNavTarget />
                       {/* Sticks below the sticky header, so offsets match its heights. */}
                       <SupportBanner

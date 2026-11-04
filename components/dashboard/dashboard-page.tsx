@@ -372,7 +372,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];
 
   return (
-    <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-6">
+    <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-4 lg:gap-6">
       <AppPageHeader>{title}</AppPageHeader>
       <DashboardTabs
         key={dashboardList.map((candidate) => `${candidate.id}:${candidate.updatedAt}`).join("|")}
@@ -389,9 +389,11 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         onDeleted={() => router.replace("/dashboard")}
         onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
       />
-      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:items-end">
-        <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center lg:items-end lg:gap-x-6">
-          <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
+      <div className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-sm sm:p-4 lg:items-end">
+        <div className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-3 lg:items-end lg:gap-x-6">
+          <div className="min-w-44 flex-1 lg:flex-none">
+            <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
+          </div>
           <div className="max-lg:hidden">
             <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
           </div>

@@ -242,7 +242,7 @@ function ProductCard({
             size="icon-lg"
             className="size-11"
             nativeButton={false}
-            render={<Link href={editHref} aria-label={`Redigér ${product.name}`} />}
+            render={<Link href={editHref} tabIndex={-1} aria-label={`Redigér ${product.name}`} />}
           >
             <PencilIcon />
           </Button>
