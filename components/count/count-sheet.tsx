@@ -236,7 +236,20 @@ function CountOpenCountdown({ target }: { target: number }) {
     return () => window.clearInterval(interval);
   }, []);
 
-  return <>Åbner om {countdown(target, now)}</>;
+  const opensAtLabel = new Intl.DateTimeFormat("da-DK", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(target);
+  return (
+    <>
+      <span aria-hidden="true">
+        Åbner om {countdown(target, now)} ({opensAtLabel})
+      </span>
+      <span className="sr-only">Åbner {opensAtLabel}</span>
+    </>
+  );
 }
 
 function UnavailableTooltip({

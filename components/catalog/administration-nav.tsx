@@ -109,7 +109,8 @@ export function AdministrationHeader() {
     ? catalogSection
     : "products";
   const title = inCatalog
-    ? "Produkter"
+    ? (visibleCatalogSections.find((item) => item.value === activeCatalogSection)
+        ?.label ?? "Produkter")
     : pathname === administrationPath
       ? "Administration"
       : (sectionTitles.find((item) =>

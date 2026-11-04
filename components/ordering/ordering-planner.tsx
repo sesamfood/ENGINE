@@ -61,7 +61,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -626,16 +626,16 @@ function Planner({
     !choosingSupplier;
 
   const header = (
-    <FieldGroup appearance="standard" className="lg:flex-row lg:items-end lg:justify-between">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>
           {editing ? "Redigér bestilling" : "Bestilling"}
         </PageTitle>
       </div>
       {canPlan ? (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+        <div className="flex flex-col gap-4">
           {showSupplierField ? (
-            <Field className="lg:w-64">
+            <Field>
               <FieldLabel htmlFor="ordering-supplier">Leverandør</FieldLabel>
               <Select
                 items={supplierItems}
@@ -658,7 +658,7 @@ function Planner({
               </Select>
             </Field>
           ) : null}
-          <Field className="lg:w-72">
+          <Field>
             <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="ordering-location"
@@ -683,7 +683,7 @@ function Planner({
           </Field>
         </div>
       ) : null}
-    </FieldGroup>
+    </div>
   );
 
   async function exportPlan() {

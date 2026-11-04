@@ -11,6 +11,8 @@ import {
   ArchiveIcon,
   ArchiveRestoreIcon,
   BoxesIcon,
+  LayoutGridIcon,
+  ListIcon,
   PackageOpenIcon,
   PencilIcon,
   PlusIcon,
@@ -220,10 +222,9 @@ function ProductCard({
         <div className="absolute left-3 top-3 z-20 rounded-md bg-background/90 p-1 shadow-sm">
           <Checkbox
             checked={isSelected}
-            aria-label={`Vælg ${product.name}`}
-            onCheckedChange={(checked) =>
-              onSelect(product.id, checked === true)
-            }
+            tabIndex={-1}
+            aria-hidden="true"
+            className="pointer-events-none"
           />
         </div>
       ) : null}
@@ -282,6 +283,122 @@ function ProductCard({
   );
 }
 
+function ProductListRow({
+  product,
+  editHref,
+  isSelectionMode,
+  isSelected,
+  onSelect,
+  onArchive,
+  onRestore,
+  onDelete,
+}: {
+  product: CatalogProduct;
+  editHref: string;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  onSelect: (productId: Id<"products">, selected: boolean) => void;
+  onArchive: (product: CatalogProduct) => void;
+  onRestore: (product: CatalogProduct) => void;
+  onDelete: (product: CatalogProduct) => void;
+}) {
+  const meta = [
+    product.categories.map((category) => category.name).join(" · ") ||
+      "Uden kategori",
+    product.defaultUnit?.name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div className="relative flex items-center gap-3 rounded-xl border bg-card p-3">
+      {isSelectionMode ? (
+        <button
+          type="button"
+          aria-pressed={isSelected}
+          aria-label={`Vælg ${product.name}`}
+          className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
+          onClick={() => onSelect(product.id, !isSelected)}
+        />
+      ) : (
+        <Link
+          href={editHref}
+          aria-label={`Redigér ${product.name}`}
+          className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
+        />
+      )}
+      {isSelectionMode ? (
+        <Checkbox
+          checked={isSelected}
+          tabIndex={-1}
+          aria-hidden="true"
+          className="pointer-events-none relative z-20 shrink-0"
+        />
+      ) : null}
+      <span className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+        {product.imageUrl ? (
+          <Image
+            src={product.imageUrl}
+            alt=""
+            fill
+            sizes="56px"
+            className="object-cover"
+          />
+        ) : (
+          <span className="flex size-full items-center justify-center text-muted-foreground">
+            <PackageOpenIcon aria-hidden="true" />
+          </span>
+        )}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate font-medium">{product.name}</span>
+        <span className="truncate text-sm text-muted-foreground">{meta}</span>
+      </span>
+      {!isSelectionMode ? (
+        <span className="relative z-20 flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            className="max-sm:hidden"
+            render={<Link href={editHref} tabIndex={-1} aria-label={`Redigér ${product.name}`} />}
+          >
+            <PencilIcon data-icon="inline-start" />
+            Redigér
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={`${product.status === "active" ? "Arkivér" : "Gendan"} ${product.name}`}
+            onClick={() =>
+              product.status === "active"
+                ? onArchive(product)
+                : onRestore(product)
+            }
+          >
+            {product.status === "active" ? (
+              <ArchiveIcon data-icon="inline-start" />
+            ) : (
+              <ArchiveRestoreIcon data-icon="inline-start" />
+            )}
+            {product.status === "active" ? "Arkivér" : "Gendan"}
+          </Button>
+          {product.status === "archived" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              className="size-11"
+              aria-label={`Slet ${product.name} permanent`}
+              onClick={() => onDelete(product)}
+            >
+              <Trash2Icon />
+            </Button>
+          ) : null}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function CatalogSkeleton() {
   return (
     <div className="grid gap-5 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
@@ -311,6 +428,18 @@ export function ProductCatalog() {
     useState<CatalogProduct | null>(null);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [catalogView, setCatalogView] = useState<"grid" | "list">("grid");
+  useEffect(() => {
+    const stored = window.localStorage.getItem("catalog-view");
+    if (stored === "list" || stored === "grid") {
+      const timer = window.setTimeout(() => setCatalogView(stored), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, []);
+  function changeCatalogView(next: "grid" | "list") {
+    setCatalogView(next);
+    window.localStorage.setItem("catalog-view", next);
+  }
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Id<"products">[]>([]);
   const [bulkCategoryId, setBulkCategoryId] = useState<Id<"categories"> | null>(
@@ -556,6 +685,27 @@ export function ProductCatalog() {
             <ToggleGroupItem value="active" className="min-h-11">Aktive</ToggleGroupItem>
             <ToggleGroupItem value="archived" className="min-h-11">Arkiverede</ToggleGroupItem>
           </ToggleGroup>
+          <ToggleGroup
+            aria-label="Visning"
+            variant="outline"
+            spacing={0}
+            size="lg"
+            value={[catalogView]}
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value === "grid" || value === "list") changeCatalogView(value);
+            }}
+            className="shrink-0"
+          >
+            <ToggleGroupItem value="grid" className="min-h-11">
+              <LayoutGridIcon data-icon="inline-start" />
+              Kort
+            </ToggleGroupItem>
+            <ToggleGroupItem value="list" className="min-h-11">
+              <ListIcon data-icon="inline-start" />
+              Liste
+            </ToggleGroupItem>
+          </ToggleGroup>
           <div className="flex flex-row flex-wrap items-center gap-3 md:flex-none">
             <Button
               size="lg"
@@ -574,7 +724,7 @@ export function ProductCatalog() {
               aria-pressed={isSelectionMode}
               onClick={toggleSelectionMode}
             >
-              {isSelectionMode ? "Annullér valg" : "Vælg"}
+              {isSelectionMode ? "Annullér valg" : "Vælg produkter"}
             </Button>
             {isSelectionMode ? (
               <DropdownMenu>
@@ -676,21 +826,39 @@ export function ProductCatalog() {
       ) : null}
 
       {!showSkeleton && displayedResults.length > 0 ? (
-        <div aria-busy={loading} className="grid gap-5 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
-          {displayedResults.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              editHref={productEditHref(product.id, search, status)}
-              isSelectionMode={isSelectionMode}
-              isSelected={selectedProductIds.has(product.id)}
-              onSelect={selectProduct}
-              onArchive={setPendingProduct}
-              onRestore={setPendingProduct}
-              onDelete={setPendingDeleteProduct}
-            />
-          ))}
-        </div>
+        catalogView === "list" ? (
+          <div aria-busy={loading} className="flex flex-col gap-2">
+            {displayedResults.map((product) => (
+              <ProductListRow
+                key={product.id}
+                product={product}
+                editHref={productEditHref(product.id, search, status)}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedProductIds.has(product.id)}
+                onSelect={selectProduct}
+                onArchive={setPendingProduct}
+                onRestore={setPendingProduct}
+                onDelete={setPendingDeleteProduct}
+              />
+            ))}
+          </div>
+        ) : (
+          <div aria-busy={loading} className="grid gap-5 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+            {displayedResults.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                editHref={productEditHref(product.id, search, status)}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedProductIds.has(product.id)}
+                onSelect={selectProduct}
+                onArchive={setPendingProduct}
+                onRestore={setPendingProduct}
+                onDelete={setPendingDeleteProduct}
+              />
+            ))}
+          </div>
+        )
       ) : null}
 
       {(!loading && results.length > currentResults.length) ||

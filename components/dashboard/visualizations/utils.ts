@@ -154,6 +154,27 @@ export function chartValueDomainFromValues(
   return valueDomain(values, yAxisMin, yAxisMax);
 }
 
+export function chartValueTicks(domain: readonly [number, number]) {
+  const [lower, upper] = domain;
+  if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper <= lower) {
+    return [lower, upper];
+  }
+  const span = upper - lower;
+  const base = 10 ** Math.floor(Math.log10(span));
+  const candidates = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10].map(
+    (factor) => factor * base,
+  );
+  for (const step of candidates) {
+    const count = span / step;
+    if (Math.abs(count - Math.round(count)) > 1e-9) continue;
+    if (count < 2 || count > 6) continue;
+    return Array.from({ length: Math.round(count) + 1 }, (_, index) =>
+      Number((lower + index * step).toPrecision(12)),
+    );
+  }
+  return Array.from({ length: 5 }, (_, index) => lower + (span * index) / 4);
+}
+
 export function chartYAxisWidth(domain: readonly [number, number], result: MetricResult) {
   const longest = Math.max(
     ...domain.map((value) => formatMetricValue(value, result).length),

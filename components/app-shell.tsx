@@ -1829,12 +1829,11 @@ export function AppShell({
                           showPageHeader && "md:h-auto md:items-start md:py-3 md:px-4",
                         )}
                       >
-                        <span className="flex items-center gap-1">
-                          <SidebarTrigger size="icon-lg" />
+                        <SidebarTrigger size="icon-lg">
                           <span aria-hidden="true" className="text-sm font-medium md:hidden">
                             Menu
                           </span>
-                        </span>
+                        </SidebarTrigger>
                         {showPageHeader ? <AppPageHeaderTarget /> : null}
                         {showAdministrationBack ? (
                           <Button

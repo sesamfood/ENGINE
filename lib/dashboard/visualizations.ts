@@ -68,7 +68,7 @@ function withEmptyState(Visualization: ComponentType<VisualizationProps>) {
         createElement(
           EmptyDescription,
           { className: "my-auto w-full shrink-0 wrap-anywhere" },
-          "Ingen data i perioden",
+          "Ingen data at vise",
         ),
       );
     }

@@ -22,6 +22,7 @@ import {
   chartDateTicks,
   chartModel,
   chartValueDomain,
+  chartValueTicks,
   chartYAxisWidth,
   formatMetricValue,
   isMixedCurrency,
@@ -76,13 +77,14 @@ function TimeSeriesAxes({
         tickFormatter={narrow ? (timestamp) => new Intl.DateTimeFormat("da-DK", { day: "numeric", month: "numeric" }).format(timestamp) : shortDate}
         tickLine={false}
         axisLine={false}
-        minTickGap={8}
+        minTickGap={24}
         tick={{ fontSize: 12 }}
       />
       <YAxis
         hide={compact}
         width={Math.min(chartYAxisWidth(domain, result), chartWidth * 0.4)}
         domain={domain}
+        ticks={chartValueTicks(domain)}
         tickFormatter={(value) => formatTick(Number(value))}
         tickLine={false}
         axisLine={false}

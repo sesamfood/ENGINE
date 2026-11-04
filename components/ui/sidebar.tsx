@@ -254,6 +254,7 @@ function Sidebar({
 function SidebarTrigger({
   className,
   onClick,
+  children,
   ...props
 }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
@@ -264,7 +265,7 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn(className)}
+      className={cn(children ? "max-md:w-auto max-md:px-2" : undefined, className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
@@ -273,6 +274,7 @@ function SidebarTrigger({
     >
       <PanelLeftIcon />
       <span className="sr-only">Vis eller skjul sidemenu</span>
+      {children}
     </Button>
   )
 }

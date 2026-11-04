@@ -9,7 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 export function HelpIndex() {
   const { features: helpFeatures, pages: helpPages } = useVisibleHelp();
   return (
-    <div className="flex max-w-5xl flex-col gap-10 py-8 sm:gap-12 sm:py-12">
+    <div className="flex max-w-5xl flex-col gap-8 py-6 sm:gap-12 sm:py-12">
       <header className="flex max-w-2xl flex-col items-start gap-4">
         <p className="text-sm font-medium text-muted-foreground">
           Opsætning og daglig brug
@@ -17,7 +17,7 @@ export function HelpIndex() {
         <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
           Hjælp til hele driften
         </h1>
-        <p className="text-base leading-7 text-muted-foreground">
+        <p className="text-base leading-7 text-muted-foreground max-sm:hidden">
           Start med organisationens opsætning, og følg guiderne frem til den
           daglige drift. Du kan også vælge en funktion herunder eller søge efter
           en bestemt opgave.
