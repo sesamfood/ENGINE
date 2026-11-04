@@ -15,11 +15,8 @@ export function AppBottomBar({
   return (
     <div
       className={cn(
-        cn(
-          "fixed inset-x-0 bottom-0 z-10 border-t bg-background p-3 pb-(--spacing-safe-inset) md:right-0",
-          className,
-        ),
-        "left-(--bar-left)",
+        "fixed inset-x-0 bottom-0 left-(--bar-left) z-10 border-t bg-background p-3 pb-(--spacing-safe-inset) md:right-0",
+        className,
       )}
       style={
         {

@@ -84,22 +84,23 @@ export function WasteNavigation() {
             <TabsList
               variant="line"
               aria-label="Waste-sektioner"
-              className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
+              className="h-12 w-full max-w-full justify-start overflow-x-auto overflow-y-hidden sm:w-fit"
+              appearance="scrollFadeBelowLg"
             >
               {showRegister ? (
-                <TabsTrigger value="register" appearance="standard" className="min-w-28">
+                <TabsTrigger value="register" appearance="compact" className="min-w-0 sm:min-w-28">
                   <Trash2Icon data-icon="inline-start" />
                   Registrér
                 </TabsTrigger>
               ) : null}
               {showBadDelivery ? (
-                <TabsTrigger value="badDelivery" appearance="standard" className="min-w-28">
+                <TabsTrigger value="badDelivery" appearance="compact" className="min-w-0 sm:min-w-28">
                   <PackageXIcon data-icon="inline-start" />
                   Dårlig levering
                 </TabsTrigger>
               ) : null}
               {canReport ? (
-                <TabsTrigger value="report" appearance="standard" className="min-w-28">
+                <TabsTrigger value="report" appearance="compact" className="min-w-0 sm:min-w-28">
                   <ChartNoAxesColumnIcon data-icon="inline-start" />
                   Rapport
                 </TabsTrigger>

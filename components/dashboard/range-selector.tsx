@@ -3,6 +3,14 @@
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { comparisonPeriodLabels, comparisonPeriods, type ComparisonPeriod, type DashboardRange, type RangePreset } from "@/lib/dashboard/types";
 import { dateKey, DEFAULT_TIME_ZONE } from "@/lib/date";
 
@@ -32,7 +40,27 @@ export function RangeSelector({
   }
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto pb-1">
+      <Select
+        items={presets}
+        value={range.preset}
+        onValueChange={(value) => {
+          if (value) select([value]);
+        }}
+      >
+        <SelectTrigger className="h-11 w-full sm:hidden" aria-label="Periode">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {presets.map((preset) => (
+              <SelectItem key={preset.value} value={preset.value}>
+                {preset.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <div className="no-scrollbar max-lg:scroll-fade-x hidden overflow-x-auto pb-1 sm:block">
         <ToggleGroup value={[range.preset]} onValueChange={select} variant="outline" size="lg" spacing={0} className="min-w-max">
           {presets.map((preset) => <ToggleGroupItem key={preset.value} value={preset.value} className="min-h-11">{preset.label}</ToggleGroupItem>)}
         </ToggleGroup>

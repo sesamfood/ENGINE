@@ -185,9 +185,6 @@ function StaffFoodHeader({
   return (
     <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-end">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Staff food
-        </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           Staff food
         </h1>
@@ -625,7 +622,7 @@ export function StaffFoodRegistration() {
             <>
               <div className="flex min-w-0 flex-col gap-5">
                 <Tabs value={effectiveCategoryId} onValueChange={setCategoryId}>
-                  <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden">
+                  <TabsList variant="filter" className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFade">
                     <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
                       Alle
                     </TabsTrigger>

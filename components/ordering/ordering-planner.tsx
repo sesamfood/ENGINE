@@ -164,7 +164,7 @@ function Planner({
   const [asOf, setAsOf] = useState(currentMinute);
   const [search, setSearch] = useState("");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
-  // Internal orders can list a Produkt in several units.
+  // Internal orders can list a product in several units.
   const [unitLines, setUnitLines] = useState<
     Record<string, { unitId: Id<"units">; input: string }[]>
   >({});
@@ -464,7 +464,7 @@ function Planner({
     const key = `${locationId}:${product.id}:${orderUnitId}`;
     const input = overrides[key] ?? String(suggested ?? 0);
     const parsed = parseOrderQuantity(input);
-    // Editing starts from the order, with other Produkter at 0.
+    // Editing starts from the order, with other products at 0.
     const editStart = editOrder
       ? (editLines.get(product.id) ?? [{ unitId: orderUnitId, input: "0" }])
       : undefined;
@@ -574,9 +574,6 @@ function Planner({
   const header = (
     <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Bestilling
-        </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           {editing ? "Redigér bestilling" : "Planlæg bestilling"}
         </h1>
@@ -957,7 +954,7 @@ function Planner({
       ) : choosingSupplier ? (
         <section
           aria-labelledby="ordering-choose-supplier"
-          className="flex flex-col gap-4 pb-40"
+          className="mt-2 flex flex-col gap-4 pb-40"
         >
           <h2 id="ordering-choose-supplier" className="text-xl font-semibold">
             Hvem vil du bestille hos?
@@ -969,8 +966,8 @@ function Planner({
                 label: item.name,
                 description:
                   item.catalog === "gssupply"
-                    ? "Koblede Produkter med priser fra GS Supply"
-                    : "Alle Produkter, der kan bestilles",
+                    ? "Koblede produkter med priser fra GS Supply"
+                    : "Alle produkter, der kan bestilles",
                 Icon: TruckIcon,
               })),
               ...(internalSuppliers ?? []).map((item) => ({
@@ -982,7 +979,7 @@ function Planner({
               {
                 value: NO_SUPPLIER,
                 label: "Ingen leverandør",
-                description: "Alle Produkter, der kan bestilles",
+                description: "Alle produkter, der kan bestilles",
                 Icon: TruckIcon,
               },
             ].map((option) => (

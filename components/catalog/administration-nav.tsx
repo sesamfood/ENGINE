@@ -156,6 +156,7 @@ export function AdministrationHeader() {
           <TabsList
             aria-label="Katalogsektioner"
             className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
+            appearance="scrollFadeBelowLg"
           >
             {visibleCatalogSections.map((item) => (
               <TabsTrigger
@@ -184,6 +185,7 @@ export function AdministrationHeader() {
           <TabsList
             aria-label="Brugersektioner"
             className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
+            appearance="scrollFadeBelowLg"
           >
             {visibleUserSections.map((item) => (
               <TabsTrigger

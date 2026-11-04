@@ -73,6 +73,7 @@ import {
 import Image from "next/image";
 import posthog from "posthog-js";
 import { useEffect, useMemo, useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { useWasteContext } from "./waste-header";
 
@@ -159,7 +160,7 @@ function WasteUndoControls({
         variant="destructive"
         size="lg"
         appearance="floating"
-        className="fixed right-3 bottom-(--spacing-safe-inset) z-20 h-12 sm:right-4"
+        className="fixed right-3 bottom-(--spacing-safe-actions) z-20 h-12 sm:right-4"
         disabled={undoingIds.length > 0}
         onClick={() => {
           if (registrations.length === 1) {
@@ -388,6 +389,10 @@ export function WasteRegistration() {
     setEditingShortcuts(false);
   }
 
+  const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
   async function register(
     product: Product,
     shortcut: Shortcut,
@@ -395,6 +400,8 @@ export function WasteRegistration() {
   ) {
     if (!locationId) return;
     const key = `${product.id}:${shortcut.unitId}:${shortcut.quantity}`;
+    if (pendingKeys.has(key)) return;
+    setPendingKeys((keys) => new Set(keys).add(key));
     try {
       const result = await registerWaste({
         locationId,
@@ -449,6 +456,12 @@ export function WasteRegistration() {
           "Waste-handlingen kunne ikke gennemføres. Prøv igen.",
         ),
       );
+    } finally {
+      setPendingKeys((keys) => {
+        const next = new Set(keys);
+        next.delete(key);
+        return next;
+      });
     }
   }
 
@@ -537,16 +550,7 @@ export function WasteRegistration() {
     }
   }
 
-  if (!locations || catalog === undefined) {
-    return (
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 10 }, (_, index) => (
-          <Skeleton key={index} className="h-72" />
-        ))}
-      </div>
-    );
-  }
-  if (!locations.length) {
+  if (locations && locations.length === 0) {
     return (
       <Empty className="min-h-72">
         <EmptyHeader>
@@ -559,6 +563,15 @@ export function WasteRegistration() {
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
+    );
+  }
+  if (!locations || catalog === undefined) {
+    return (
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 10 }, (_, index) => (
+          <Skeleton key={index} className="h-72" />
+        ))}
+      </div>
     );
   }
   if (!catalog.length) {
@@ -581,7 +594,9 @@ export function WasteRegistration() {
     <div className="flex flex-col gap-5">
       <Tabs value={category} onValueChange={setCategory}>
         <TabsList
+          variant="filter"
           className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
+          appearance="scrollFade"
           aria-label="Produktkategorier"
         >
           <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
@@ -637,10 +652,9 @@ export function WasteRegistration() {
                       imageUrl={product.imageUrl}
                       alt=""
                       fallback={
-                        <ImageIcon
-                          className="size-10 lg:size-12"
-                          aria-hidden="true"
-                        />
+                        <span className="flex size-14 items-center justify-center rounded-full bg-background/70">
+                          <ImageIcon className="size-7" aria-hidden="true" />
+                        </span>
                       }
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                     />
@@ -699,10 +713,15 @@ export function WasteRegistration() {
                             recent === key ? "recentQuantity" : "quantity"
                           }
                           className="h-12 min-w-0"
+                          disabled={pendingKeys.has(key)}
+                          aria-label={`Registrér ${formatQuantity(shortcut.quantity)} ${unit ? unitNameFor(unit, shortcut.quantity) : ""} ${product.name} som Waste`}
                           onClick={() =>
                             register(product, shortcut, "shortcut")
                           }
                         >
+                          {pendingKeys.has(key) ? (
+                            <Spinner data-icon="inline-start" />
+                          ) : null}
                           {formatQuantity(shortcut.quantity)}{" "}
                           {unit && unitNameFor(unit, shortcut.quantity)}
                         </Button>

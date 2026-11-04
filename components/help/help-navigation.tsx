@@ -43,7 +43,7 @@ export function HelpNavigation({ topics }: { topics: NavigationTopic[] }) {
         className={cn(
           "flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
           active
-            ? "bg-muted font-medium text-foreground"
+            ? "bg-accent font-medium text-accent-foreground"
             : "text-muted-foreground",
         )}
       >

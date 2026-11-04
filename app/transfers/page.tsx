@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
+import { ArrowRightLeftIcon, HistoryIcon, ShoppingCartIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 
 const TransferForm = dynamic(
@@ -108,15 +109,18 @@ function TransfersContent() {
     <TabsList
       variant="line"
       aria-label="Transfersektioner"
-      className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
+      className="h-12 w-full max-w-full justify-start overflow-x-auto overflow-y-hidden sm:w-fit"
+      appearance="scrollFadeBelowLg"
     >
       {showNew ? (
-        <TabsTrigger value="new" appearance="standard" className="min-w-36">
+        <TabsTrigger value="new" appearance="compact" className="min-w-0 sm:min-w-36">
+          <ArrowRightLeftIcon data-icon="inline-start" />
           Ny transfer
         </TabsTrigger>
       ) : null}
       {showOrders ? (
-        <TabsTrigger value="orders" appearance="standard" className="min-w-36">
+        <TabsTrigger value="orders" appearance="compact" className="min-w-0 sm:min-w-36">
+          <ShoppingCartIcon data-icon="inline-start" />
           Bestillinger
           {openOrders?.length ? (
             <Badge>{openOrders.length}</Badge>
@@ -124,7 +128,8 @@ function TransfersContent() {
         </TabsTrigger>
       ) : null}
       {showHistory ? (
-        <TabsTrigger value="history" appearance="standard" className="min-w-36">
+        <TabsTrigger value="history" appearance="compact" className="min-w-0 sm:min-w-36">
+          <HistoryIcon data-icon="inline-start" />
           Transferhistorik
         </TabsTrigger>
       ) : null}
@@ -171,9 +176,6 @@ function TransfersContent() {
 export default function TransfersPage() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
-      <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-        Transfer
-      </p>
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
         Transfer
       </h1>

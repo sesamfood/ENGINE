@@ -265,7 +265,7 @@ function ProductCard({
 
 function CatalogSkeleton() {
   return (
-    <div className="grid gap-5 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+    <div className="grid gap-5 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
       {Array.from({ length: 8 }, (_, index) => (
         <Card key={index} appearance="gallery">
           <Skeleton appearance="square" className="aspect-4/3 w-full" />
@@ -508,9 +508,9 @@ export function ProductCatalog() {
 
   return (
     <div className="flex flex-col gap-7">
-      <div className="sticky top-16 z-30 -mx-4 bg-background px-4 py-3 md:top-24 md:py-4">
+      <div className="z-30 -mx-4 bg-background px-4 py-3 max-sm:static sm:sticky sm:top-16 md:top-24 md:py-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-48 flex-1">
+          <div className="relative w-full sm:min-w-48 sm:flex-1">
             <SearchIcon
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
@@ -539,6 +539,15 @@ export function ProductCatalog() {
             <ToggleGroupItem value="archived" className="min-h-11">Arkiverede</ToggleGroupItem>
           </ToggleGroup>
           <div className="flex flex-row flex-wrap items-center gap-3 md:flex-none">
+            <Button
+              size="lg"
+              appearance="standard"
+              className="min-h-11"
+              onClick={() => router.push(newProductHref(search, status))}
+            >
+              <PlusIcon data-icon="inline-start" />
+              Nyt produkt
+            </Button>
             <Button
               type="button"
               variant={isSelectionMode ? "secondary" : "outline"}
@@ -601,15 +610,6 @@ export function ProductCatalog() {
               </DropdownMenu>
             ) : null}
             <ProductImportExport />
-            <Button
-              size="lg"
-              appearance="standard"
-              className="min-h-11"
-              onClick={() => router.push(newProductHref(search, status))}
-            >
-              <PlusIcon data-icon="inline-start" />
-              Nyt produkt
-            </Button>
           </div>
         </div>
       </div>
@@ -651,7 +651,7 @@ export function ProductCatalog() {
       ) : null}
 
       {!showSkeleton && displayedResults.length > 0 ? (
-        <div className="grid gap-5 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+        <div className="grid gap-5 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
           {displayedResults.map((product) => (
             <ProductCard
               key={product.id}

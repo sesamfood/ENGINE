@@ -20,6 +20,8 @@ import {
   ReceiptTextIcon,
   WalletIcon,
   ShoppingBagIcon,
+  ChevronRightIcon,
+  SearchIcon,
   ShoppingCartIcon,
   StoreIcon,
   Trash2Icon,
@@ -37,7 +39,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState } from "react";
 import type { PermissionId } from "@/lib/auth-permissions";
 import type { FeatureId } from "@/lib/features";
 
@@ -291,6 +296,7 @@ const categories: AdministrationCategory[] = [
 ];
 
 export function AdministrationOverview() {
+  const [search, setSearch] = useState("");
   const access = useAccess();
   const canCatalog = usePermission("catalog.manage");
   const canLocations = usePermission("locations.manage");
@@ -350,10 +356,14 @@ export function AdministrationOverview() {
     );
   }
 
+  const query = search.trim().toLocaleLowerCase("da");
   const availableCategories = categories
     .map((category) => ({
       ...category,
       sections: category.sections.filter((section) =>
+        (!query ||
+          section.title.toLocaleLowerCase("da").includes(query) ||
+          section.description.toLocaleLowerCase("da").includes(query)) &&
         (section.href !== "/administration/wolt-orders" || access.woltEnabled === true) &&
         !(
           access.hideUnavailable &&
@@ -367,6 +377,30 @@ export function AdministrationOverview() {
 
   return (
     <div className="flex flex-col gap-10 pb-10">
+      <div className="relative max-w-xl">
+        <SearchIcon
+          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Søg i administration"
+          aria-label="Søg i administration"
+          appearance="search"
+          type="search"
+        />
+      </div>
+      {availableCategories.length === 0 ? (
+        <Empty appearance="outlined">
+          <EmptyHeader>
+            <EmptyTitle>Ingen resultater</EmptyTitle>
+            <EmptyDescription>
+              Prøv en anden søgning.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : null}
       {availableCategories.map((category) => (
         <section
           key={category.id}
@@ -432,10 +466,10 @@ export function AdministrationOverview() {
                       <CardTitle>{section.title}</CardTitle>
                       <CardDescription>{section.description}</CardDescription>
                       <CardAction>
-                        <Icon
-                          className="text-muted-foreground"
-                          aria-hidden="true"
-                        />
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <Icon aria-hidden="true" />
+                          <ChevronRightIcon aria-hidden="true" />
+                        </span>
                       </CardAction>
                     </CardHeader>
                   </Card>

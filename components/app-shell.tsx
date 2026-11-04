@@ -43,6 +43,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -118,7 +119,7 @@ import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { featureForPath, featureLabels, type FeatureId } from "@/lib/features";
-import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
+import { OrganizationTheme } from "@/components/organization/organization-theme";
 import { kioskDestinationMatches, type KioskDestinationId } from "@/lib/kiosk";
 import { isPreview } from "@/lib/page-title";
 import type { KioskDayTask } from "@/lib/kiosk-day";
@@ -935,6 +936,7 @@ function OrganizationHome() {
 
 function NavigationList() {
   const organization = useActiveOrganization();
+  const navRef = useRef<HTMLElement>(null);
   const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -948,10 +950,17 @@ function NavigationList() {
     return item ? [item] : [];
   });
 
+  useEffect(() => {
+    navRef.current
+      ?.querySelector('[data-active-nav="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [pathname, navigation.length]);
+
+
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        <nav aria-label="Primær navigation">
+        <nav ref={navRef} aria-label="Primær navigation">
           <SidebarMenu appearance="spaced">
             {navigation.map((item) => {
               const Icon = navigationIcons[item.id];
@@ -967,11 +976,13 @@ function NavigationList() {
                     size="lg"
                     isActive={active}
                     tooltip={item.label}
-                    className="text-base [&_svg]:size-4 group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:[&_svg]:size-4"
+                    className="text-base [&_svg]:size-4 group-data-[collapsible=icon]:h-14! group-data-[collapsible=icon]:w-full! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:p-1! group-data-[collapsible=icon]:[&_svg]:size-5"
                     render={
                       <Link
                         href={item.href}
+                        aria-label={item.label}
                         aria-current={active ? "page" : undefined}
+                        data-active-nav={active || undefined}
                         onClick={() => {
                           if (isMobile) setOpenMobile(false);
                         }}
@@ -979,7 +990,7 @@ function NavigationList() {
                     }
                   >
                     <Icon aria-hidden="true" />
-                    <span className="group-data-[collapsible=icon]:hidden">
+                    <span className="group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:whitespace-nowrap">
                       {item.label}
                     </span>
                   </SidebarMenuButton>
@@ -1114,8 +1125,7 @@ function ProfileMenu({
       .join("")
       .slice(0, 2)
       .toUpperCase() || "P";
-  const accountPageActive =
-    pathname === "/profile" || pathname.startsWith("/administration");
+  const accountPageActive = pathname === "/profile";
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
@@ -1432,6 +1442,20 @@ function SidebarAccount({
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : null}
+      {!kiosk?.kioskModeEnabled ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="lg"
+            appearance="icon"
+            tooltip="Hjælp"
+            className="text-base group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
+            render={<Link href="/help" />}
+          >
+            <CircleHelpIcon aria-hidden="true" />
+            <span className="group-data-[collapsible=icon]:hidden">Hjælp</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
       <SidebarMenuItem>
         <FeedbackDialog permissions={access?.permissions} />
       </SidebarMenuItem>
@@ -1651,32 +1675,15 @@ function OrganizationBoundary({
   return children;
 }
 
-function OrganizationTheme({ children }: { children: React.ReactNode }) {
-  const organization = useActiveOrganization();
-  const { isAuthenticated } = useConvexAuth();
-  const branding = useQuery(
-    api.organization.getBranding,
-    organization.data && isAuthenticated ? {} : "skip",
-  );
-
+function TabletSidebarDefault() {
+  const { setOpen } = useSidebar();
   useEffect(() => {
-    if (!branding?.theme) return;
-    const root = document.documentElement;
-    const variables = getOrganizationThemeCssVariables(branding.theme);
-    const previous = new Map<string, string>();
-    for (const [name, value] of Object.entries(variables)) {
-      previous.set(name, root.style.getPropertyValue(name));
-      root.style.setProperty(name, value);
-    }
-    return () => {
-      for (const [name, value] of previous) {
-        if (value) root.style.setProperty(name, value);
-        else root.style.removeProperty(name);
-      }
-    };
-  }, [branding?.theme]);
-
-  return children;
+    if (document.cookie.includes("sidebar_state=")) return;
+    if (window.innerWidth >= 768 && window.innerWidth < 1024) setOpen(false);
+    // Only on first mount: a stored choice always wins afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 export function AppShell({
@@ -1748,6 +1755,7 @@ export function AppShell({
   const showAdministrationHeader =
     pathname === "/administration" || pathname.startsWith("/administration/");
   const showPageHeader =
+    pathname === "/profile" ||
     pathname === "/date-labels" ||
     showOrderingHeader ||
     showCountHeader ||
@@ -1789,12 +1797,13 @@ export function AppShell({
                     style={
                       {
                         "--sidebar-width": "15.5rem",
-                        "--sidebar-width-icon": "4rem",
+                        "--sidebar-width-icon": "6.5rem",
                       } as CSSProperties
                     }
                   >
+                    <TabletSidebarDefault />
                     <Sidebar collapsible="icon">
-                      <SidebarHeader className="h-24 items-center justify-center">
+                      <SidebarHeader className="h-16 items-center justify-center">
                         <OrganizationHome />
                       </SidebarHeader>
 
@@ -1812,7 +1821,7 @@ export function AppShell({
                       <header
                         className={cn(
                           "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                          showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+                          showPageHeader && "md:h-auto md:min-h-24 md:py-3 md:px-4",
                         )}
                       >
                         <SidebarTrigger size="icon-lg" />
@@ -1839,7 +1848,7 @@ export function AppShell({
                             <span className="sm:hidden">Tilbage</span>
                           </Button>
                         ) : null}
-                        <div className="flex flex-1 justify-center md:hidden">
+                        <div className={cn("flex flex-1 justify-center md:hidden", showAdministrationBack && "max-md:invisible")}>
                           <OrganizationHome />
                         </div>
                         <div className="md:hidden">

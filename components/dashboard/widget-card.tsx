@@ -58,7 +58,7 @@ import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type Comparison
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { GoalSettings } from "./goal-settings";
-import { comparisonPeriodText, previousTotal, total } from "./visualizations/utils";
+import { comparisonPeriodText, formatMetricValue, previousTotal, total } from "./visualizations/utils";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
 
@@ -339,7 +339,7 @@ export function WidgetCard({
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
             <CardTitle title={metricLabel} appearance={hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix ? "flex flex-wrap items-baseline" : "")}>
               {hasSourceSuffix ? <>
-                <span className="max-w-full truncate">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
+                <span className="line-clamp-2 max-w-full">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
                 <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
@@ -548,6 +548,11 @@ export function WidgetCard({
         {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
         {financial ? <CardDescription>Månedsrapport · {financialRange?.preset === "thisMonth" ? "Denne måned"
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
+        {current !== null && result && visualizationHasYAxis(widget.visualization) ? (
+          <p className="text-2xl font-semibold tracking-tight">
+            {formatMetricValue(current, result)}
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent data-widget-size={widget.size} appearance={editable && !definition?.live ? "editableWidget" : "widget"} attributed={hasAttributions} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden", hasAttributions && "flex flex-col")}>
         {salesSource === "combined" ? (

@@ -151,13 +151,13 @@ export function ScopeSelector({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {lockedToSingle ? (
-        <Button type="button" variant="outline" size="lg" className="min-h-11 max-w-full min-w-48" disabled aria-label="Valgt lokation">
+        <Button type="button" variant="outline" size="lg" className="min-h-11 max-w-full min-w-40 flex-1 sm:min-w-48 sm:flex-none" disabled aria-label="Valgt lokation">
           <MapPinIcon data-icon="inline-start" />
           <span className="min-w-0 truncate">{triggerLabel}</span>
         </Button>
       ) : (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="lg" className="min-h-11 max-w-full min-w-56" aria-label="Vælg dashboardets lokationer" />}>
+          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="lg" className="min-h-11 max-w-full min-w-40 flex-1 sm:min-w-56 sm:flex-none" aria-label="Vælg dashboardets lokationer" />}>
             <MapPinIcon data-icon="inline-start" />
             <span className="min-w-0 truncate">{triggerLabel}</span>
           </DropdownMenuTrigger>

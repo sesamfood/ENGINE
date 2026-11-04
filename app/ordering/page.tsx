@@ -8,6 +8,7 @@ import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gat
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HistoryIcon, ShoppingCartIcon } from "lucide-react";
 
 const OrderingPlanner = dynamic(
   () =>
@@ -50,15 +51,18 @@ function OrderingContent() {
     <TabsList
       variant="line"
       aria-label="Bestillingssektioner"
-      className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
+      className="h-12 w-full max-w-full justify-start overflow-x-auto overflow-y-hidden sm:w-fit"
+      appearance="scrollFadeBelowLg"
     >
       {showNew ? (
-        <TabsTrigger value="new" appearance="standard" className="min-w-32">
+        <TabsTrigger value="new" appearance="compact" className="min-w-0 sm:min-w-32">
+          <ShoppingCartIcon data-icon="inline-start" />
           Ny bestilling
         </TabsTrigger>
       ) : null}
       {showHistory ? (
-        <TabsTrigger value="history" appearance="standard" className="min-w-36">
+        <TabsTrigger value="history" appearance="compact" className="min-w-0 sm:min-w-36">
+          <HistoryIcon data-icon="inline-start" />
           Bestillingshistorik
         </TabsTrigger>
       ) : null}

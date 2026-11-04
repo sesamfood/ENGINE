@@ -26,6 +26,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Card,
   CardAction,
   CardContent,
@@ -45,11 +50,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
+import { useActiveOrganization } from "@/lib/active-organization";
+import { selectedLocationId } from "@/lib/location-preference";
+import { setTransferLocation, useTransferLocation } from "@/lib/transfer-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
 import posthog from "posthog-js";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 type LocationOption = {
@@ -228,6 +236,10 @@ export function TransferForm({
   const locations = useQuery(api.locations.listAllLocationOptions) as
     LocationOption[] | undefined;
   const kiosk = useKiosk();
+  const organization = useActiveOrganization();
+  const organizationId = organization.data?.id;
+  const storedFromLocationId = useTransferLocation(organizationId);
+  const prefilledFromLocation = useRef(false);
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const productSearchOptions = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
@@ -250,6 +262,7 @@ export function TransferForm({
     transfer?.responsibleUserId ?? null,
   );
   const [comment, setComment] = useState(transfer?.comment ?? "");
+  const [optionalOpen, setOptionalOpen] = useState(Boolean(transfer));
   const [transferredAtLocal, setTransferredAtLocal] = useState(() =>
     toDateTimeLocal(transfer?.transferredAt ?? Date.now()),
   );
@@ -283,6 +296,28 @@ export function TransferForm({
   const [isTemperatureDialogOpen, setIsTemperatureDialogOpen] = useState(false);
   const sessionUserId = session?.user.id;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
+
+  useEffect(() => {
+    if (transfer || order || prefilledFromLocation.current) return;
+    if (!locations || fromLocationId) return;
+    const candidate = selectedLocationId({
+      locations,
+      storedId: storedFromLocationId,
+      lockedId: null,
+      isLocked: false,
+    });
+    if (candidate && candidate !== toLocationId) {
+      prefilledFromLocation.current = true;
+      const timeout = window.setTimeout(() => setFromLocationId(candidate));
+      return () => window.clearTimeout(timeout);
+    }
+  }, [fromLocationId, locations, order, storedFromLocationId, toLocationId, transfer]);
+
+  useEffect(() => {
+    if (!transfer && !order && organizationId && fromLocationId) {
+      setTransferLocation(organizationId, fromLocationId);
+    }
+  }, [fromLocationId, order, organizationId, transfer]);
 
   useEffect(() => {
     if (!transfer && !order && kiosk?.isKioskAccount && kiosk.locationId) {
@@ -345,7 +380,7 @@ export function TransferForm({
   const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   function resetForm() {
-    setFromLocationId(kiosk?.isKioskAccount ? kiosk.locationId : null);
+    setFromLocationId((current) => kiosk?.isKioskAccount ? kiosk.locationId : current);
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
     setComment("");
@@ -605,6 +640,19 @@ export function TransferForm({
         "Tilføj en kommentar, når temperaturen overstiger maksimum";
     }
     setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      window.setTimeout(() => {
+        if (nextErrors.comment) {
+          document.getElementById(`${inputIdPrefix}-comment`)?.focus();
+        } else if (nextErrors.transferredAt) {
+          document.getElementById(`${inputIdPrefix}-at`)?.focus();
+        } else {
+          document
+            .querySelector<HTMLElement>('[data-invalid="true"] [aria-invalid="true"], [data-invalid="true"] button')
+            ?.focus();
+        }
+      });
+    }
     return Object.keys(nextErrors).length === 0
       ? { temperatures, deviations }
       : null;
@@ -715,8 +763,22 @@ export function TransferForm({
     await submit(confirmation.validated, confirmation.deviations);
   }
 
+  const missingForSave = !transfer
+    ? !fromLocationId
+      ? "Vælg fra-lokation for at gemme"
+      : !toLocationId
+        ? "Vælg til-lokation for at gemme"
+        : lines.length === 0
+          ? "Tilføj et produkt for at gemme"
+          : null
+    : null;
   const actions = (
-    <div className="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
+    <div className="flex flex-col-reverse gap-2 lg:ml-auto lg:flex-row lg:items-center">
+      {missingForSave ? (
+        <p className="text-xs whitespace-nowrap text-muted-foreground max-lg:order-first max-lg:text-center">
+          {missingForSave}
+        </p>
+      ) : null}
       {onCancel ? (
         <Button
           type="button"
@@ -735,7 +797,13 @@ export function TransferForm({
         size="lg"
         appearance="wide"
         className="min-h-11"
-        disabled={isSaving || locations === undefined}
+        disabled={
+          isSaving ||
+          locations === undefined ||
+          !fromLocationId ||
+          !toLocationId ||
+          lines.length === 0
+        }
         onClick={save}
       >
         {isSaving ? (
@@ -773,6 +841,7 @@ export function TransferForm({
                   }}
                   placeholder="Søg efter lokation"
                   ariaLabel="Fra lokation"
+                  ariaInvalid={Boolean(errors.fromLocation)}
                   disabled={locations === undefined || locationsLocked}
                 />
                 <FieldError>{errors.fromLocation}</FieldError>
@@ -794,6 +863,7 @@ export function TransferForm({
                   }}
                   placeholder="Søg efter lokation"
                   ariaLabel="Til lokation"
+                  ariaInvalid={Boolean(errors.toLocation)}
                   disabled={locations === undefined || locationsLocked}
                 />
                 <FieldError>{errors.toLocation}</FieldError>
@@ -814,11 +884,33 @@ export function TransferForm({
                   }}
                   placeholder="Søg efter ansvarlig"
                   ariaLabel="Ansvarlig"
+                  ariaInvalid={Boolean(errors.responsible)}
                   disabled={membersLoading}
                 />
                 <FieldError>{errors.responsible ?? membersError}</FieldError>
               </Field>
 
+            </FieldGroup>
+            <Collapsible
+              open={optionalOpen || Boolean(errors.comment || errors.transferredAt)}
+              onOpenChange={setOptionalOpen}
+            >
+              <CollapsibleTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    appearance="compact"
+                    className="mt-2 min-h-11 w-full justify-between"
+                  />
+                }
+              >
+                Kommentar og tidspunkt
+                <ChevronDownIcon data-icon="inline-end" className="transition-transform [[aria-expanded=true]_&]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="pt-2">
+                  <FieldGroup>
               <Field data-invalid={Boolean(errors.comment)}>
                 <FieldLabel htmlFor={`${inputIdPrefix}-comment`}>
                   Kommentar (valgfri)
@@ -850,7 +942,10 @@ export function TransferForm({
                 />
                 <FieldError>{errors.transferredAt}</FieldError>
               </Field>
-            </FieldGroup>
+                  </FieldGroup>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </CardContent>
         </Card>
 
@@ -1132,7 +1227,7 @@ export function TransferForm({
         </div>
       ) : (
         <AppBottomBar>
-          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 lg:flex-row lg:items-center">
             {navigation ? (
               <div className="min-w-0" inert={isSaving}>
                 {navigation}

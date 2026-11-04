@@ -7,7 +7,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
+import { EllipsisVerticalIcon, FileTextIcon, LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
 import { AppPageHeader } from "@/components/app-page-header";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -16,15 +16,25 @@ import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gat
 import { useAccess, useKioskPage, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { canSyncDashboardData } from "@/lib/auth-permissions";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
 import { metricRegistry } from "@/lib/dashboard/registry";
-import { comparisonPeriods, DEFAULT_COMPARISON_PERIOD, rangePresets, type ComparisonPeriod, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
+import { comparisonPeriodLabels, comparisonPeriods, DEFAULT_COMPARISON_PERIOD, rangePresets, type ComparisonPeriod, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { DashboardGrid } from "./dashboard-grid";
@@ -348,7 +358,6 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const title = currentScope ? (
     <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">Dashboard</p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{dashboard?.name ?? "Dashboard"}</h1>
       </div>
       <ScopeSelector scope={currentScope} locations={locations} onChange={updateScope} />
@@ -382,58 +391,94 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
       />
       <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm xl:flex-row xl:items-end xl:justify-between">
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-end xl:gap-x-6">
           <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
-          <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
+          <div className="max-sm:hidden">
+            <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
+          </div>
+          <p className="text-sm text-muted-foreground sm:hidden">
+            Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {canViewFinancials && access.granularity === "detail" && showMonthly ? (
-            <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button>
-          ) : null}
-          {canSyncData || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
-            && dashboard.widgets.some((widget) => widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].source === "economic")) ? (
-            <Button type="button" size="lg" variant="outline" className="min-h-11" disabled={updatingData} onClick={() => void updateDashboardData()}>
-              {updatingData ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
-              {updatingData ? "Opdaterer" : "Opdatér"}
+        {canShare && shareMounted ? (
+          <ShareDialog
+            dashboardId={dashboard.id}
+            dashboardName={dashboard.name}
+            onBeforeCreate={flushConfigSave}
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+            showTrigger={false}
+          />
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {canManage ? (
+            <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
+              <PencilIcon data-icon="inline-start" />
+              {editing ? "Færdig" : "Redigér"}
             </Button>
           ) : null}
-          {canShare ? (
-            <>
-              <Button
-                type="button"
-                size="lg"
-                className="min-h-11"
-                variant="outline"
-                onClick={() => {
-                  setShareMounted(true);
-                  setShareOpen(true);
-                }}
-              >
-                <Share2Icon data-icon="inline-start" />
-                Del
-              </Button>
-              {shareMounted ? (
-                <ShareDialog
-                  dashboardId={dashboard.id}
-                  dashboardName={dashboard.name}
-                  onBeforeCreate={flushConfigSave}
-                  open={shareOpen}
-                  onOpenChange={setShareOpen}
-                  showTrigger={false}
-                />
-              ) : null}
-            </>
-          ) : null}
-          {canManage ? (
-            <>
-              {editing ? <Button type="button" size="lg" variant="outline" className="min-h-11" onClick={() => void saveCurrentDefaults()}><SaveIcon data-icon="inline-start" />Gem som standard</Button> : null}
-              <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
-                <PencilIcon data-icon="inline-start" />
-                {editing ? "Færdig" : "Redigér"}
-              </Button>
-              {editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...dashboard.widgets, widget]))} /> : null}
-            </>
-          ) : null}
+          {canManage && editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...dashboard.widgets, widget]))} /> : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button type="button" size="lg" variant="outline" className="min-h-11" aria-label="Flere handlinger" />
+              }
+            >
+              <EllipsisVerticalIcon data-icon="inline-start" />
+              Mere
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuGroup>
+                {canViewFinancials && access.granularity === "detail" && showMonthly ? (
+                  <DropdownMenuItem onClick={() => router.push("/dashboard/monthly")}>
+                    <FileTextIcon />
+                    Månedsrapport
+                  </DropdownMenuItem>
+                ) : null}
+                {canSyncData || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
+                  && dashboard.widgets.some((widget) => widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].source === "economic")) ? (
+                  <DropdownMenuItem disabled={updatingData} onClick={() => void updateDashboardData()}>
+                    <RefreshCwIcon />
+                    {updatingData ? "Opdaterer" : "Opdatér"}
+                  </DropdownMenuItem>
+                ) : null}
+                {canShare ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setShareMounted(true);
+                      setShareOpen(true);
+                    }}
+                  >
+                    <Share2Icon />
+                    Del
+                  </DropdownMenuItem>
+                ) : null}
+                {canManage && editing ? (
+                  <DropdownMenuItem onClick={() => void saveCurrentDefaults()}>
+                    <SaveIcon />
+                    Gem som standard
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuGroup>
+              <div className="sm:hidden">
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Sammenlign med</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={currentComparison}
+                  onValueChange={(value) => {
+                    const next = comparisonPeriods.find((period) => period === value);
+                    if (next) updateComparison(next);
+                  }}
+                >
+                  {comparisonPeriods.map((period) => (
+                    <DropdownMenuRadioItem key={period} value={period}>
+                      {comparisonPeriodLabels[period]}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       {visibleWidgets.length ? (

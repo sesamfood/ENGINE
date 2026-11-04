@@ -54,6 +54,24 @@ const DonutVisualization = dynamic<VisualizationProps>(
 
 function withEmptyState(Visualization: ComponentType<VisualizationProps>) {
   return function VisualizationWithEmptyState(props: VisualizationProps) {
+    if (
+      props.result.emptyMessage === undefined &&
+      props.result.series.every((series) => series.points.length === 0)
+    ) {
+      return createElement(
+        Empty,
+        {
+          role: "status",
+          tabIndex: 0,
+          className: "h-full min-h-0 justify-start overflow-y-auto p-0",
+        },
+        createElement(
+          EmptyDescription,
+          { className: "my-auto w-full shrink-0 wrap-anywhere" },
+          "Ingen data i perioden",
+        ),
+      );
+    }
     if (props.result.emptyMessage !== undefined) {
       return createElement(
         Empty,

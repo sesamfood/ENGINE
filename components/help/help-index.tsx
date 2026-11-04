@@ -78,8 +78,9 @@ export function HelpIndex() {
                         {feature.summary}
                       </p>
                       <p className="mt-auto text-xs text-muted-foreground">
-                        Overblik og {guideCount}{" "}
-                        {guideCount === 1 ? "guide" : "guider"}
+                        {guideCount > 0
+                          ? `Overblik og ${guideCount} ${guideCount === 1 ? "guide" : "guider"}`
+                          : "Overblik"}
                       </p>
                     </CardContent>
                   </Card>

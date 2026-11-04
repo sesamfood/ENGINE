@@ -43,9 +43,6 @@ function HeaderContent({
   return (
     <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Varemodtagelse
-        </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           Varemodtagelse
         </h1>

@@ -543,7 +543,7 @@ export function DashboardGrid({
       <div
         data-dashboard-grid
         className={cn(
-          "dashboard-grid col-start-1 row-start-1 grid grid-flow-dense xl:grid-flow-row",
+          "dashboard-grid col-start-1 row-start-1 grid grid-flow-row",
           activeKey && "cursor-grabbing",
         )}
       >

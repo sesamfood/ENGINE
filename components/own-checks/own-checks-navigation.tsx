@@ -69,11 +69,11 @@ export function OwnChecksNavigation() {
     <AppBottomBar>
       <div className="mx-auto w-full max-w-(--container-page)">
         <Tabs value={value} className="min-w-0" onValueChange={(next) => router.push(next === "today" ? "/own-checks" : next === "overview" ? "/own-checks/overview" : next === "guidance" ? "/own-checks/guidance" : "/own-checks/documentation", { scroll: false })}>
-          <TabsList ref={tabsRef} variant="line" aria-label="Egenkontrolsektioner" className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden">
-            {showToday ? <TabsTrigger value="today" appearance="standard" className="min-w-28"><ClipboardCheckIcon data-icon="inline-start" />I dag</TabsTrigger> : null}
-            {showOverview ? <TabsTrigger value="overview" appearance="standard" className="min-w-28"><ListChecksIcon data-icon="inline-start" />Oversigt</TabsTrigger> : null}
-            {showDocumentation ? <TabsTrigger value="documentation" appearance="standard" className="min-w-36"><FileCheck2Icon data-icon="inline-start" />Dokumentation</TabsTrigger> : null}
-            {showGuidance ? <TabsTrigger value="guidance" appearance="standard" className="min-w-28"><BookOpenIcon data-icon="inline-start" />Vejledning</TabsTrigger> : null}
+          <TabsList ref={tabsRef} variant="line" aria-label="Egenkontrolsektioner" className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFadeBelowLg">
+            {showToday ? <TabsTrigger value="today" appearance="compact" className="min-w-24 sm:min-w-28"><ClipboardCheckIcon data-icon="inline-start" />I dag</TabsTrigger> : null}
+            {showOverview ? <TabsTrigger value="overview" appearance="compact" className="min-w-24 sm:min-w-28"><ListChecksIcon data-icon="inline-start" />Oversigt</TabsTrigger> : null}
+            {showDocumentation ? <TabsTrigger value="documentation" appearance="compact" className="min-w-32 sm:min-w-36"><FileCheck2Icon data-icon="inline-start" />Dokumentation</TabsTrigger> : null}
+            {showGuidance ? <TabsTrigger value="guidance" appearance="compact" className="min-w-24 sm:min-w-28"><BookOpenIcon data-icon="inline-start" />Vejledning</TabsTrigger> : null}
           </TabsList>
         </Tabs>
       </div>

@@ -30,7 +30,9 @@ export function ProductCardMedia({
         />
       ) : (
         (fallback ?? (
-          <PackageOpenIcon className="size-10 lg:size-12" aria-hidden="true" />
+          <span className="flex size-14 items-center justify-center rounded-full bg-background/70">
+            <PackageOpenIcon className="size-7" aria-hidden="true" />
+          </span>
         ))
       )}
     </div>

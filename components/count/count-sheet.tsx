@@ -511,14 +511,14 @@ function SingleProductCounter({
   }
 
   return (
-    <div className="flex min-h-128 flex-col gap-3 md:grid md:min-h-(--spacing-count-panel) md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
+    <div className="flex flex-col gap-3 md:grid md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
       <Button
         type="button"
         variant="outline"
         size="icon-lg"
         appearance="round"
         className="hidden size-12 md:inline-flex"
-        aria-label="Forrige Produkt"
+        aria-label="Forrige produkt"
         disabled={previousDisabled}
         onClick={onPrevious}
       >
@@ -531,7 +531,7 @@ function SingleProductCounter({
         className="h-full min-h-0"
       >
         <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
-          <div className="relative min-h-56 overflow-hidden bg-muted lg:min-h-full">
+          <div className="relative h-36 overflow-hidden bg-muted sm:h-60 lg:h-auto lg:min-h-full">
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
@@ -542,7 +542,7 @@ function SingleProductCounter({
                 className="object-cover"
               />
             ) : (
-              <div className="flex size-full min-h-56 items-center justify-center text-muted-foreground">
+              <div className="flex size-full items-center justify-center text-muted-foreground">
                 <PackageOpenIcon className="size-16" aria-hidden="true" />
               </div>
             )}
@@ -565,7 +565,7 @@ function SingleProductCounter({
               </CardTitle>
             </CardHeader>
 
-            <CardContent appearance="hero" className="flex flex-1 flex-col justify-center">
+            <CardContent appearance="hero" className="flex flex-1 flex-col lg:justify-center">
               <FieldGroup appearance="compact">
                 {product.units.map((unit) => (
                   <Field
@@ -608,10 +608,10 @@ function SingleProductCounter({
         className="hidden size-12 md:inline-flex"
         aria-label={
           completionPending
-            ? "Markerer Område som færdigt"
+            ? "Markerer område som færdigt"
             : isLastProduct && onComplete
-              ? "Markér Område som færdigt"
-              : "Næste Produkt"
+              ? "Markér område som færdigt"
+              : "Næste produkt"
         }
         disabled={nextDisabled}
         onClick={goToNext}
@@ -781,7 +781,7 @@ function CountAreaPicker({
             statusKind === "complete"
               ? "Færdig"
               : statusKind === "empty"
-                ? "Ingen Produkter"
+                ? "Ingen produkter"
                 : statusKind === "notStarted"
                   ? "Ikke startet"
                   : `${countedProductCount}/${countArea.productIds.length} optalt`;
@@ -891,8 +891,8 @@ function OrderBuilder({
           <DialogTitle>Start forfra med rækkefølgen</DialogTitle>
           <DialogDescription>
             {appendUnselected
-              ? "Vælg Produkterne i den rækkefølge, de skal vises. Produkter, du ikke vælger, placeres til sidst."
-              : "Vælg de Produkter, der skal tælles i dette Område, og angiv deres rækkefølge."}
+              ? "Vælg produkterne i den rækkefølge, de skal vises. Produkter, du ikke vælger, placeres til sidst."
+              : "Vælg de produkter, der skal tælles i dette område, og angiv deres rækkefølge."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-h-0 gap-4 sm:grid-cols-2">
@@ -1158,7 +1158,7 @@ function SortableProduct({
 function CountSkeleton({ single = false }: { single?: boolean }) {
   if (single) {
     return (
-      <div className="flex min-h-128 flex-col gap-3 md:grid md:min-h-(--spacing-count-panel) md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
+      <div className="flex flex-col gap-3 md:grid md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
         <div className="hidden size-12 md:block" />
         <Card appearance="fullscreen" className="h-full min-h-0">
           <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
@@ -1789,7 +1789,7 @@ export function CountSheet() {
       }
       if (report.unmappedSalesQuantity > 0) {
         toast.warning(
-          `Salg på ${String(report.unmappedSalesQuantity).replace(".", ",")} enheder kunne ikke kobles til et Produkt.`,
+          `Salg på ${String(report.unmappedSalesQuantity).replace(".", ",")} enheder kunne ikke kobles til et produkt.`,
         );
       }
       const selectedHealth =
@@ -1904,7 +1904,7 @@ export function CountSheet() {
   );
 
   return (
-    <div className="flex flex-col gap-4 pb-28">
+    <div className="flex flex-col gap-4 pb-44 sm:pb-28">
       {activeCountAreaId && state && !lockedReason ? (
         <CountAreaPresence countAreaId={activeCountAreaId} />
       ) : null}
@@ -1919,7 +1919,7 @@ export function CountSheet() {
       ) : (
         <>
           {!editingOrder ? (
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-nowrap items-center justify-between gap-2 sm:flex-wrap sm:gap-3">
               <ToggleGroup
                 value={[viewMode]}
                 onValueChange={(value) => {
@@ -1931,22 +1931,22 @@ export function CountSheet() {
                 variant="outline"
                 spacing={0}
                 aria-label="Produktvisning"
-                className="w-full sm:w-fit"
+                className="min-w-0 flex-1 sm:flex-none"
               >
                 <ToggleGroupItem
                   value="single"
                   className="min-h-11 flex-1 sm:flex-none"
                 >
-                  Ét Produkt ad gangen
+                  Ét produkt ad gangen
                 </ToggleGroupItem>
                 <ToggleGroupItem
                   value="all"
                   className="min-h-11 flex-1 sm:flex-none"
                 >
-                  Alle Produkter
+                  Alle produkter
                 </ToggleGroupItem>
               </ToggleGroup>
-              <div className="ml-auto flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <div className="ml-auto flex shrink-0 gap-2 sm:w-auto sm:flex-row sm:items-center">
                 {countAreas && countAreas.length > 0 ? (
                   <Button
                     type="button"
@@ -1965,9 +1965,10 @@ export function CountSheet() {
                     className="min-h-11"
                     disabled={!products || !productOrder || !catalogProducts}
                     onClick={startEditingOrder}
+                    aria-label="Redigér rækkefølge"
                   >
                     <GripVerticalIcon data-icon="inline-start" />
-                    Redigér rækkefølge
+                    <span className="max-sm:hidden">Redigér rækkefølge</span>
                   </Button>
                 ) : null}
               </div>
@@ -1987,8 +1988,8 @@ export function CountSheet() {
                       setSearch(event.target.value);
                       cancelEditingOrder();
                     }}
-                    placeholder="Søg efter Produkter"
-                    aria-label="Søg efter Produkter"
+                    placeholder="Søg efter produkter"
+                    aria-label="Søg efter produkter"
                   />
                 </InputGroup>
                 {editingOrder && canManageLocations ? (
@@ -2035,8 +2036,10 @@ export function CountSheet() {
                 className="w-full min-w-0"
               >
                 <TabsList
+                  variant="filter"
                   aria-label="Produktkategorier"
                   className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
+                  appearance="scrollFade"
                 >
                   <TabsTrigger value="all" appearance="standard" className="min-w-24 shrink-0">
                     Alle
@@ -2056,6 +2059,18 @@ export function CountSheet() {
             </>
           ) : null}
 
+          {isClosed && state ? (
+            <Alert variant="paused">
+              <LockKeyholeIcon />
+              <AlertTitle>Count er låst</AlertTitle>
+              <AlertDescription>
+                <CountOpenCountdown target={state.opensAt} />. Du kan se
+                produkterne, men først registrere mængder, når Count-vinduet
+                åbner.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
           {!products ? (
             <CountSkeleton single={!editingOrder && viewMode === "single"} />
           ) : null}
@@ -2068,15 +2083,15 @@ export function CountSheet() {
                 </EmptyMedia>
                 <EmptyTitle>
                   {emptyAreaOrder
-                    ? "Ingen Produkter i dette Område"
-                    : "Ingen Produkter fundet"}
+                    ? "Ingen produkter i dette område"
+                    : "Ingen produkter fundet"}
                 </EmptyTitle>
                 <EmptyDescription>
                   {emptyAreaOrder
-                    ? 'En bruger med tilladelsen til at administrere lokationer skal vælge Produkter med "Start forfra" i rækkefølgeeditoren.'
+                    ? 'En bruger med tilladelsen til at administrere lokationer skal vælge produkter med "Start forfra" i rækkefølgeeditoren.'
                     : search
                       ? "Prøv en anden søgning."
-                      : "Der er ingen aktive Produkter i denne kategori."}
+                      : "Der er ingen aktive produkter i denne kategori."}
                 </EmptyDescription>
                 {emptyAreaOrder && canManageLocations ? (
                   <Button
@@ -2108,7 +2123,7 @@ export function CountSheet() {
               }
               onPrevious={() => moveSingleProduct(-1)}
               onNext={advanceSingleProduct}
-              completionPending={completingCountAreaId === activeCountAreaId}
+              completionPending={completingCountAreaId !== null && completingCountAreaId === activeCountAreaId}
               onComplete={
                 countAreas && countAreas.length > 0
                   ? () => void finishCurrentCountArea()
@@ -2184,20 +2199,7 @@ export function CountSheet() {
 
       <CountNavigation
         action={
-          <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
-            {isClosed && state ? (
-              <Badge
-                variant="secondary"
-                appearance="wrap"
-                className="h-auto max-w-36 justify-end text-right whitespace-normal sm:max-w-none sm:whitespace-nowrap"
-              >
-                <LockKeyholeIcon data-icon="inline-start" />
-                <span>
-                  <span className="hidden lg:inline">Count er låst · </span>
-                  <CountOpenCountdown target={state.opensAt} />
-                </span>
-              </Badge>
-            ) : null}
+          <div className="grid w-full grid-cols-2 items-center gap-2 max-sm:[&>*]:w-full max-sm:[&>*>button]:w-full sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
             {state &&
             !state.adHoc &&
             (isClosed || state.count?.status === "submitted") ? (

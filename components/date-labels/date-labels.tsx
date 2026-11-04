@@ -151,9 +151,6 @@ export function DateLabels() {
       <AppPageHeader>
         <div className="grid gap-4 sm:grid-cols-(--grid-cols-settings-header) sm:items-end">
           <div className="flex flex-col gap-1">
-            <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-              Datomærkning
-            </p>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               Datomærkning
             </h1>

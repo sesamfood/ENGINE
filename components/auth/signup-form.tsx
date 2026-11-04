@@ -12,6 +12,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import posthog from "posthog-js";
 import { authClient } from "@/lib/auth-client";
@@ -92,10 +93,9 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
         </Field>
         <Field>
           <FieldLabel htmlFor="password">Adgangskode</FieldLabel>
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="new-password"
             minLength={12}
             maxLength={256}

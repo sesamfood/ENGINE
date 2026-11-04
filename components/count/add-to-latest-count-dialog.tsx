@@ -42,7 +42,7 @@ type LatestCountProduct = {
   }>;
 };
 
-// Bottom-bar action for adding a Produkt that was forgotten in the latest Count.
+// Bottom-bar action for adding a product that was forgotten in the latest Count.
 export function AddForgottenProductButton() {
   const { locationId } = useCountState();
   const canManage = usePermission("count.manage");
@@ -64,8 +64,8 @@ export function AddForgottenProductButton() {
         onClick={() => setOpen(true)}
       >
         <PlusIcon data-icon="inline-start" />
-        <span className="sm:hidden">Glemt Produkt</span>
-        <span className="hidden sm:inline">Tilføj glemt Produkt</span>
+        <span className="sm:hidden">Glemt produkt</span>
+        <span className="hidden sm:inline">Tilføj glemt produkt</span>
       </Button>
       <AddToLatestCountDialog
         locationId={locationId}
@@ -135,7 +135,7 @@ function AddToLatestCountDialog({
         <form className="flex flex-col gap-4" onSubmit={save}>
           <DialogHeader>
             <DialogTitle>
-              Tilføj glemt Produkt
+              Tilføj glemt produkt
             </DialogTitle>
             <DialogDescription>
               Tilføj den optalte beholdning til den seneste registrerede
@@ -160,12 +160,12 @@ function AddToLatestCountDialog({
                 >
                   <ComboboxInput
                     id="latest-count-product"
-                    placeholder="Søg efter Produkt"
+                    placeholder="Søg efter produkt"
                     className="h-11 w-full"
                     disabled={saving}
                   />
                   <ComboboxContent>
-                    <ComboboxEmpty>Ingen Produkter fundet.</ComboboxEmpty>
+                    <ComboboxEmpty>Ingen produkter fundet.</ComboboxEmpty>
                     <ComboboxList>
                       {(id: Id<"products">) => (
                         <ComboboxItem key={id} value={id} className="min-h-11">

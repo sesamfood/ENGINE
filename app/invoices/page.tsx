@@ -122,9 +122,6 @@ function InvoicesContent() {
 export default function InvoicesPage() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
-      <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-        Salg
-      </p>
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
         Salg
       </h1>

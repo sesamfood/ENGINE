@@ -22,7 +22,7 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
     key: `slice${index}`,
     fill: `var(--color-slice${index})`,
   }));
-  const config = Object.fromEntries(data.map((item, index) => [item.key, { label: item.label, color: `var(--chart-${(index % 5) + 1})` }])) satisfies ChartConfig;
+  const config = Object.fromEntries(data.map((item, index) => [item.key, { label: item.label, color: `oklch(from var(--primary) 0.62 0.16 calc(h + ${index * 45}))` }])) satisfies ChartConfig;
   return (
     <ChartContainer config={config} className="h-full min-h-0 w-full aspect-auto">
       <PieChart accessibilityLayer>

@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useConvexAuth } from "convex/react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { StoredOrganizationTheme } from "@/components/organization/organization-theme";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
@@ -106,7 +107,9 @@ export function AppRouteShell({
     return <AuthenticationRecovery />;
   }
 
-  if (shellless) return children;
+  if (shellless) {
+    return <StoredOrganizationTheme>{children}</StoredOrganizationTheme>;
+  }
 
   return (
     <AuthenticatedAppShell defaultSidebarOpen={defaultSidebarOpen}>
