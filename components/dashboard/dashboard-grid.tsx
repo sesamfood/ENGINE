@@ -547,7 +547,13 @@ export function DashboardGrid({
           activeKey && "cursor-grabbing",
         )}
       >
-        {displayedWidgets.map((widget) => {
+        {[...displayedWidgets]
+          .sort(
+            (left, right) =>
+              (left.position?.row ?? 0) - (right.position?.row ?? 0) ||
+              (left.position?.column ?? 0) - (right.position?.column ?? 0),
+          )
+          .map((widget) => {
           const source = layout.find((item) => item.key === widget.key) ?? widget;
           const customMetric = widget.metric.kind === "custom"
             ? customMetricsById.get(String(widget.metric.id))

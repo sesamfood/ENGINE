@@ -21,6 +21,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+function useShortcutLabel() {
+  const [label, setLabel] = useState("Ctrl K");
+  useEffect(() => {
+    if (!/mac|iphone|ipad/i.test(navigator.userAgent)) return;
+    const timeout = window.setTimeout(() => setLabel("⌘ K"));
+    return () => window.clearTimeout(timeout);
+  }, []);
+  return label;
+}
+
 export type HelpSearchDocument = {
   href: string;
   feature: string;
@@ -39,6 +49,7 @@ function normalizeSearch(value: string) {
 }
 
 export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
+  const shortcutLabel = useShortcutLabel();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -126,7 +137,7 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
         <span className="hidden sm:inline">Søg i hjælpen…</span>
         <span className="sm:hidden">Søg</span>
         <kbd className="ml-auto hidden rounded border px-1.5 py-0.5 text-xs text-muted-foreground md:pointer-fine:block">
-          Ctrl / ⌘ K
+          {shortcutLabel}
         </kbd>
       </DialogTrigger>
       <DialogContent

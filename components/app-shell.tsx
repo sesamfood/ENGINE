@@ -109,6 +109,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   AppPageHeaderProvider,
   AppPageHeaderTarget,
+  AppSectionNavTarget,
 } from "@/components/app-page-header";
 import { BrowserBranding } from "@/components/browser-branding";
 import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
@@ -1866,6 +1867,7 @@ export function AppShell({
                           />
                         </div>
                       </header>
+                      <AppSectionNavTarget />
                       {/* Sticks below the sticky header, so offsets match its heights. */}
                       <SupportBanner
                         className={cn("top-16", showPageHeader && "md:top-20")}

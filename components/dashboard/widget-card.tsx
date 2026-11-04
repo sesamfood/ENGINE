@@ -372,11 +372,15 @@ export function WidgetCard({
                       <Badge
                         variant="secondary"
                         appearance={
-                          financial
+                          financial || change === 0
                             ? undefined
-                            : change >= 0
-                              ? "positive"
-                              : "negative"
+                            : definition?.direction === "up-good" || definition?.direction === "down-good"
+                              ? (definition.direction === "down-good" ? change < 0 : change > 0)
+                                ? "favorable"
+                                : "negative"
+                              : change >= 0
+                                ? "positive"
+                                : "negative"
                         }
                         className="max-w-full"
                       >

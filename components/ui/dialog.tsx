@@ -16,9 +16,9 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
 const dialogTriggerAppearance = cva("", {
   variants: {
     appearance: {
-      card: "rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+      card: "rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring",
       image:
-        "rounded-xl border outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        "rounded-xl border outline-none focus-visible:ring-3 focus-visible:ring-ring",
     },
   },
 })

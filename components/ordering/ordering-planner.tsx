@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronRightIcon,
   DownloadIcon,
+  LayoutGridIcon,
   PackageOpenIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -982,7 +983,7 @@ function Planner({
                 value: NO_SUPPLIER,
                 label: "Ingen leverandør",
                 description: "Alle produkter, der kan bestilles",
-                Icon: TruckIcon,
+                Icon: LayoutGridIcon,
               },
             ].map((option) => (
               <Card

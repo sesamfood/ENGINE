@@ -14,14 +14,38 @@ import { cn } from "@/lib/utils";
 const HeaderContext = createContext<{
   target: HTMLDivElement | null;
   setTarget: (target: HTMLDivElement | null) => void;
+  sectionTarget: HTMLDivElement | null;
+  setSectionTarget: (target: HTMLDivElement | null) => void;
 } | null>(null);
 
 export function AppPageHeaderProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<HTMLDivElement | null>(null);
-  const value = useMemo(() => ({ target, setTarget }), [target]);
+  const [sectionTarget, setSectionTarget] =
+    useState<HTMLDivElement | null>(null);
+  const value = useMemo(
+    () => ({ target, setTarget, sectionTarget, setSectionTarget }),
+    [sectionTarget, target],
+  );
   return (
     <HeaderContext.Provider value={value}>{children}</HeaderContext.Provider>
   );
+}
+
+export function AppSectionNavTarget() {
+  const context = useContext(HeaderContext);
+  return (
+    <div
+      ref={context?.setSectionTarget}
+      className="hidden px-4 empty:hidden md:block"
+    />
+  );
+}
+
+export function AppSectionNav({ children }: { children: ReactNode }) {
+  const context = useContext(HeaderContext);
+  const isMobile = useIsMobile();
+  if (isMobile || !context?.sectionTarget) return null;
+  return createPortal(children, context.sectionTarget);
 }
 
 export function AppPageHeaderTarget() {

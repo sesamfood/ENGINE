@@ -13,13 +13,13 @@ const cardVariants = cva("", {
         "gap-0 py-0 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none",
       countStatus: "transition-shadow has-[button:hover]:shadow-sm",
       choice:
-        "outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
+        "outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring",
       dragPreview:
         "border-primary/50 bg-card/95 shadow-xl ring-2 ring-primary/20",
       widget:
         "gap-2 border-border/70 pb-2 shadow-sm transition-[box-shadow,border-color] duration-150",
       visualization:
-        "outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
+        "outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring",
       dateLabel: "gap-3 pt-0",
       link: "transition-colors group-hover:bg-muted/50 group-active:bg-muted/50",
       help: "gap-4 py-5",
@@ -31,7 +31,7 @@ const cardVariants = cva("", {
       error: "border-destructive/40",
       danger: "ring-destructive/30",
       staffProduct: "gap-0 py-0 transition-[opacity,filter,box-shadow]",
-      menu: "transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+      menu: "transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring",
     },
     interaction: {
       product:

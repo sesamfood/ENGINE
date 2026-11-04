@@ -70,6 +70,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -478,6 +479,8 @@ function SingleProductCounter({
   product,
   position,
   productCount,
+  countedCount,
+  saveStatus,
   disabledReason,
   quantityFor,
   onQuantityChange,
@@ -489,6 +492,8 @@ function SingleProductCounter({
   product: CountProduct;
   position: number;
   productCount: number;
+  countedCount: number;
+  saveStatus: string | null;
   disabledReason: string | null;
   quantityFor: (unit: CountUnit) => number;
   onQuantityChange: (unit: CountUnit, quantity: number) => void;
@@ -554,6 +559,20 @@ function SingleProductCounter({
                 <Badge variant="secondary" aria-live="polite">
                   {position + 1} af {productCount}
                 </Badge>
+                {saveStatus ? (
+                  <span aria-live="polite" className="text-xs text-muted-foreground">
+                    {saveStatus}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Progress
+                  value={productCount > 0 ? (countedCount / productCount) * 100 : 0}
+                  aria-label={`${countedCount} af ${productCount} produkter talt`}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {countedCount} af {productCount} talt
+                </span>
                 <CardDescription>
                   {product.categories
                     .map((category) => category.name)
@@ -1212,6 +1231,7 @@ export function CountSheet() {
   >({});
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [quantitySaveFailed, setQuantitySaveFailed] = useState(false);
+  const [hasEditedQuantities, setHasEditedQuantities] = useState(false);
   const [viewMode, setViewMode] = useState<CountViewMode>("single");
   const [singleProductSelection, setSingleProductSelection] = useState<{
     key: string;
@@ -1422,6 +1442,7 @@ export function CountSheet() {
   ) {
     if (!locationId) return;
     const key = quantityKey(locationId, activeCountAreaId, product.id, unit.id);
+    setHasEditedQuantities(true);
     setOverrides((current) => ({ ...current, [key]: quantity }));
     pendingValues.current.set(key, {
       locationId,
@@ -2150,6 +2171,18 @@ export function CountSheet() {
               product={singleProduct}
               position={singleProductIndex}
               productCount={displayedProducts.length}
+              countedCount={displayedProducts.filter((candidate) =>
+                candidate.units.some((unit) => quantityFor(candidate, unit) > 0),
+              ).length}
+              saveStatus={
+                quantitySaveFailed
+                  ? null
+                  : Object.keys(overrides).length > 0
+                    ? "Gemmer…"
+                    : hasEditedQuantities
+                      ? "Gemt som kladde"
+                      : null
+              }
               disabledReason={lockedReason}
               quantityFor={(unit) => quantityFor(singleProduct, unit)}
               onQuantityChange={(unit, quantity) =>

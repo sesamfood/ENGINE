@@ -123,13 +123,13 @@ const commandItemAppearance = cva("", {
   variants: {
     appearance: {
       create:
-        "rounded-lg border border-dashed p-3 focus-visible:ring-3 focus-visible:ring-ring/50",
+        "rounded-lg border border-dashed p-3 focus-visible:ring-3 focus-visible:ring-ring",
       search:
         "gap-3 py-2 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
       metric:
-        "rounded-lg border bg-card p-3 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
+        "rounded-lg border bg-card p-3 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring",
       customMetric:
-        "rounded-lg border bg-card p-3 pr-24 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
+        "rounded-lg border bg-card p-3 pr-24 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring",
     },
     highlighted: { true: "border-primary bg-primary/5 ring-2 ring-primary/20" },
   },

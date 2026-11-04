@@ -113,24 +113,24 @@ function TransfersContent() {
       appearance="scrollFadeBelowLg"
     >
       {showNew ? (
-        <TabsTrigger value="new" appearance="compact" className="shrink-0 sm:min-w-28">
+        <TabsTrigger value="new" appearance="compact" className="min-w-0 flex-1 sm:min-w-28 sm:flex-none">
           <ArrowRightLeftIcon data-icon="inline-start" />
-          Ny transfer
+          <span className="truncate">Ny transfer</span>
         </TabsTrigger>
       ) : null}
       {showOrders ? (
-        <TabsTrigger value="orders" appearance="compact" className="shrink-0 sm:min-w-28">
+        <TabsTrigger value="orders" appearance="compact" className="min-w-0 flex-1 sm:min-w-28 sm:flex-none">
           <ShoppingCartIcon data-icon="inline-start" />
-          Transferbestillinger
+          <span className="truncate">Transferbestillinger</span>
           {openOrders?.length ? (
             <Badge>{openOrders.length}</Badge>
           ) : null}
         </TabsTrigger>
       ) : null}
       {showHistory ? (
-        <TabsTrigger value="history" appearance="compact" className="shrink-0 sm:min-w-28">
+        <TabsTrigger value="history" appearance="compact" className="min-w-0 flex-1 sm:min-w-28 sm:flex-none">
           <HistoryIcon data-icon="inline-start" />
-          Transferhistorik
+          <span className="truncate">Transferhistorik</span>
         </TabsTrigger>
       ) : null}
     </TabsList>
