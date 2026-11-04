@@ -97,6 +97,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  clearOrderingDraft,
+  readOrderingDraft,
+  writeOrderingDraft,
+} from "@/lib/ordering-draft";
 import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
 import {
   DEFAULT_BUFFER_PERCENT,
@@ -183,6 +188,52 @@ function Planner({
   );
   const busy = exporting || placing;
   const submitting = useRef(false);
+  const restoredDraftFor = useRef<string | null>(null);
+  const draftAppliedFor = useRef<string | null>(null);
+
+  // Restore an unfinished order draft after navigation remounted the planner.
+  useEffect(() => {
+    if (editing || !locationId) return;
+    const key = `${organizationId}:${locationId}`;
+    if (restoredDraftFor.current === key) return;
+    restoredDraftFor.current = key;
+    const draft = readOrderingDraft(organizationId, locationId);
+    if (!draft) {
+      draftAppliedFor.current = key;
+      return;
+    }
+    window.setTimeout(() => {
+      if (draft.supplierChoice) setSupplierValue(draft.supplierChoice);
+      setOverrides(draft.overrides);
+      setUnitLines(
+        draft.unitLines as Record<string, { unitId: Id<"units">; input: string }[]>,
+      );
+      setCatalogInputs(draft.catalogInputs);
+      setSendEmail(draft.sendEmail);
+      draftAppliedFor.current = key;
+    });
+  }, [editing, locationId, organizationId]);
+
+  useEffect(() => {
+    if (editing || !locationId) return;
+    if (draftAppliedFor.current !== `${organizationId}:${locationId}`) return;
+    const empty =
+      !supplierChoice &&
+      !Object.keys(overrides).length &&
+      !Object.keys(unitLines).length &&
+      !Object.keys(catalogInputs).length;
+    if (empty) {
+      clearOrderingDraft(organizationId, locationId);
+      return;
+    }
+    writeOrderingDraft(organizationId, locationId, {
+      supplierChoice,
+      overrides,
+      unitLines,
+      catalogInputs,
+      sendEmail,
+    });
+  }, [catalogInputs, editing, locationId, organizationId, overrides, sendEmail, supplierChoice, unitLines]);
   const convex = useConvex();
   const placeOrder = useMutation(api.ordering.placeOrder);
   const updateOrder = useMutation(api.ordering.updateInternalOrder);
@@ -575,16 +626,16 @@ function Planner({
     !choosingSupplier;
 
   const header = (
-    <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
+    <FieldGroup appearance="standard" className="lg:flex-row lg:items-end lg:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>
           {editing ? "Redigér bestilling" : "Bestilling"}
         </PageTitle>
       </div>
       {canPlan ? (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
           {showSupplierField ? (
-            <Field className="sm:w-64">
+            <Field className="lg:w-64">
               <FieldLabel htmlFor="ordering-supplier">Leverandør</FieldLabel>
               <Select
                 items={supplierItems}
@@ -607,7 +658,7 @@ function Planner({
               </Select>
             </Field>
           ) : null}
-          <Field className="sm:w-72">
+          <Field className="lg:w-72">
             <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="ordering-location"
@@ -720,6 +771,7 @@ function Planner({
         lines: orderLines,
         catalogLines,
       });
+      clearOrderingDraft(organizationId, locationId);
       if (!mounted.current) return;
       setOrderingLocation(organizationId, locationId);
       setConfirming(false);
@@ -1424,7 +1476,7 @@ function Planner({
         </div>
       )}
       {canPlan && (!locationId || choosingSupplier) && navigation ? (
-        <AppBottomBar>
+        <AppBottomBar className="md:hidden">
           <div className="mx-auto w-full max-w-(--container-page)">
             {navigation}
           </div>

@@ -72,7 +72,7 @@ export function QuantityInput({
       <InputGroupAddon align="inline-start">
         <InputGroupButton
           size="icon-sm"
-          className="size-10"
+          className="size-11"
           aria-label={`Reducér ${label.toLocaleLowerCase("da")}`}
           disabled={disabled || (quantity !== null && quantity <= min)}
           onClick={() => adjust(-step)}
@@ -83,7 +83,7 @@ export function QuantityInput({
       <InputGroupAddon align="inline-end">
         <InputGroupButton
           size="icon-sm"
-          className="size-10"
+          className="size-11"
           aria-label={`Øg ${label.toLocaleLowerCase("da")}`}
           disabled={
             disabled ||

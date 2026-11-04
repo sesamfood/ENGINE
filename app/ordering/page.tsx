@@ -1,13 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { AppBottomBar } from "@/components/app-bottom-bar";
+import { AppSectionNav } from "@/components/app-page-header";
+import { SectionNav } from "@/components/section-nav";
 import { useAccess, useKioskPage, usePermission } from "@/components/app-shell";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HistoryIcon, ShoppingCartIcon } from "lucide-react";
 
 const OrderingPlanner = dynamic(
@@ -27,7 +28,6 @@ const OrderingHistory = dynamic(
 
 function OrderingContent() {
   const pathname = usePathname();
-  const router = useRouter();
   const access = useAccess();
   const canPlan = usePermission("ordering.plan");
   const showNew = useKioskPage("ordering.new");
@@ -47,52 +47,36 @@ function OrderingContent() {
     );
   }
 
+  const navItems = [
+    ...(showNew
+      ? [{ href: "/ordering", label: "Ny bestilling", shortLabel: "Ny", icon: ShoppingCartIcon, active: activeTab === "new" }]
+      : []),
+    ...(showHistory
+      ? [{ href: "/ordering/history", label: "Bestillingshistorik", shortLabel: "Historik", icon: HistoryIcon, active: activeTab === "history" }]
+      : []),
+  ];
   const navigation = (
-    <TabsList
-      variant="line"
-      aria-label="Bestillingssektioner"
-      className="h-12 w-full max-w-full justify-start overflow-x-auto overflow-y-hidden sm:w-fit"
-      appearance="scrollFadeBelowLg"
-    >
-      {showNew ? (
-        <TabsTrigger value="new" appearance="compact" className="min-w-0 sm:min-w-32">
-          <ShoppingCartIcon data-icon="inline-start" />
-          Ny bestilling
-        </TabsTrigger>
-      ) : null}
-      {showHistory ? (
-        <TabsTrigger value="history" appearance="compact" className="min-w-0 sm:min-w-36">
-          <HistoryIcon data-icon="inline-start" />
-          Bestillingshistorik
-        </TabsTrigger>
-      ) : null}
-    </TabsList>
+    <SectionNav label="Bestillingssektioner" items={navItems} className="md:hidden" />
   );
 
   return (
-    <Tabs
-      value={activeTab}
-      onValueChange={(value) =>
-        router.push(value === "history" ? "/ordering/history" : "/ordering", {
-          scroll: false,
-        })
-      }
-    >
+    <>
+      <AppSectionNav>
+        <SectionNav label="Bestillingssektioner" items={navItems} className="mx-auto w-full max-w-(--container-page)" />
+      </AppSectionNav>
       {activeTab === "new" ? (
-        <TabsContent value="new">
-          <OrderingPlanner navigation={navigation} />
-        </TabsContent>
+        <OrderingPlanner navigation={navigation} />
       ) : (
-        <TabsContent value="history">
+        <>
           <OrderingHistory />
-          <AppBottomBar>
+          <AppBottomBar className="md:hidden">
             <div className="mx-auto w-full max-w-(--container-page)">
               {navigation}
             </div>
           </AppBottomBar>
-        </TabsContent>
+        </>
       )}
-    </Tabs>
+    </>
   );
 }
 

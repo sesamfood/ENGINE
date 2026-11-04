@@ -6,15 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SectionNav } from "@/components/section-nav";
 import { usePermission } from "@/components/app-shell";
 
 const administrationPath = "/administration";
@@ -159,88 +151,30 @@ export function AdministrationHeader() {
       <AppPageHeader>{header}</AppPageHeader>
 
       {inCatalog ? (
-        <>
-        <Select
+        <SectionNav
+          equalWidth={false}
+          label="Katalogsektioner"
           items={visibleCatalogSections.map((item) => ({
-            value: item.value,
+            href: `${administrationPath}/${item.value}`,
             label: item.label,
+            active: item.value === activeCatalogSection,
           }))}
-          value={activeCatalogSection}
-          onValueChange={(value) => {
-            if (value) {
-              router.push(`${administrationPath}/${value}`, { scroll: false });
-            }
-          }}
-        >
-          <SelectTrigger className="h-12 w-full md:hidden" aria-label="Katalogsektion">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {visibleCatalogSections.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Tabs
-          value={activeCatalogSection}
-          onValueChange={(value) =>
-            router.push(`${administrationPath}/${value}`, { scroll: false })
-          }
-          className="max-md:hidden"
-        >
-          <TabsList
-            variant="line"
-            aria-label="Katalogsektioner"
-            className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
-            appearance="scrollFade"
-          >
-            {visibleCatalogSections.map((item) => (
-              <TabsTrigger
-                key={item.value}
-                value={item.value}
-                appearance="standard"
-                className="shrink-0 flex-none"
-              >
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        </>
+        />
       ) : null}
       {inUsers && visibleUserSections.length > 1 ? (
-        <Tabs
-          value={
-            pathname.startsWith(`${administrationPath}/users/roles`)
-              ? "users/roles"
-              : "users"
-          }
-          onValueChange={(value) =>
-            router.push(`${administrationPath}/${value}`, { scroll: false })
-          }
-        >
-          <TabsList
-            variant="line"
-            aria-label="Brugersektioner"
-            className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
-            appearance="scrollFade"
-          >
-            {visibleUserSections.map((item) => (
-              <TabsTrigger
-                key={item.value}
-                value={item.value}
-                appearance="standard"
-                className="shrink-0 flex-none"
-              >
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <SectionNav
+          equalWidth={false}
+          label="Brugersektioner"
+          items={visibleUserSections.map((item) => ({
+            href: `${administrationPath}/${item.value}`,
+            label: item.label,
+            active:
+              item.value ===
+              (pathname.startsWith(`${administrationPath}/users/roles`)
+                ? "users/roles"
+                : "users"),
+          }))}
+        />
       ) : null}
     </>
   );

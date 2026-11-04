@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export type SectionNavItem = {
   href: string;
   label: string;
+  shortLabel?: string;
   icon?: ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>;
   active: boolean;
   badge?: number;
@@ -17,10 +18,12 @@ export function SectionNav({
   label,
   items,
   className,
+  equalWidth = true,
 }: {
   label: string;
   items: SectionNavItem[];
   className?: string;
+  equalWidth?: boolean;
 }) {
   const navRef = useRef<HTMLElement>(null);
 
@@ -36,7 +39,7 @@ export function SectionNav({
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <li key={item.href} className="flex h-full min-w-0 flex-1 sm:flex-none">
+            <li key={item.href} className={cn("flex h-full min-w-0 sm:flex-none", equalWidth ? "flex-1" : "shrink-0 flex-none")}>
               <Link
                 href={item.href}
                 aria-current={item.active ? "page" : undefined}
@@ -47,7 +50,14 @@ export function SectionNav({
                 )}
               >
                 {Icon ? <Icon aria-hidden="true" /> : null}
-                <span className="truncate">{item.label}</span>
+                {item.shortLabel ? (
+                  <>
+                    <span className="truncate sm:hidden">{item.shortLabel}</span>
+                    <span className="hidden truncate sm:inline">{item.label}</span>
+                  </>
+                ) : (
+                  <span className="truncate">{item.label}</span>
+                )}
                 {item.badge ? <Badge>{item.badge}</Badge> : null}
               </Link>
             </li>

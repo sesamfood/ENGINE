@@ -2115,7 +2115,7 @@ export function CountSheet() {
           ) : null}
 
           {isClosed && state ? (
-            <Alert variant="paused">
+            <Alert variant="paused" role="status">
               <LockKeyholeIcon />
               <AlertTitle>Count er låst</AlertTitle>
               <AlertDescription>

@@ -5,13 +5,12 @@ import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { AppPageHeader, PageTitle } from "@/components/app-page-header";
+import { AppPageHeader, AppSectionNav, PageTitle } from "@/components/app-page-header";
+import { SectionNav } from "@/components/section-nav";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
-import { Badge } from "@/components/ui/badge";
 import { ArrowRightLeftIcon, HistoryIcon, ShoppingCartIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 
@@ -105,71 +104,51 @@ function TransfersContent() {
     );
   }
 
+  const navItems = [
+    ...(showNew
+      ? [{ href: "/transfers", label: "Ny transfer", shortLabel: "Ny", icon: ArrowRightLeftIcon, active: selectedTab === "new" }]
+      : []),
+    ...(showOrders
+      ? [{ href: "/transfers/orders", label: "Transferbestillinger", shortLabel: "Ordrer", icon: ShoppingCartIcon, active: selectedTab === "orders", badge: openOrders?.length || undefined }]
+      : []),
+    ...(showHistory
+      ? [{ href: "/transfers/history", label: "Transferhistorik", shortLabel: "Historik", icon: HistoryIcon, active: selectedTab === "history" }]
+      : []),
+  ];
   const navigation = showSectionTabs ? (
-    <TabsList
-      variant="line"
-      aria-label="Transfersektioner"
-      className="h-12 w-full max-w-full justify-start overflow-x-auto overflow-y-hidden sm:w-fit"
-      appearance="scrollFadeBelowLg"
-    >
-      {showNew ? (
-        <TabsTrigger value="new" appearance="compact" className="min-w-0 flex-1 sm:min-w-28 sm:flex-none">
-          <ArrowRightLeftIcon data-icon="inline-start" />
-          <span className="truncate">Ny transfer</span>
-        </TabsTrigger>
-      ) : null}
-      {showOrders ? (
-        <TabsTrigger value="orders" appearance="compact" className="min-w-0 flex-1 sm:min-w-28 sm:flex-none">
-          <ShoppingCartIcon data-icon="inline-start" />
-          <span className="truncate">Transferbestillinger</span>
-          {openOrders?.length ? (
-            <Badge>{openOrders.length}</Badge>
-          ) : null}
-        </TabsTrigger>
-      ) : null}
-      {showHistory ? (
-        <TabsTrigger value="history" appearance="compact" className="min-w-0 flex-1 sm:min-w-28 sm:flex-none">
-          <HistoryIcon data-icon="inline-start" />
-          <span className="truncate">Transferhistorik</span>
-        </TabsTrigger>
-      ) : null}
-    </TabsList>
+    <SectionNav label="Transfersektioner" items={navItems} className="md:hidden" />
   ) : null;
 
   return (
-    <Tabs
-      value={selectedTab}
-      onValueChange={(value) =>
-        router.push(tabPath(value), { scroll: false })
-      }
-    >
+    <>
+      {showSectionTabs ? (
+        <AppSectionNav>
+          <SectionNav label="Transfersektioner" items={navItems} className="mx-auto w-full max-w-(--container-page)" />
+        </AppSectionNav>
+      ) : null}
       {showNew && selectedTab === "new" ? (
-        <TabsContent value="new">
-          <TransferForm navigation={navigation} />
-        </TabsContent>
+        <TransferForm navigation={navigation} />
       ) : null}
       {selectedTab === "orders" ? (
-        <TabsContent value="orders">
-          {openOrders ? (
-            <InternalOrders orders={openOrders} navigation={navigation} />
-          ) : (
-            <Skeleton className="h-96 w-full" />
-          )}
-        </TabsContent>
+        openOrders ? (
+          <InternalOrders orders={openOrders} navigation={navigation} />
+        ) : (
+          <Skeleton className="h-96 w-full" />
+        )
       ) : null}
       {showHistory && selectedTab === "history" ? (
-        <TabsContent value="history">
+        <>
           <TransferHistory />
           {navigation ? (
-            <AppBottomBar>
+            <AppBottomBar className="md:hidden">
               <div className="mx-auto w-full max-w-(--container-page)">
                 {navigation}
               </div>
             </AppBottomBar>
           ) : null}
-        </TabsContent>
+        </>
       ) : null}
-    </Tabs>
+    </>
   );
 }
 

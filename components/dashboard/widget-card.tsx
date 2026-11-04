@@ -50,7 +50,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { defaultSalesSource, metricRegistry, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
@@ -358,7 +357,7 @@ export function WidgetCard({
       <CardHeader appearance={compactLive ? "liveWidget" : "widget"} className="shrink-0">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-            <CardTitle title={metricLabel} appearance={hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix ? "flex flex-wrap items-baseline" : "")}>
+            <CardTitle title={metricLabel} role="heading" aria-level={2} appearance={hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix ? "flex flex-wrap items-baseline" : "")}>
               {hasSourceSuffix ? <>
                 <span className="line-clamp-2 max-w-full">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
                 <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal">{sourceSuffix.trimStart()}</span>
@@ -367,8 +366,8 @@ export function WidgetCard({
             {change !== null || result?.truncated || hasFreshness || result?.warning ? (
               <CardDescription appearance="inline" className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center overflow-hidden">
                 {change !== null ? (
-                  <Tooltip>
-                    <TooltipTrigger render={<button type="button" aria-label={`Ændring: ${change >= 0 ? "steget" : "faldet"} ${new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} ${financial ? "procentpoint" : "procent"} sammenlignet med ${comparisonLabel}`} className="inline-flex min-w-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
+                  <Popover>
+                    <PopoverTrigger render={<button type="button" aria-label={`Ændring: ${change >= 0 ? "steget" : "faldet"} ${new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} ${financial ? "procentpoint" : "procent"} sammenlignet med ${comparisonLabel}`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
                       <Badge
                         variant="secondary"
                         appearance={
@@ -387,9 +386,11 @@ export function WidgetCard({
                         {change >= 0 ? <ArrowUpRightIcon /> : <ArrowDownRightIcon />}
                         <span className="truncate">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} {financial ? "procentpoint" : "%"}</span>
                       </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>Sammenlignet med {comparisonLabel}</TooltipContent>
-                  </Tooltip>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-auto max-w-64">
+                      <p>Sammenlignet med {comparisonLabel}</p>
+                    </PopoverContent>
+                  </Popover>
                 ) : null}
                 {result?.truncated ? <TruncatedNotice /> : null}
                 {hasFreshness ? <FreshnessNotice freshness={freshness!} /> : null}

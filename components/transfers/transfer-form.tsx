@@ -314,7 +314,7 @@ export function TransferForm({
     const locationIds = new Set(locations.map((location) => location.id));
     const from = draft.fromLocationId && locationIds.has(draft.fromLocationId as Id<"locations">) ? draft.fromLocationId : null;
     const to = draft.toLocationId && locationIds.has(draft.toLocationId as Id<"locations">) ? draft.toLocationId : null;
-    const timeout = window.setTimeout(() => {
+    window.setTimeout(() => {
       if (from) {
         prefilledFromLocation.current = true;
         setFromLocationId(from);
@@ -340,7 +340,6 @@ export function TransferForm({
         );
       }
     });
-    return () => window.clearTimeout(timeout);
   }, [locations, order, organizationId, transfer]);
 
   useEffect(() => {
