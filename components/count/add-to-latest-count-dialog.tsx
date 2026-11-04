@@ -64,8 +64,8 @@ export function AddForgottenProductButton() {
         onClick={() => setOpen(true)}
       >
         <PlusIcon data-icon="inline-start" />
-        <span className="sm:hidden">Glemt produkt</span>
-        <span className="hidden sm:inline">Tilføj glemt produkt</span>
+        <span className="sm:hidden">Seneste Count</span>
+        <span className="hidden sm:inline">Tilføj til seneste Count</span>
       </Button>
       <AddToLatestCountDialog
         locationId={locationId}
@@ -135,7 +135,7 @@ function AddToLatestCountDialog({
         <form className="flex flex-col gap-4" onSubmit={save}>
           <DialogHeader>
             <DialogTitle>
-              Tilføj glemt produkt
+              Tilføj til seneste Count
             </DialogTitle>
             <DialogDescription>
               Tilføj den optalte beholdning til den seneste registrerede

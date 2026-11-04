@@ -192,10 +192,11 @@ export function ProfileSettings() {
             <p className="text-sm text-muted-foreground">E-mail</p>
             <p className="truncate font-medium">{session.data.user.email}</p>
           </div>
-          <div>
+          <div className="flex flex-wrap items-center gap-3">
             <Button
               type="submit"
               size="lg"
+              aria-describedby="profile-name-hint"
               disabled={
                 namePending ||
                 !nameDraft.trim() ||
@@ -205,6 +206,15 @@ export function ProfileSettings() {
               {namePending ? <Spinner data-icon="inline-start" /> : null}
               Gem navn
             </Button>
+            {!nameDraft.trim() ? (
+              <p id="profile-name-hint" className="text-sm text-muted-foreground">
+                Skriv et navn for at gemme.
+              </p>
+            ) : nameDraft.trim() === session.data.user.name ? (
+              <p id="profile-name-hint" className="text-sm text-muted-foreground">
+                Ingen ændringer at gemme.
+              </p>
+            ) : null}
           </div>
           </form>
         </CardContent>

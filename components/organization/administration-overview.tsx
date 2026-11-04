@@ -377,6 +377,12 @@ export function AdministrationOverview() {
         section.permissions.some((permission) => allowedPermissions[permission]),
       ),
     }))
+    .map((category) => ({
+      ...category,
+      sections: [...category.sections].sort((left, right) =>
+        left.title.localeCompare(right.title, "da"),
+      ),
+    }))
     .filter((category) => category.sections.length > 0);
 
   return (

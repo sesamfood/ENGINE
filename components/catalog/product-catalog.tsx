@@ -40,8 +40,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
-  CardAction,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -229,16 +229,23 @@ function ProductCard({
       ) : null}
       <ProductImage product={product} />
       <CardHeader appearance="padded">
-        <CardTitle>{product.name}</CardTitle>
+        <CardTitle appearance="productName">{product.name}</CardTitle>
         <CardDescription>
           {product.categories.map((category) => category.name).join(" · ") ||
             "Uden kategori"}
         </CardDescription>
+      </CardHeader>
         {!isSelectionMode ? (
-        <CardAction appearance="compact" className="relative z-20 flex items-center">
-          <span aria-hidden="true" className="pointer-events-none grid size-11 place-items-center text-muted-foreground">
-            <PencilIcon className="size-4" />
-          </span>
+        <CardFooter appearance="product" className="relative z-20 mt-auto flex items-center justify-end">
+          <Button
+            variant="ghost"
+            size="icon-lg"
+            className="size-11"
+            nativeButton={false}
+            render={<Link href={editHref} aria-label={`Redigér ${product.name}`} />}
+          >
+            <PencilIcon />
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -269,9 +276,8 @@ function ProductCard({
               <Trash2Icon />
             </Button>
           ) : null}
-        </CardAction>
+        </CardFooter>
         ) : null}
-      </CardHeader>
     </Card>
   );
 }

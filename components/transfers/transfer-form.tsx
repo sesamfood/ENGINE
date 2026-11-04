@@ -268,6 +268,7 @@ export function TransferForm({
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
     transfer?.responsibleUserId ?? null,
   );
+  const [responsibleCleared, setResponsibleCleared] = useState(false);
   const [comment, setComment] = useState(transfer?.comment ?? "");
   const [optionalOpen, setOptionalOpen] = useState(Boolean(transfer));
   const [transferredAtLocal, setTransferredAtLocal] = useState(() =>
@@ -406,11 +407,12 @@ export function TransferForm({
   const members = (responsibleUsers ?? []) as MemberOption[];
   const membersLoading = responsibleUsers === undefined;
   const membersError = undefined;
-  const effectiveResponsibleUserId =
-    responsibleUserId ??
-    (sessionUserId && members.some((member) => member.id === sessionUserId)
-      ? sessionUserId
-      : null);
+  const effectiveResponsibleUserId = responsibleCleared
+    ? null
+    : (responsibleUserId ??
+      (sessionUserId && members.some((member) => member.id === sessionUserId)
+        ? sessionUserId
+        : null));
 
   const displayLines = lines;
   const lineGroups = Array.from(
@@ -459,6 +461,7 @@ export function TransferForm({
     setFromLocationId((current) => kiosk?.isKioskAccount ? kiosk.locationId : current);
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
+    setResponsibleCleared(false);
     setComment("");
     setTransferredAtLocal(() => toDateTimeLocal(Date.now()));
     setLines([]);
@@ -902,7 +905,7 @@ export function TransferForm({
           <CardContent>
             <FieldGroup>
               <Field data-invalid={Boolean(errors.fromLocation)}>
-                <FieldLabel>Fra lokation</FieldLabel>
+                <FieldLabel>Fra lokation <span aria-hidden="true">*</span></FieldLabel>
                 <CreatableCombobox
                   options={fromLocationOptions}
                   value={fromLocationId}
@@ -916,7 +919,7 @@ export function TransferForm({
                     });
                   }}
                   placeholder="Søg efter lokation"
-                  ariaLabel="Fra lokation"
+                  ariaLabel="Fra lokation (påkrævet)" ariaRequired={true}
                   ariaInvalid={Boolean(errors.fromLocation)}
                   ariaDescribedBy={errors.fromLocation ? `${inputIdPrefix}-from-error` : undefined}
                   disabled={locations === undefined || locationsLocked}
@@ -925,7 +928,7 @@ export function TransferForm({
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
-                <FieldLabel>Til lokation</FieldLabel>
+                <FieldLabel>Til lokation <span aria-hidden="true">*</span></FieldLabel>
                 <CreatableCombobox
                   options={toLocationOptions}
                   value={toLocationId}
@@ -939,7 +942,7 @@ export function TransferForm({
                     });
                   }}
                   placeholder="Søg efter lokation"
-                  ariaLabel="Til lokation"
+                  ariaLabel="Til lokation (påkrævet)" ariaRequired={true}
                   ariaInvalid={Boolean(errors.toLocation)}
                   ariaDescribedBy={errors.toLocation ? `${inputIdPrefix}-to-error` : undefined}
                   disabled={locations === undefined || locationsLocked}
@@ -948,12 +951,13 @@ export function TransferForm({
               </Field>
 
               <Field data-invalid={Boolean(errors.responsible)}>
-                <FieldLabel>Ansvarlig</FieldLabel>
+                <FieldLabel>Ansvarlig <span aria-hidden="true">*</span></FieldLabel>
                 <CreatableCombobox
                   options={memberOptions}
                   value={effectiveResponsibleUserId}
                   onValueChange={(value) => {
                     setResponsibleUserId(value);
+                    setResponsibleCleared(value === null);
                     setErrors((current) => {
                       const next = { ...current };
                       delete next.responsible;
@@ -961,7 +965,7 @@ export function TransferForm({
                     });
                   }}
                   placeholder="Søg efter ansvarlig"
-                  ariaLabel="Ansvarlig"
+                  ariaLabel="Ansvarlig (påkrævet)" ariaRequired={true}
                   ariaInvalid={Boolean(errors.responsible)}
                   ariaDescribedBy={errors.responsible || membersError ? `${inputIdPrefix}-responsible-error` : undefined}
                   disabled={membersLoading}

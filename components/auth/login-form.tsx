@@ -12,6 +12,29 @@ import { Spinner } from "@/components/ui/spinner";
 import posthog from "posthog-js";
 import { authClient } from "@/lib/auth-client";
 
+function loginError(
+  error: { code?: string; status?: number },
+  isEmail: boolean,
+) {
+  if (error.code === "EMAIL_NOT_VERIFIED") {
+    return "Bekræft din e-mail, før du logger ind. Vi har sendt et nyt link.";
+  }
+  if (error.status === 429 || error.code?.includes("TOO_MANY_REQUESTS")) {
+    return "For mange forsøg. Vent lidt og prøv igen.";
+  }
+  if (
+    error.code?.includes("INVALID_EMAIL_OR_PASSWORD") ||
+    error.code?.includes("INVALID_USERNAME_OR_PASSWORD") ||
+    error.code?.includes("USER_NOT_FOUND") ||
+    error.code?.includes("INVALID_PASSWORD")
+  ) {
+    return isEmail
+      ? "E-mail eller adgangskode er forkert."
+      : "Brugernavn eller adgangskode er forkert. Har du glemt adgangskoden, skal du kontakte en bruger med rollen Administrator.";
+  }
+  return "Log ind mislykkedes. Prøv igen om lidt.";
+}
+
 export function LoginForm({
   redirectTo,
   verified,
@@ -49,11 +72,7 @@ export function LoginForm({
         : await authClient.signIn.username({ username: identifier, ...credentials });
 
       if (result.error) {
-        return result.error.code === "EMAIL_NOT_VERIFIED"
-          ? "Bekræft din e-mail, før du logger ind. Vi har sendt et nyt link."
-          : identifier.includes("@")
-            ? "E-mail eller adgangskode er forkert."
-            : "Brugernavn eller adgangskode er forkert. Har du glemt adgangskoden, skal du kontakte en bruger med rollen Administrator.";
+        return loginError(result.error, identifier.includes("@"));
       }
 
       const userId = result.data?.user?.id;
