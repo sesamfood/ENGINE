@@ -16,6 +16,7 @@ import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { usePermission } from "@/components/app-shell";
 import { AddForgottenProductButton } from "@/components/count/add-to-latest-count-dialog";
+import { ChangedCountItems } from "@/components/count/changed-count-items";
 import { CountNavigation } from "@/components/count/count-navigation";
 import { CountQuantityInput } from "@/components/count/count-quantity-input";
 import { useCountState } from "@/components/count/count-state-provider";
@@ -1291,6 +1292,18 @@ export function CountSheet() {
     queriedProducts,
     canRegister && locationId && countAreaSelectionReady ? locationId : null,
   );
+  const queriedChangedItems = useQuery(
+    api.count.listChangedCountItems,
+    confirmOpen && canRegister && locationId && state?.count
+      ? { locationId, countId: state.count.id }
+      : "skip",
+  );
+  const changedItems = useLastDefined(
+    queriedChangedItems,
+    state?.count?.id ?? null,
+  );
+  const changedItemsLoading =
+    confirmOpen && Boolean(state?.count) && queriedChangedItems === undefined;
   const quantities = useMemo(
     () => (state?.count ? storedQuantities : state ? [] : undefined),
     [state, storedQuantities],
@@ -2241,25 +2254,34 @@ export function CountSheet() {
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Registrér Count?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Lageret overskrives for produkter med en angivet mængde. Andre
-              produkter beholder deres nuværende lager. Denne Count kan ikke
-              rettes efter registrering.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          {locationId && changedItems?.length ? (
+            <ChangedCountItems
+              locationId={locationId}
+              items={changedItems}
+            />
+          ) : (
+            <AlertDialogHeader>
+              <AlertDialogTitle>Registrér Count?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Lageret overskrives for produkter med en angivet mængde. Andre
+                produkter beholder deres nuværende lager. Denne Count kan ikke
+                rettes efter registrering.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={submitting}>
               Fortsæt Count
             </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={submitting}
-              onClick={() => void confirmSubmit()}
-            >
-              {submitting ? <Spinner data-icon="inline-start" /> : null}
-              Registrér Count
-            </AlertDialogAction>
+            {!changedItems?.length ? (
+              <AlertDialogAction
+                disabled={submitting || changedItemsLoading}
+                onClick={() => void confirmSubmit()}
+              >
+                {submitting ? <Spinner data-icon="inline-start" /> : null}
+                Registrér Count
+              </AlertDialogAction>
+            ) : null}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
