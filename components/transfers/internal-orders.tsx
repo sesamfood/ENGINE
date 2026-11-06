@@ -90,7 +90,7 @@ function OrderTransfer({
           <TriangleAlertIcon />
           <AlertTitle>Ikke med i transferen</AlertTitle>
           <AlertDescription>
-            Disse Produkter er ikke længere aktive:{" "}
+            Disse produkter er ikke længere aktive:{" "}
             {order.unavailableItems
               .map(
                 (item) =>

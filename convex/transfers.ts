@@ -410,7 +410,7 @@ async function prepareTransfer(
       );
     } else {
       throw new ConvexError(
-        "Et Produkt er ikke længere aktivt. Fjern det fra transferen.",
+        "Et produkt er ikke længere aktivt. Fjern det fra transferen.",
       );
     }
   }

@@ -113,6 +113,11 @@ function ChangedCountItem({
           Produktet kan ikke tælles længere. Fjern det fra denne Count.
         </p>
       )}
+      {unitId && !validQuantity ? (
+        <p className="text-left text-sm text-muted-foreground">
+          Angiv en mængde på 0 eller mere for at gemme.
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-2">
         <Button
           type="button"
@@ -165,9 +170,9 @@ export function ChangedCountItems({
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>Tjek ændrede Produkter</AlertDialogTitle>
+        <AlertDialogTitle>Tjek ændrede produkter</AlertDialogTitle>
         <AlertDialogDescription>
-          Enhederne er ændret, efter Produkterne blev talt. Tjek hvert Produkt,
+          Enhederne er ændret, efter produkterne blev talt. Tjek hvert produkt,
           og angiv den rigtige mængde, før du registrerer Count.
         </AlertDialogDescription>
       </AlertDialogHeader>

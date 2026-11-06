@@ -686,7 +686,7 @@ export function TransferForm({
       nextErrors.items = "Mængden skal være større end nul";
     }
     if (lines.some(hasMissingUnit)) {
-      nextErrors.items = "Vælg en enhed for de markerede Produkter";
+      nextErrors.items = "Vælg en enhed for de markerede produkter";
     }
 
     const temperatures: ProductTemperatureInput[] = [];
@@ -1259,7 +1259,7 @@ export function TransferForm({
                               onRemove={() => removeLine(line)}
                               error={
                                 hasMissingUnit(line)
-                                  ? `Bestilt i ${line.orderedUnitName}, som Produktet ikke længere har. Vælg en enhed, og tjek mængden.`
+                                  ? `Bestilt i ${line.orderedUnitName}, som produktet ikke længere har. Vælg en enhed, og tjek mængden.`
                                   : undefined
                               }
                             />
