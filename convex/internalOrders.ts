@@ -7,6 +7,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { recordAudit } from "./lib/audit";
+import { listProductUnitOptions } from "./lib/productUnits";
 import {
   forecastSettings,
   forecastSettingsFields,
@@ -226,6 +227,7 @@ async function openOrderSummary(ctx: QueryCtx, order: Doc<"orders">) {
     createdAt: order.createdAt,
     createdByName: order.createdByName,
     itemCount: order.itemCount,
+    comment: order.comment,
   };
 }
 
@@ -238,6 +240,7 @@ const openOrderValidator = v.object({
   createdAt: v.number(),
   createdByName: v.string(),
   itemCount: v.number(),
+  comment: v.optional(v.string()),
 });
 
 // Null when internal orders are not in use, so the Transfer page can hide the tab.
@@ -338,6 +341,44 @@ export async function requireOpenOrder(
   return order;
 }
 
+async function resolveOrderLine(
+  ctx: QueryCtx,
+  auth: OrganizationAuth,
+  line: {
+    productId: Id<"products">;
+    productName: string;
+    unitId: Id<"units">;
+    unitName: string;
+    quantity: number;
+  },
+) {
+  const { productName, unitName, quantity } = line;
+  const product = await ctx.db.get("products", line.productId);
+  if (
+    product?.organizationId !== auth.organizationId ||
+    product.status !== "active"
+  ) {
+    return { unavailable: { productName, unitName, quantity } };
+  }
+  const units = await listProductUnitOptions(ctx, product);
+  // A deleted or merged unit is replaced when the Produkt has one with the same name.
+  const normalizedName = unitName.toLocaleLowerCase("da");
+  const unit =
+    units.find(({ id }) => id === line.unitId) ??
+    units.find(({ name }) => name.toLocaleLowerCase("da") === normalizedName);
+  return {
+    item: {
+      productId: product._id,
+      productName,
+      unitId: unit?.id ?? line.unitId,
+      unitName: unit?.name ?? unitName,
+      quantity,
+      maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
+      units,
+    },
+  };
+}
+
 export const getOpenOrder = query({
   args: { orderId: v.id("orders") },
   returns: v.union(
@@ -351,14 +392,24 @@ export const getOpenOrder = query({
           unitName: v.string(),
           quantity: v.number(),
           maxTemperatureCelsius: v.union(v.number(), v.null()),
+          units: v.array(v.object({ id: v.id("units"), name: v.string() })),
+        }),
+      ),
+      unavailableItems: v.array(
+        v.object({
+          productName: v.string(),
+          unitName: v.string(),
+          quantity: v.number(),
         }),
       ),
     }),
+    v.literal("cancelled"),
     v.null(),
   ),
   handler: async (ctx, args) => {
     const auth = await requireTransferManager(ctx, "transfers.new");
     const order = await getInternalOrder(ctx, auth, args.orderId);
+    if (order.fulfillmentStatus === "cancelled") return "cancelled";
     if (order.fulfillmentStatus !== "open") return null;
     const lines = await ctx.db
       .query("orderLines")
@@ -366,24 +417,20 @@ export const getOpenOrder = query({
         q.eq("organizationId", auth.organizationId).eq("orderId", order._id),
       )
       .take(MAX_ORDER_LINES);
-    const items = await Promise.all(
-      lines.map(async (line) => {
-        if (!line.productId || !line.unitId) return null;
-        const product = await ctx.db.get("products", line.productId);
-        return {
-          productId: line.productId,
-          productName: line.productName,
-          unitId: line.unitId,
-          unitName: line.unitName,
-          quantity: line.quantity,
-          maxTemperatureCelsius: product?.maxTemperatureCelsius ?? null,
-        };
-      }),
+    const resolved = await Promise.all(
+      lines.flatMap(({ productId, unitId, ...line }) =>
+        productId && unitId
+          ? [resolveOrderLine(ctx, auth, { ...line, productId, unitId })]
+          : [],
+      ),
     );
     return {
       ...(await openOrderSummary(ctx, order)),
       version: orderVersion(order),
-      items: items.filter((item) => item !== null),
+      items: resolved.flatMap((line) => (line.item ? [line.item] : [])),
+      unavailableItems: resolved.flatMap((line) =>
+        line.unavailable ? [line.unavailable] : [],
+      ),
     };
   },
 });

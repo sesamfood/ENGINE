@@ -252,6 +252,14 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               </dd>
             </div>
           ) : null}
+          {order.comment ? (
+            <div className="sm:col-span-2">
+              <dt className="text-muted-foreground">Kommentar</dt>
+              <dd className="wrap-anywhere whitespace-pre-line">
+                {order.comment}
+              </dd>
+            </div>
+          ) : null}
           {order.email ? (
             <div>
               <dt className="text-muted-foreground">E-mail</dt>

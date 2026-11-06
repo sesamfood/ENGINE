@@ -465,6 +465,8 @@ export const listOperationalConsumption = query({
   },
 });
 
+const MAX_COMMENT_LENGTH = 500;
+
 const orderInputValidator = v.object({
   locationId: v.id("locations"),
   supplierId: v.optional(v.id("suppliers")),
@@ -514,6 +516,7 @@ const historySummaryValidator = schema
     "email",
     "fulfillingLocationId",
     "fulfillmentStatus",
+    "comment",
   );
 const historyDetailValidator = historySummaryValidator.extend({
   locationId: v.id("locations"),
@@ -800,7 +803,18 @@ function historySummary(order: Doc<"orders">) {
     email: order.email,
     fulfillingLocationId: order.fulfillingLocationId,
     fulfillmentStatus: order.fulfillmentStatus,
+    comment: order.comment,
   };
+}
+
+function orderComment(comment: string | undefined) {
+  const trimmed = comment?.trim();
+  if (trimmed && trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new ConvexError(
+      `Kommentaren må højst være ${MAX_COMMENT_LENGTH} tegn`,
+    );
+  }
+  return trimmed || undefined;
 }
 
 export const placeOrder = mutation({
@@ -809,6 +823,7 @@ export const placeOrder = mutation({
     coverageDays: v.number(),
     bufferPercent: v.number(),
     sendEmail: v.optional(v.boolean()),
+    comment: v.optional(v.string()),
   }).fields,
   returns: v.id("orders"),
   handler: async (ctx, args) => {
@@ -840,7 +855,11 @@ export const placeOrder = mutation({
       ...(supplier ? { supplierId: supplier._id } : {}),
       ...(supplierName ? { supplierName } : {}),
       ...(fulfillingLocationId
-        ? { fulfillingLocationId, fulfillmentStatus: "open" as const }
+        ? {
+            fulfillingLocationId,
+            fulfillmentStatus: "open" as const,
+            comment: orderComment(args.comment),
+          }
         : {}),
       ...(args.sendEmail && supplier?.email
         ? { email: { to: supplier.email, status: "pending" as const } }
@@ -961,6 +980,7 @@ export const getEditableOrder = query({
       id: v.id("orders"),
       locationId: v.id("locations"),
       fulfillingLocationId: v.id("locations"),
+      comment: v.optional(v.string()),
       lines: v.array(
         v.object({
           productId: v.id("products"),
@@ -993,6 +1013,7 @@ export const getEditableOrder = query({
       id: order._id,
       locationId: order.locationId,
       fulfillingLocationId: order.fulfillingLocationId,
+      comment: order.comment,
       lines: lines.flatMap(({ productId, unitId, quantity }) =>
         productId && unitId ? [{ productId, unitId, quantity }] : [],
       ),
@@ -1004,6 +1025,7 @@ export const updateInternalOrder = mutation({
   args: {
     orderId: v.id("orders"),
     lines: orderInputValidator.fields.lines,
+    comment: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1047,6 +1069,10 @@ export const updateInternalOrder = mutation({
     await ctx.db.patch("orders", order._id, {
       itemCount: rows.length,
       editedAt: Date.now(),
+      // Omitted by clients loaded before comments existed.
+      ...(args.comment === undefined
+        ? {}
+        : { comment: orderComment(args.comment) }),
     });
     await recordAudit(ctx, auth, {
       action: "ordering.update",

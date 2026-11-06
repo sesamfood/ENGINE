@@ -1443,6 +1443,7 @@ export default defineSchema({
     manualGoodsReceiptId: v.optional(v.id("manualGoodsReceipts")),
     // Internal orders: received through the fulfilling Transfer, not receiptStatus.
     fulfillingLocationId: v.optional(v.id("locations")),
+    comment: v.optional(v.string()),
     fulfillmentStatus: v.optional(
       v.union(
         v.literal("open"),

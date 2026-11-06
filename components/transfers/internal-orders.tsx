@@ -2,17 +2,24 @@
 
 import { dateTimeFormatter as sharedDateTimeFormatter } from "@/lib/date";
 
-import { useConvex } from "convex/react";
+import { useConvex, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { ArrowRightIcon, ShoppingCartIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import {
+  ArrowRightIcon,
+  MessageSquareIcon,
+  ShoppingCartIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { TransferForm, type TransferOrder } from "@/components/transfers/transfer-form";
+import { TransferForm } from "@/components/transfers/transfer-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardAction,
+  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -34,10 +41,75 @@ type OpenOrders = NonNullable<
   FunctionReturnType<typeof api.internalOrders.listOpenOrders>
 >;
 
+type OpenOrder = Exclude<
+  FunctionReturnType<typeof api.internalOrders.getOpenOrder>,
+  "cancelled" | null
+>;
+
 const dateTimeFormatter = sharedDateTimeFormatter("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+function OrderTransfer({
+  order,
+  navigation,
+  onClose,
+}: {
+  order: OpenOrder;
+  navigation?: ReactNode;
+  onClose: () => void;
+}) {
+  const liveOrder = useQuery(api.internalOrders.getOpenOrder, {
+    orderId: order.id,
+  });
+
+  useEffect(() => {
+    if (liveOrder !== "cancelled") return;
+    toast.error("Bestillingen er annulleret");
+    onClose();
+  }, [liveOrder, onClose]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Mængderne er udfyldt fra bestillingen. Ret dem, hvis I sender noget
+        andet. Bestillingen lukkes, når transferen er gemt.
+      </p>
+      {order.comment ? (
+        <Alert>
+          <MessageSquareIcon />
+          <AlertTitle>Kommentar fra {order.locationName}</AlertTitle>
+          <AlertDescription className="wrap-anywhere whitespace-pre-line">
+            {order.comment}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {order.unavailableItems.length > 0 ? (
+        <Alert>
+          <TriangleAlertIcon />
+          <AlertTitle>Ikke med i transferen</AlertTitle>
+          <AlertDescription>
+            Disse Produkter er ikke længere aktive:{" "}
+            {order.unavailableItems
+              .map(
+                (item) =>
+                  `${item.productName} (${item.quantity} ${item.unitName})`,
+              )
+              .join(", ")}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      <TransferForm
+        key={order.id}
+        order={order}
+        navigation={navigation}
+        onSaved={onClose}
+        onCancel={onClose}
+      />
+    </div>
+  );
+}
 
 export function InternalOrders({
   orders,
@@ -48,7 +120,7 @@ export function InternalOrders({
 }) {
   const convex = useConvex();
   const [loadingId, setLoadingId] = useState<Id<"orders"> | null>(null);
-  const [order, setOrder] = useState<TransferOrder | null>(null);
+  const [order, setOrder] = useState<OpenOrder | null>(null);
 
   async function open(orderId: Id<"orders">) {
     if (loadingId) return;
@@ -57,7 +129,9 @@ export function InternalOrders({
       const result = await convex.query(api.internalOrders.getOpenOrder, {
         orderId,
       });
-      if (!result) toast.error("Der er allerede oprettet en transfer for bestillingen");
+      if (result === "cancelled") toast.error("Bestillingen er annulleret");
+      else if (!result)
+        toast.error("Der er allerede oprettet en transfer for bestillingen");
       else if (!result.items.length)
         toast.error("Bestillingen har ingen Produkter, der kan sendes");
       else setOrder(result);
@@ -70,19 +144,11 @@ export function InternalOrders({
 
   if (order) {
     return (
-      <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">
-          Mængderne er udfyldt fra bestillingen. Ret dem, hvis I sender noget
-          andet. Bestillingen lukkes, når transferen er gemt.
-        </p>
-        <TransferForm
-          key={order.id}
-          order={order}
-          navigation={navigation}
-          onSaved={() => setOrder(null)}
-          onCancel={() => setOrder(null)}
-        />
-      </div>
+      <OrderTransfer
+        order={order}
+        navigation={navigation}
+        onClose={() => setOrder(null)}
+      />
     );
   }
 
@@ -124,6 +190,13 @@ export function InternalOrders({
                     <Badge variant="secondary">{item.itemCount} Produkter</Badge>
                   </CardAction>
                 </CardHeader>
+                {item.comment ? (
+                  <CardContent>
+                    <p className="line-clamp-2 text-sm wrap-anywhere">
+                      {item.comment}
+                    </p>
+                  </CardContent>
+                ) : null}
                 <CardFooter appearance="emphasized" className="justify-between">
                   <span>Opret transfer</span>
                   {loadingId === item.id ? (
