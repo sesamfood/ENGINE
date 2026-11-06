@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { FileTextIcon, SaveIcon, UploadCloudIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
@@ -450,15 +451,12 @@ export function ExpenseForm({
               <FieldGroup className="grid sm:grid-cols-2">
                 <Field data-invalid={Boolean(errors.date)}>
                   <FieldLabel htmlFor="expense-date">Dato</FieldLabel>
-                  <Input
+                  <DatePicker
                     id="expense-date"
-                    type="date"
-                    className="h-11"
                     min="1900-01-01"
                     max="2199-12-31"
                     value={date}
-                    onChange={(event) => {
-                      const next = event.target.value;
+                    onValueChange={(next) => {
                       if (period === date.slice(0, 7))
                         setPeriod(next.slice(0, 7));
                       setDate(next);

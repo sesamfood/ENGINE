@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
@@ -58,7 +59,6 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -739,13 +739,11 @@ function History({ organizationId }: { organizationId: string }) {
           <FieldGroup className="grid sm:grid-cols-2">
             <Field data-invalid={Boolean(rangeError)}>
               <FieldLabel htmlFor="ordering-history-from">Fra dato</FieldLabel>
-              <Input
+              <DatePicker
                 id="ordering-history-from"
-                type="date"
-                className="h-11"
                 value={fromDate}
                 max={toDate || undefined}
-                onChange={(event) => setFromDate(event.target.value)}
+                onValueChange={setFromDate}
                 aria-invalid={Boolean(rangeError)}
                 aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
                 required
@@ -753,13 +751,11 @@ function History({ organizationId }: { organizationId: string }) {
             </Field>
             <Field data-invalid={Boolean(rangeError)}>
               <FieldLabel htmlFor="ordering-history-to">Til dato</FieldLabel>
-              <Input
+              <DatePicker
                 id="ordering-history-to"
-                type="date"
-                className="h-11"
                 value={toDate}
                 min={fromDate || undefined}
-                onChange={(event) => setToDate(event.target.value)}
+                onValueChange={setToDate}
                 aria-invalid={Boolean(rangeError)}
                 aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
                 required

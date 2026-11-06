@@ -20,6 +20,7 @@ import {
 import { DownloadIcon, FileChartColumnIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +51,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -411,20 +411,18 @@ export function WasteReport() {
         <CardContent appearance="summary" className="grid sm:grid-cols-3">
           <Field>
             <FieldLabel htmlFor="waste-from">Fra</FieldLabel>
-            <Input
+            <DatePicker
               id="waste-from"
-              type="date"
               value={resolvedFrom}
-              onChange={(event) => setFrom(event.target.value)}
+              onValueChange={setFrom}
             />
           </Field>
           <Field>
             <FieldLabel htmlFor="waste-to">Til</FieldLabel>
-            <Input
+            <DatePicker
               id="waste-to"
-              type="date"
               value={resolvedTo}
-              onChange={(event) => setTo(event.target.value)}
+              onValueChange={setTo}
             />
           </Field>
           <Field>

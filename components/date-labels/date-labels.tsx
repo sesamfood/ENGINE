@@ -15,6 +15,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import {
   useKiosk,
@@ -723,12 +724,10 @@ function PrintPanel({
           >
             <Field data-invalid={Boolean(dateError)}>
               <FieldLabel htmlFor="label-date">Produktionsdato</FieldLabel>
-              <Input
+              <DatePicker
                 id="label-date"
-                type="date"
                 value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className="h-11 min-w-0"
+                onValueChange={setDate}
                 aria-invalid={Boolean(dateError)}
               />
             </Field>

@@ -2,6 +2,7 @@
 
 import { toDateTimeLocal, fromDateTimeLocal } from "@/lib/date";
 
+import { DateTimePicker } from "@/components/date-picker";
 import { ProductUnitLine } from "@/components/product-unit-line";
 
 import { ProductLineGroup } from "@/components/product-line-group";
@@ -1058,15 +1059,13 @@ export function TransferForm({
                 <FieldLabel htmlFor={`${inputIdPrefix}-at`}>
                   Tidspunkt
                 </FieldLabel>
-                <Input
+                <DateTimePicker
                   id={`${inputIdPrefix}-at`}
-                  type="datetime-local"
                   value={transferredAtLocal}
-                  onChange={(event) => {
+                  onValueChange={(value) => {
                     transferredAtEdited.current = true;
-                    setTransferredAtLocal(event.target.value);
+                    setTransferredAtLocal(value);
                   }}
-                  className="h-11"
                   aria-invalid={Boolean(errors.transferredAt)}
                   aria-describedby={errors.transferredAt ? `${inputIdPrefix}-at-error` : undefined}
                 />

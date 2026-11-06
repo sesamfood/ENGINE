@@ -51,6 +51,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
 import { usePermission } from "@/components/app-shell";
 import {
@@ -96,7 +97,6 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -979,24 +979,20 @@ export function TransferHistory() {
         <FieldGroup className="md:flex-row md:items-end">
           <Field data-invalid={Boolean(rangeError)}>
             <FieldLabel htmlFor="transfer-from-date">Fra dato</FieldLabel>
-            <Input
+            <DatePicker
               id="transfer-from-date"
-              type="date"
               value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-              className="h-11"
+              onValueChange={setFromDate}
               aria-invalid={Boolean(rangeError)}
               required
             />
           </Field>
           <Field data-invalid={Boolean(rangeError)}>
             <FieldLabel htmlFor="transfer-to-date">Til dato</FieldLabel>
-            <Input
+            <DatePicker
               id="transfer-to-date"
-              type="date"
               value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
-              className="h-11"
+              onValueChange={setToDate}
               aria-invalid={Boolean(rangeError)}
               required
             />

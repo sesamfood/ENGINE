@@ -612,7 +612,6 @@ export function WasteRegistration() {
       <div className="flex flex-col gap-5">
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-5 w-full max-w-xl" />
         <ProductGridSkeleton>
           <CardHeader appearance="productCompact">
             <Skeleton className="h-5 w-2/3" />
@@ -678,11 +677,6 @@ export function WasteRegistration() {
           aria-label="Søg efter et produkt"
         />
       </InputGroup>
-
-      <p className="text-sm text-muted-foreground">
-        Tryk på en mængde for at registrere med det samme, eller tryk på
-        produktet for en anden mængde.
-      </p>
 
       <Dialog
         open={Boolean(selected)}

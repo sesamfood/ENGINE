@@ -7,6 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { DatePicker } from "@/components/date-picker";
 import { LocationAddressSearch } from "@/components/organization/location-address-search";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -410,14 +411,13 @@ function LocationDetailsDialog({
               </Field>
               <Field>
                 <FieldLabel htmlFor="location-opened-at">Åbningsdato</FieldLabel>
-                <Input
+                <DatePicker
                   id="location-opened-at"
-                  type="date"
                   value={draft.openedAt}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setDraft({
                       ...draft,
-                      openedAt: event.target.value,
+                      openedAt: value,
                     })
                   }
                 />

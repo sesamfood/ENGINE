@@ -6,6 +6,7 @@ import { dateKey, addDays, dateTimeFormatter } from "@/lib/date";
 
 import { selectedLocationId } from "@/lib/location-preference";
 
+import { DatePicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { SectionNav } from "@/components/section-nav";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
@@ -32,7 +33,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
@@ -196,11 +196,10 @@ function ScheduleTab({
         >
           <ChevronRightIcon />
         </Button>
-        <Input
-          className="h-9 w-40"
-          type="date"
+        <DatePicker
+          className="w-44"
           value={weekStart}
-          onChange={(event) => goToWeek(event.target.value)}
+          onValueChange={goToWeek}
           aria-label="Vælg uge"
         />
         {syncButton}
@@ -760,7 +759,6 @@ export function EmployeeScheduling() {
   const syncButton =
     integrations?.workfeed && context.workfeedEnabled && !kiosk?.kioskModeEnabled ? (
       <Button
-        size="lg"
         variant="outline"
         disabled={queued || syncing || cooldown}
         onClick={() => void request()}

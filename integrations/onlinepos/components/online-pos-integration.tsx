@@ -32,6 +32,7 @@ import { OnlinePosStockSettings } from "./online-pos-stock-settings";
 import { OnlinePosSalesChannels } from "./online-pos-sales-channels";
 import { OnlinePosSalesHistory } from "./online-pos-sales-history";
 import { OnlinePosOrderDetail } from "./online-pos-order-detail";
+import { DatePicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -571,11 +572,10 @@ function StoredSalesSample() {
           <FieldGroup>
             <Field orientation="responsive">
               <FieldLabel htmlFor="stored-sales-date">Dato</FieldLabel>
-              <Input
+              <DatePicker
                 id="stored-sales-date"
-                type="date"
                 value={date}
-                onChange={(event) => setDate(event.target.value)}
+                onValueChange={setDate}
                 required
               />
               <Button type="submit" disabled={loading}>
@@ -1082,22 +1082,18 @@ function SalesList() {
           </Field>
           <Field>
             <FieldLabel htmlFor="online-pos-sales-from">Fra dato</FieldLabel>
-            <Input
+            <DatePicker
               id="online-pos-sales-from"
-              type="date"
               value={resolvedFromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-              className="h-11"
+              onValueChange={setFromDate}
             />
           </Field>
           <Field>
             <FieldLabel htmlFor="online-pos-sales-to">Til dato</FieldLabel>
-            <Input
+            <DatePicker
               id="online-pos-sales-to"
-              type="date"
               value={resolvedToDate}
-              onChange={(event) => setToDate(event.target.value)}
-              className="h-11"
+              onValueChange={setToDate}
             />
           </Field>
         </FieldGroup>

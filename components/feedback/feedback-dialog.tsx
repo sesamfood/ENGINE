@@ -302,17 +302,18 @@ export function FeedbackDialog({
             />
           ) : (
             <SidebarMenuButton
-              size="rail"
+              size="lg"
               aria-label="Giv feedback"
               tooltip="Giv feedback"
               appearance="icon"
+              className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
             />
           )
         }
       >
         <MessageSquarePlusIcon aria-hidden="true" />
         {!compact ? (
-          <span className="group-data-[collapsible=icon]:line-clamp-2 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:overflow-hidden group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:wrap-break-word group-data-[collapsible=icon]:whitespace-normal">
+          <span className="group-data-[collapsible=icon]:hidden">
             Giv feedback
           </span>
         ) : null}

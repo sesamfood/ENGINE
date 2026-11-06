@@ -4,6 +4,7 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import { DownloadIcon, UtensilsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
@@ -24,7 +25,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -345,22 +345,20 @@ export function StaffFoodReport() {
           </div>
           <Field data-invalid={!rangeValid}>
             <FieldLabel htmlFor="staff-food-report-from">Fra</FieldLabel>
-            <Input
+            <DatePicker
               id="staff-food-report-from"
-              type="date"
               value={resolvedFrom}
               aria-invalid={!rangeValid}
-              onChange={(event) => setFrom(event.target.value)}
+              onValueChange={setFrom}
             />
           </Field>
           <Field data-invalid={!rangeValid}>
             <FieldLabel htmlFor="staff-food-report-to">Til</FieldLabel>
-            <Input
+            <DatePicker
               id="staff-food-report-to"
-              type="date"
               value={resolvedTo}
               aria-invalid={!rangeValid}
-              onChange={(event) => setTo(event.target.value)}
+              onValueChange={setTo}
             />
           </Field>
           <Field>

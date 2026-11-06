@@ -978,7 +978,7 @@ function NavigationList() {
                     size="lg"
                     isActive={active}
                     tooltip={item.label}
-                    className="text-base [&_svg]:size-4 group-data-[collapsible=icon]:h-16! group-data-[collapsible=icon]:w-full! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:p-1! group-data-[collapsible=icon]:[&_svg]:size-5"
+                    className="text-base [&_svg]:size-4 group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:[&_svg]:size-4"
                     render={
                       <Link
                         href={item.href}
@@ -992,7 +992,7 @@ function NavigationList() {
                     }
                   >
                     <Icon aria-hidden="true" />
-                    <span className="group-data-[collapsible=icon]:line-clamp-2 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:overflow-hidden group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:wrap-break-word group-data-[collapsible=icon]:whitespace-normal">
+                    <span className="group-data-[collapsible=icon]:hidden">
                       {item.label}
                     </span>
                   </SidebarMenuButton>
@@ -1785,7 +1785,7 @@ export function AppShell({
                     style={
                       {
                         "--sidebar-width": "15.5rem",
-                        "--sidebar-width-icon": "8rem",
+                        "--sidebar-width-icon": "4rem",
                       } as CSSProperties
                     }
                   >

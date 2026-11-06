@@ -45,6 +45,7 @@ const buttonAppearance = cva("", {
   variants: {
     appearance: {
       standard: "px-4",
+      field: "border-input bg-transparent px-3 text-base font-normal md:text-sm",
       compact: "px-3",
       wide: "px-5",
       round: "rounded-full",

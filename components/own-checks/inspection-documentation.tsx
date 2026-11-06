@@ -26,6 +26,7 @@ import {
   ownCheckStatusLabels,
 } from "@/lib/own-checks";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { DatePicker } from "@/components/date-picker";
 import { LocationField } from "@/components/location-field";
 import {
   useKiosk,
@@ -43,7 +44,6 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -722,24 +722,20 @@ export function InspectionDocumentation() {
         </Field>
         <Field data-invalid={!rangeValid}>
           <FieldLabel htmlFor="own-documentation-from">Fra dato</FieldLabel>
-          <Input
+          <DatePicker
             id="own-documentation-from"
-            type="date"
-            className="h-11"
             value={fromDateKey}
             aria-invalid={!rangeValid}
-            onChange={(event) => updateRange({ from: event.target.value })}
+            onValueChange={(value) => updateRange({ from: value })}
           />
         </Field>
         <Field data-invalid={!rangeValid}>
           <FieldLabel htmlFor="own-documentation-to">Til dato</FieldLabel>
-          <Input
+          <DatePicker
             id="own-documentation-to"
-            type="date"
-            className="h-11"
             value={toDateKey}
             aria-invalid={!rangeValid}
-            onChange={(event) => updateRange({ to: event.target.value })}
+            onValueChange={(value) => updateRange({ to: value })}
           />
         </Field>
         <Field>

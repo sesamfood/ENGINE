@@ -6,6 +6,7 @@ import {
   fromDateTimeLocal,
 } from "@/lib/date";
 
+import { DateTimePicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 
 import { ReceiptProductLine, type ReceiptLine } from "./receipt-product-line";
@@ -464,13 +465,12 @@ function ManualGoodsReceiptForm({
                   <FieldLabel htmlFor="manual-goods-receipt-received-at">
                     Modtaget
                   </FieldLabel>
-                  <Input
+                  <DateTimePicker
                     id="manual-goods-receipt-received-at"
-                    type="datetime-local"
                     value={receivedAtLocal}
                     aria-invalid={Boolean(errors.receivedAt)}
-                    onChange={(event) => {
-                      setReceivedAtLocal(event.target.value);
+                    onValueChange={(value) => {
+                      setReceivedAtLocal(value);
                       setErrors((current) => {
                         if (!current.receivedAt) return current;
                         const next = { ...current };

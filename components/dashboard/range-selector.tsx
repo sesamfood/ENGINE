@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { DatePicker } from "@/components/date-picker";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
@@ -90,11 +90,11 @@ export function RangeSelector({
         <FieldGroup appearance="compact" className="grid max-w-lg grid-cols-2">
           <Field>
             <FieldLabel htmlFor="dashboard-from">Fra</FieldLabel>
-            <Input id="dashboard-from" type="date" value={range.from ?? ""} onChange={(event) => onChange({ ...range, from: event.target.value })} className="h-11" />
+            <DatePicker id="dashboard-from" value={range.from ?? ""} onValueChange={(value) => onChange({ ...range, from: value })} />
           </Field>
           <Field>
             <FieldLabel htmlFor="dashboard-to">Til</FieldLabel>
-            <Input id="dashboard-to" type="date" value={range.to ?? ""} onChange={(event) => onChange({ ...range, to: event.target.value })} className="h-11" />
+            <DatePicker id="dashboard-to" value={range.to ?? ""} onValueChange={(value) => onChange({ ...range, to: value })} />
           </Field>
         </FieldGroup>
       ) : null}
