@@ -525,14 +525,14 @@ function ProductPicker({
         }
       >
         <PackageOpenIcon data-icon="inline-start" />
-        Vælg Produkter
+        Vælg produkter
         <Badge variant="secondary">{selectedCount} valgt</Badge>
       </DialogTrigger>
       <DialogContent className="grid max-h-(--spacing-viewport-inset) min-h-0 grid-rows-(--grid-rows-panel) overflow-hidden sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>Produkter hos {name}</DialogTitle>
           <DialogDescription>
-            Tryk på et Produkt for at vælge eller fravælge det.
+            Tryk på et produkt for at vælge eller fravælge det.
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-4">
@@ -544,8 +544,8 @@ function ProductPicker({
               <InputGroupInput
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Søg efter Produkt"
-                aria-label="Søg efter Produkt"
+                placeholder="Søg efter produkt"
+                aria-label="Søg efter produkt"
               />
             </InputGroup>
             <Select
@@ -641,7 +641,7 @@ function ProductPicker({
                   <EmptyMedia variant="icon">
                     <PackageOpenIcon />
                   </EmptyMedia>
-                  <EmptyTitle>Ingen Produkter fundet</EmptyTitle>
+                  <EmptyTitle>Ingen produkter fundet</EmptyTitle>
                   <EmptyDescription>
                     Prøv en anden søgning eller kategori.
                   </EmptyDescription>

@@ -58,7 +58,7 @@
   --grid-cols-recipe: auto minmax(0,1fr) minmax(9rem,0.6fr) auto;
   --grid-cols-product-unit: minmax(0,1fr) minmax(9rem,0.6fr) auto;
   --grid-cols-product-settings: minmax(12rem,0.45fr) minmax(0,1fr);
-  --grid-cols-page-header: minmax(0,1fr) minmax(14rem,20rem);
+  --grid-cols-page-header: minmax(min-content,1fr) minmax(14rem,20rem);
   --grid-cols-step-navigation: 3rem minmax(0,1fr) 3rem;
   --grid-cols-stock: minmax(0,1.1fr) minmax(20rem,0.9fr);
   --grid-cols-metric-condition: minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr) auto;

@@ -8,7 +8,8 @@ import { ProductLineGroup } from "@/components/product-line-group";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { useKiosk } from "@/components/app-shell";
+import { useAccess, useKiosk, useLocationAccess } from "@/components/app-shell";
+import { DraftRestoredNotice } from "@/components/draft-restored-notice";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import {
   CreatableCombobox,
@@ -51,7 +52,6 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { useActiveOrganization } from "@/lib/active-organization";
-import { selectedLocationId } from "@/lib/location-preference";
 import {
   clearTransferDraft,
   readTransferDraft,
@@ -252,11 +252,15 @@ export function TransferForm({
   const locations = useQuery(api.locations.listAllLocationOptions) as
     LocationOption[] | undefined;
   const kiosk = useKiosk();
+  const access = useAccess();
   const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedFromLocationId = useTransferLocation(organizationId);
+  const { locations: accessibleLocations, isLocked, lockedId } = useLocationAccess();
   const prefilledFromLocation = useRef(false);
   const draftRestored = useRef(false);
+  const transferredAtEdited = useRef(false);
+  const [draftNoticeVisible, setDraftNoticeVisible] = useState(false);
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const productSearchOptions = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
@@ -317,19 +321,25 @@ export function TransferForm({
   } | null>(null);
   const [isTemperatureDialogOpen, setIsTemperatureDialogOpen] = useState(false);
   const sessionUserId = session?.user.id;
+  // Kiosk accounts are shared, so a draft would reach the next person.
+  const draftUserId =
+    access && !access.kiosk?.isKioskAccount && !access.kiosk?.kioskModeEnabled
+      ? sessionUserId
+      : undefined;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
 
   // Restore an unfinished draft after section navigation remounted the form.
   useEffect(() => {
     if (transfer || order || draftRestored.current) return;
-    if (!organizationId || !locations) return;
+    if (!organizationId || !draftUserId || !locations) return;
     draftRestored.current = true;
-    const draft = readTransferDraft(organizationId);
+    const draft = readTransferDraft(organizationId, draftUserId);
     if (!draft) return;
     const locationIds = new Set(locations.map((location) => location.id));
     const from = draft.fromLocationId && locationIds.has(draft.fromLocationId as Id<"locations">) ? draft.fromLocationId : null;
     const to = draft.toLocationId && locationIds.has(draft.toLocationId as Id<"locations">) ? draft.toLocationId : null;
     window.setTimeout(() => {
+      setDraftNoticeVisible(true);
       if (from) {
         prefilledFromLocation.current = true;
         setFromLocationId(from);
@@ -341,7 +351,9 @@ export function TransferForm({
         setOptionalOpen(true);
       }
       if (draft.transferredAtLocal) {
+        transferredAtEdited.current = true;
         setTransferredAtLocal(draft.transferredAtLocal);
+        setOptionalOpen(true);
       }
       if (draft.temperatures && Object.keys(draft.temperatures).length) {
         setTemperatureStates((current) => ({ ...current, ...draft.temperatures }));
@@ -361,20 +373,22 @@ export function TransferForm({
         );
       }
     });
-  }, [locations, order, organizationId, transfer]);
+  }, [draftUserId, locations, order, organizationId, transfer]);
 
   useEffect(() => {
-    if (transfer || order || !organizationId || !draftRestored.current) return;
+    if (transfer || order || !organizationId || !draftUserId) return;
+    if (!draftRestored.current) return;
     if (!lines.length && !toLocationId && !comment) {
-      clearTransferDraft(organizationId);
+      clearTransferDraft(organizationId, draftUserId);
       return;
     }
-    writeTransferDraft(organizationId, {
+    writeTransferDraft(organizationId, draftUserId, {
       fromLocationId,
       toLocationId,
       responsibleUserId,
       comment,
-      transferredAtLocal,
+      // The default is "now", which goes stale in a draft.
+      transferredAtLocal: transferredAtEdited.current ? transferredAtLocal : undefined,
       temperatures: temperatureStates,
       lines: lines.map((line) => ({
         key: line.key,
@@ -385,23 +399,20 @@ export function TransferForm({
         quantity: line.quantity,
       })),
     });
-  }, [comment, fromLocationId, lines, order, organizationId, responsibleUserId, temperatureStates, toLocationId, transfer, transferredAtLocal]);
+  }, [comment, draftUserId, fromLocationId, lines, order, organizationId, responsibleUserId, temperatureStates, toLocationId, transfer, transferredAtLocal]);
 
   useEffect(() => {
     if (transfer || order || prefilledFromLocation.current) return;
-    if (!locations || fromLocationId) return;
-    const candidate = selectedLocationId({
-      locations,
-      storedId: storedFromLocationId,
-      lockedId: null,
-      isLocked: false,
-    });
+    if (!access || fromLocationId) return;
+    const candidate = isLocked
+      ? lockedId
+      : accessibleLocations.find((location) => location.id === storedFromLocationId)?.id;
     if (candidate && candidate !== toLocationId) {
       prefilledFromLocation.current = true;
       const timeout = window.setTimeout(() => setFromLocationId(candidate));
       return () => window.clearTimeout(timeout);
     }
-  }, [fromLocationId, locations, order, storedFromLocationId, toLocationId, transfer]);
+  }, [access, accessibleLocations, fromLocationId, isLocked, lockedId, order, storedFromLocationId, toLocationId, transfer]);
 
   useEffect(() => {
     if (!transfer && !order && organizationId && fromLocationId) {
@@ -470,7 +481,11 @@ export function TransferForm({
   const lineCount = lines.length;
 
   function resetForm() {
-    if (organizationId) clearTransferDraft(organizationId);
+    if (organizationId && draftUserId) {
+      clearTransferDraft(organizationId, draftUserId);
+    }
+    transferredAtEdited.current = false;
+    setDraftNoticeVisible(false);
     setFromLocationId((current) => kiosk?.isKioskAccount ? kiosk.locationId : current);
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
@@ -920,6 +935,12 @@ export function TransferForm({
 
   return (
     <div className="flex flex-col gap-6">
+      {draftNoticeVisible ? (
+        <DraftRestoredNotice
+          description="Din ufærdige transfer er hentet frem igen."
+          onDiscard={resetForm}
+        />
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)">
         <Card>
           <CardHeader>
@@ -1043,9 +1064,10 @@ export function TransferForm({
                   id={`${inputIdPrefix}-at`}
                   type="datetime-local"
                   value={transferredAtLocal}
-                  onChange={(event) =>
-                    setTransferredAtLocal(event.target.value)
-                  }
+                  onChange={(event) => {
+                    transferredAtEdited.current = true;
+                    setTransferredAtLocal(event.target.value);
+                  }}
                   className="h-11"
                   aria-invalid={Boolean(errors.transferredAt)}
                   aria-describedby={errors.transferredAt ? `${inputIdPrefix}-at-error` : undefined}

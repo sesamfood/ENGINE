@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  readLocalDraft,
+  removeLocalDraft,
+  writeLocalDraft,
+} from "./local-draft";
+
 export type OrderingDraft = {
   supplierChoice: string | null;
   overrides: Record<string, string>;
@@ -8,53 +14,34 @@ export type OrderingDraft = {
   sendEmail: boolean;
 };
 
-function draftKey(organizationId: string, locationId: string) {
-  return `engine.ordering.draft.${organizationId}.${locationId}`;
+function draftKey(organizationId: string, userId: string, locationId: string) {
+  return `ordering.${organizationId}.${userId}.${locationId}`;
 }
 
 export function readOrderingDraft(
   organizationId: string,
+  userId: string,
   locationId: string,
-): OrderingDraft | null {
-  try {
-    const raw = window.localStorage.getItem(
-      draftKey(organizationId, locationId),
-    );
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as OrderingDraft;
-    if (
-      !parsed ||
-      typeof parsed.overrides !== "object" ||
-      typeof parsed.unitLines !== "object" ||
-      typeof parsed.catalogInputs !== "object"
-    ) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
+) {
+  const draft = readLocalDraft<OrderingDraft>(
+    draftKey(organizationId, userId, locationId),
+  );
+  return draft?.overrides && draft.unitLines && draft.catalogInputs ? draft : null;
 }
 
 export function writeOrderingDraft(
   organizationId: string,
+  userId: string,
   locationId: string,
   draft: OrderingDraft,
 ) {
-  try {
-    window.localStorage.setItem(
-      draftKey(organizationId, locationId),
-      JSON.stringify(draft),
-    );
-  } catch {
-    // Drafts are best-effort; storage may be full or unavailable.
-  }
+  writeLocalDraft(draftKey(organizationId, userId, locationId), draft);
 }
 
-export function clearOrderingDraft(organizationId: string, locationId: string) {
-  try {
-    window.localStorage.removeItem(draftKey(organizationId, locationId));
-  } catch {
-    // Ignore unavailable storage.
-  }
+export function clearOrderingDraft(
+  organizationId: string,
+  userId: string,
+  locationId: string,
+) {
+  removeLocalDraft(draftKey(organizationId, userId, locationId));
 }

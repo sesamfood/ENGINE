@@ -127,7 +127,7 @@ function Settings() {
             help={{
               label: "vælg leverandør før bestilling",
               content:
-                "Når der er oprettet leverandører, vælger brugeren først en leverandør eller Alle produkter. Slå fra for at vise alle Produkter, der kan bestilles, med det samme.",
+                "Når der er oprettet leverandører, vælger brugeren først en leverandør eller Alle produkter. Slå fra for at vise alle produkter, der kan bestilles, med det samme.",
             }}
             checked={chooseSupplierFirst}
             onCheckedChange={setChooseSupplierFirstDraft}

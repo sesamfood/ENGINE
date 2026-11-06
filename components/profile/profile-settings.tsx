@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { useKiosk } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
 
 function deletionError(error?: { message?: string }) {
@@ -59,6 +60,7 @@ export function ProfileSettings() {
   const [passwordPending, setPasswordPending] = useState(false);
   const [passwordError, setPasswordError] = useState<string>();
 
+  const isKioskAccount = Boolean(useKiosk()?.isKioskAccount);
   const sessionUser = session.data?.user;
   const sessionUserId = sessionUser?.id;
   const sessionUserName = sessionUser?.name;
@@ -173,6 +175,18 @@ export function ProfileSettings() {
               <AlertDescription>{nameError}</AlertDescription>
             </Alert>
           ) : null}
+          {isKioskAccount ? (
+            <>
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Navn</p>
+                <p className="truncate font-medium">{session.data.user.name}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">E-mail</p>
+                <p className="truncate font-medium">{session.data.user.email}</p>
+              </div>
+            </>
+          ) : (
           <form
             className="flex flex-col gap-4"
             onSubmit={(event) => {
@@ -221,9 +235,11 @@ export function ProfileSettings() {
             ) : null}
           </div>
           </form>
+          )}
         </CardContent>
       </Card>
 
+      {isKioskAccount ? null : (
       <Card>
         <CardHeader>
           <CardTitle role="heading" aria-level={2}>Adgangskode</CardTitle>
@@ -291,6 +307,7 @@ export function ProfileSettings() {
           </form>
         </CardContent>
       </Card>
+      )}
 
       <Card appearance="danger">
         <CardHeader>

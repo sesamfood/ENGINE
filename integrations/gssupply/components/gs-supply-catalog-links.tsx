@@ -191,7 +191,7 @@ export function GsSupplyCatalogLinks() {
       <CardHeader className="flex flex-col sm:grid">
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
-          Vælg det Produkt, hvert GS Supply-produkt svarer til, og den enhed én
+          Vælg det produkt, hvert GS Supply-produkt svarer til, og den enhed én
           pakke fra GS Supply svarer til.
         </CardDescription>
         <CardAction>
@@ -215,9 +215,9 @@ export function GsSupplyCatalogLinks() {
         {options.limitReached ? (
           <Alert>
             <CircleAlertIcon />
-            <AlertTitle>Kun de første 500 Produkter kan vælges</AlertTitle>
+            <AlertTitle>Kun de første 500 produkter kan vælges</AlertTitle>
             <AlertDescription>
-              Arkivér ubrugte Produkter for at få hele listen med.
+              Arkivér ubrugte produkter for at få hele listen med.
             </AlertDescription>
           </Alert>
         ) : null}
@@ -440,7 +440,7 @@ function CatalogLinkEditor({
           }))}
           value={selected?.id ?? null}
           onValueChange={chooseProduct}
-          placeholder="Søg efter Produkt"
+          placeholder="Søg efter produkt"
           ariaLabel={`Produkt for GS Supply-varenummer ${row.productNumber}`}
           disabled={saving}
         />
@@ -453,7 +453,7 @@ function CatalogLinkEditor({
             onClick={() => setCreatingProduct(true)}
           >
             <PlusIcon data-icon="inline-start" />
-            Opret som nyt Produkt
+            Opret som nyt produkt
           </Button>
         ) : null}
       </div>
@@ -608,7 +608,7 @@ function AddUnitDialog({
           <DialogHeader>
             <DialogTitle>Tilføj enhed til {product.name}</DialogTitle>
             <DialogDescription>
-              Enheden tilføjes til Produktet og bruges som én pakke fra GS
+              Enheden tilføjes til produktet og bruges som én pakke fra GS
               Supply.
             </DialogDescription>
           </DialogHeader>
@@ -854,7 +854,7 @@ function CreateProductDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Opret Produkt fra GS Supply</DialogTitle>
+            <DialogTitle>Opret produkt fra GS Supply</DialogTitle>
             <div className="flex items-center gap-3">
               {row.pictureUrl ? (
                 <Avatar className="size-14 shrink-0">
@@ -866,7 +866,7 @@ function CreateProductDialog({
               ) : null}
               <DialogDescription>
                 {row.productNumber} · {row.name}
-                {row.pictureUrl ? ". Billedet bruges på Produktet." : ""}
+                {row.pictureUrl ? ". Billedet bruges på produktet." : ""}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -964,7 +964,7 @@ function CreateProductDialog({
             </Button>
             <Button type="submit" size="lg" disabled={saving || !ready}>
               {saving ? <Spinner data-icon="inline-start" /> : null}
-              Opret Produkt
+              Opret produkt
             </Button>
           </DialogFooter>
         </form>

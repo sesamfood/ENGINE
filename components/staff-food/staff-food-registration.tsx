@@ -192,16 +192,16 @@ function StaffFoodHeader({
       <div
         className={cn(
           "grid gap-3",
-          employeeName ? "sm:grid-cols-2 md:w-136" : "md:w-80",
+          employeeName ? "sm:grid-cols-2 md:w-96 lg:w-136" : "md:w-80",
         )}
       >
         {employeeName ? (
           <Field>
-            <FieldLabel className="sr-only">Medarbejder</FieldLabel>
             <Button
               variant="outline"
               appearance="compact"
               className="h-11 w-full justify-start"
+              aria-label={`Skift medarbejder: ${employeeName}`}
               onClick={onEmployeeChange}
             >
               <UserRoundIcon data-icon="inline-start" />

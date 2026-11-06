@@ -52,11 +52,22 @@ const DonutVisualization = dynamic<VisualizationProps>(
   { loading: visualizationLoading },
 );
 
-function withEmptyState(Visualization: ComponentType<VisualizationProps>) {
+/** Totals, ratings and breakdowns are valid data without any time points. */
+function hasNoData(result: VisualizationProps["result"], needsPoints: boolean) {
+  if (result.headlineTotal !== undefined || result.breakdown?.length) return false;
+  return needsPoints
+    ? result.series.every((series) => series.points.length === 0)
+    : result.series.length === 0;
+}
+
+function withEmptyState(
+  Visualization: ComponentType<VisualizationProps>,
+  { needsPoints = false }: { needsPoints?: boolean } = {},
+) {
   return function VisualizationWithEmptyState(props: VisualizationProps) {
     if (
       props.result.emptyMessage === undefined &&
-      props.result.series.every((series) => series.points.length === 0)
+      hasNoData(props.result, needsPoints)
     ) {
       return createElement(
         Empty,
@@ -120,9 +131,9 @@ export const visualizationRegistry: Record<
   ComponentType<VisualizationProps>
 > = {
   kpi: withEmptyState(KpiVisualization),
-  line: withEmptyState(LineVisualization),
-  bar: withEmptyState(BarVisualization),
-  area: withEmptyState(AreaVisualization),
+  line: withEmptyState(LineVisualization, { needsPoints: true }),
+  bar: withEmptyState(BarVisualization, { needsPoints: true }),
+  area: withEmptyState(AreaVisualization, { needsPoints: true }),
   donut: withEmptyState(DonutVisualization),
   gauge: withEmptyState(GaugeVisualization),
   list: withEmptyState(ListVisualization),

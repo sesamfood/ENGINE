@@ -683,7 +683,7 @@ export function ProductCatalog() {
 
   return (
     <div className="flex flex-col gap-7">
-      <div className="z-30 -mx-4 bg-background px-4 py-3 max-sm:static sm:sticky sm:top-16 md:top-24 md:py-4">
+      <div className="z-30 -mx-4 bg-background px-4 py-3 max-sm:static sm:sticky sm:top-16 md:top-18 md:py-4">
         <div className="flex flex-wrap items-center gap-3">
           <InputGroup className="h-11 w-full sm:min-w-48 sm:flex-1">
             <InputGroupAddon>

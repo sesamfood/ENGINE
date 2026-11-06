@@ -116,6 +116,7 @@ import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
 import { authClient } from "@/lib/auth-client";
 import type { DataGranularity, PermissionId } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
+import { clearLocalDrafts } from "@/lib/local-draft";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
@@ -1688,7 +1689,10 @@ export function AppShell({
     void authClient
       .signOut()
       .then((result) => {
-        if (!result.error) posthog.reset();
+        if (!result.error) {
+          posthog.reset();
+          clearLocalDrafts();
+        }
         if (cancelled) return;
         if (result.error) {
           setSigningOut(false);
@@ -1833,12 +1837,12 @@ export function AppShell({
                             nativeButton={false}
                           >
                             <ArrowLeftIcon data-icon="inline-start" />
-                            <span className="hidden sm:inline">
+                            <span className="hidden lg:inline">
                               {showIntegrationsBack
                                 ? "Tilbage til integrationer"
                                 : "Tilbage til administration"}
                             </span>
-                            <span className="sm:hidden">Tilbage</span>
+                            <span className="lg:hidden">Tilbage</span>
                           </Button>
                         ) : null}
                         <div className={cn("flex flex-1 justify-center md:hidden", showAdministrationBack && "max-md:invisible")}>

@@ -1246,11 +1246,7 @@ export function OnlinePosIntegration() {
   return (
     <div>
       {settings.enabled ? (
-        <Tabs
-          value={tab}
-          onValueChange={setTab}
-          className="mb-(--spacing-safe-actions-compact)"
-        >
+        <Tabs value={tab} onValueChange={setTab}>
           <AppBottomBar>
             <div className="mx-auto w-full max-w-(--container-page)">
               <TabsList

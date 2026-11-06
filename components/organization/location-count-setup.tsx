@@ -491,7 +491,7 @@ export function LocationCountSetup({
     }
     if (to === "unused" && ingredientIds.has(productId)) {
       toast.error(
-        "Produktet er ingrediens i et valgt Produkt og kan ikke fravælges",
+        "Produktet er ingrediens i et valgt produkt og kan ikke fravælges",
       );
       return;
     }
@@ -563,7 +563,7 @@ export function LocationCountSetup({
           .filter((id) => !board.unused.has(id));
     const unusedProductIds = board.autoInclude ? unusedIds : [];
     if (!board.autoInclude && productIds.length === 0) {
-      toast.error("Vælg mindst ét Produkt til lokationen");
+      toast.error("Vælg mindst ét produkt til lokationen");
       return;
     }
     const waste = new Set(wasteIds);
@@ -804,7 +804,7 @@ export function LocationCountSetup({
     if (visible.length === 0) {
       return (
         <li className="flex min-h-20 items-center justify-center rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
-          {ids.length === 0 ? "Træk Produkter hertil" : "Ingen match"}
+          {ids.length === 0 ? "Træk produkter hertil" : "Ingen match"}
         </li>
       );
     }
@@ -818,7 +818,7 @@ export function LocationCountSetup({
     if (visible.length === 0) {
       return (
         <li className="flex min-h-20 items-center justify-center rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
-          {ids.length === 0 ? "Træk Produkter hertil" : "Ingen match"}
+          {ids.length === 0 ? "Træk produkter hertil" : "Ingen match"}
         </li>
       );
     }
@@ -873,7 +873,7 @@ export function LocationCountSetup({
           <DialogHeader>
             <DialogTitle>Produkter og Områder</DialogTitle>
             <DialogDescription>
-              Placér Produkterne for {locationName}. Rækkefølgen i et Område er
+              Placér produkterne for {locationName}. Rækkefølgen i et Område er
               rækkefølgen i Count.
             </DialogDescription>
           </DialogHeader>
@@ -890,9 +890,9 @@ export function LocationCountSetup({
                 <EmptyMedia variant="icon">
                   <LayoutListIcon />
                 </EmptyMedia>
-                <EmptyTitle>Ingen aktive Produkter</EmptyTitle>
+                <EmptyTitle>Ingen aktive produkter</EmptyTitle>
                 <EmptyDescription>
-                  Opret eller aktivér et Produkt i Produktkataloget først.
+                  Opret eller aktivér et produkt i produktkataloget først.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -928,11 +928,11 @@ export function LocationCountSetup({
                     htmlFor={`count-setup-auto-${locationId}`}
                     className="text-sm font-medium"
                   >
-                    Brug nye Produkter automatisk
+                    Brug nye produkter automatisk
                   </label>
                   <HelpTooltip
-                    label="Brug nye Produkter automatisk"
-                    content="Når den er slået til, bruges nye Produkter automatisk på lokationen og lander i Kun Waste. Produkter i Ikke brugt forbliver fravalgt. Når den er slået fra, bruges kun de Produkter, der ligger uden for Ikke brugt nu."
+                    label="Brug nye produkter automatisk"
+                    content="Når den er slået til, bruges nye produkter automatisk på lokationen og lander i Kun Waste. Produkter i Ikke brugt forbliver fravalgt. Når den er slået fra, bruges kun de produkter, der ligger uden for Ikke brugt nu."
                   />
                 </div>
               </div>
@@ -1004,7 +1004,7 @@ export function LocationCountSetup({
                               variant="ghost"
                               size="icon-lg"
                               className="size-11 shrink-0"
-                              aria-label="Flyt alle viste Produkter"
+                              aria-label="Flyt alle viste produkter"
                               disabled={
                                 isBusy || !unusedIds.some((id) => matches(id))
                               }
@@ -1255,7 +1255,7 @@ export function LocationCountSetup({
           <AlertDialogHeader>
             <AlertDialogTitle>Fjern Området?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingAreaDelete?.name} og dens Produktrækkefølge fjernes
+              {pendingAreaDelete?.name} og dens produktrækkefølge fjernes
               permanent. Produkterne flyttes til Kun Waste, medmindre de også
               ligger i et andet Område.
             </AlertDialogDescription>

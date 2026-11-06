@@ -23,10 +23,21 @@ const shelllessRoutes = [
   "/platform",
 ];
 
-function isShelllessRoute(pathname: string | null) {
+// Only these may reuse the last organization's colors. Shared dashboards and
+// invitations belong to another organization, and /platform to none.
+const storedThemeRoutes = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/help",
+];
+
+function matchesRoute(routes: string[], pathname: string | null) {
   return Boolean(
     pathname &&
-      shelllessRoutes.some(
+      routes.some(
         (path) => pathname === path || pathname.startsWith(`${path}/`),
       ),
   );
@@ -97,7 +108,7 @@ export function AppRouteShell({
 }) {
   const pathname = usePathname();
   const { isLoading, isAuthenticated } = useConvexAuth();
-  const shellless = isShelllessRoute(pathname);
+  const shellless = matchesRoute(shelllessRoutes, pathname);
   const requiresAuth =
     !shellless ||
     pathname === "/onboarding" ||
@@ -108,7 +119,11 @@ export function AppRouteShell({
   }
 
   if (shellless) {
-    return <StoredOrganizationTheme>{children}</StoredOrganizationTheme>;
+    return matchesRoute(storedThemeRoutes, pathname) ? (
+      <StoredOrganizationTheme>{children}</StoredOrganizationTheme>
+    ) : (
+      children
+    );
   }
 
   return (

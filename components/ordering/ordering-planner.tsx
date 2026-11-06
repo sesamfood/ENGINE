@@ -26,6 +26,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { DraftRestoredNotice } from "@/components/draft-restored-notice";
 import { toast } from "sonner";
 import {
   useAccess,
@@ -194,32 +195,42 @@ function Planner({
   const submitting = useRef(false);
   const restoredDraftFor = useRef<string | null>(null);
   const draftAppliedFor = useRef<string | null>(null);
+  const [draftNoticeVisible, setDraftNoticeVisible] = useState(false);
+  const { data: session } = authClient.useSession();
+  // Kiosk accounts are shared, so a draft would reach the next person.
+  const draftUserId =
+    access && !access.kiosk?.isKioskAccount && !access.kiosk?.kioskModeEnabled
+      ? session?.user.id
+      : undefined;
 
   // Restore an unfinished order draft after navigation remounted the planner.
   useEffect(() => {
-    if (editing || !locationId) return;
+    if (editing || !locationId || !draftUserId) return;
     const key = `${organizationId}:${locationId}`;
     if (restoredDraftFor.current === key) return;
+    const switchedLocation = restoredDraftFor.current !== null;
     restoredDraftFor.current = key;
-    const draft = readOrderingDraft(organizationId, locationId);
-    if (!draft) {
+    const draft = readOrderingDraft(organizationId, draftUserId, locationId);
+    if (!draft && !switchedLocation) {
       draftAppliedFor.current = key;
       return;
     }
+    // Always replace the state, so one location's order never lands in another's draft.
     window.setTimeout(() => {
-      if (draft.supplierChoice) setSupplierValue(draft.supplierChoice);
-      setOverrides(draft.overrides);
+      setSupplierValue(draft?.supplierChoice ?? null);
+      setOverrides(draft?.overrides ?? {});
       setUnitLines(
-        draft.unitLines as Record<string, { unitId: Id<"units">; input: string }[]>,
+        (draft?.unitLines ?? {}) as Record<string, { unitId: Id<"units">; input: string }[]>,
       );
-      setCatalogInputs(draft.catalogInputs);
-      setSendEmail(draft.sendEmail);
+      setCatalogInputs(draft?.catalogInputs ?? {});
+      setSendEmail(draft?.sendEmail ?? true);
+      setDraftNoticeVisible(Boolean(draft));
       draftAppliedFor.current = key;
     });
-  }, [editing, locationId, organizationId]);
+  }, [draftUserId, editing, locationId, organizationId]);
 
   useEffect(() => {
-    if (editing || !locationId) return;
+    if (editing || !locationId || !draftUserId) return;
     if (draftAppliedFor.current !== `${organizationId}:${locationId}`) return;
     const empty =
       !supplierChoice &&
@@ -227,17 +238,17 @@ function Planner({
       !Object.keys(unitLines).length &&
       !Object.keys(catalogInputs).length;
     if (empty) {
-      clearOrderingDraft(organizationId, locationId);
+      clearOrderingDraft(organizationId, draftUserId, locationId);
       return;
     }
-    writeOrderingDraft(organizationId, locationId, {
+    writeOrderingDraft(organizationId, draftUserId, locationId, {
       supplierChoice,
       overrides,
       unitLines,
       catalogInputs,
       sendEmail,
     });
-  }, [catalogInputs, editing, locationId, organizationId, overrides, sendEmail, supplierChoice, unitLines]);
+  }, [catalogInputs, draftUserId, editing, locationId, organizationId, overrides, sendEmail, supplierChoice, unitLines]);
   const convex = useConvex();
   const placeOrder = useMutation(api.ordering.placeOrder);
   const updateOrder = useMutation(api.ordering.updateInternalOrder);
@@ -776,7 +787,7 @@ function Planner({
         catalogLines,
         ...(internalSupplier ? { comment } : {}),
       });
-      clearOrderingDraft(organizationId, locationId);
+      if (draftUserId) clearOrderingDraft(organizationId, draftUserId, locationId);
       if (!mounted.current) return;
       setOrderingLocation(organizationId, locationId);
       setConfirming(false);
@@ -966,9 +977,28 @@ function Planner({
     );
   }
 
+  function discardDraft() {
+    setSupplierValue(null);
+    setOverrides({});
+    setUnitLines({});
+    setCatalogInputs({});
+    setSendEmail(true);
+    setDraftNoticeVisible(false);
+  }
+
   return (
     <>
       <AppPageHeader>{header}</AppPageHeader>
+      {draftNoticeVisible &&
+      (supplierChoice ||
+        Object.keys(overrides).length > 0 ||
+        Object.keys(unitLines).length > 0 ||
+        Object.keys(catalogInputs).length > 0) ? (
+        <DraftRestoredNotice
+          description="Din ufærdige bestilling er hentet frem igen."
+          onDiscard={discardDraft}
+        />
+      ) : null}
       {!canPlan ? (
         <Alert variant="destructive">
           <AlertTitle>Ingen adgang</AlertTitle>
@@ -1090,7 +1120,7 @@ function Planner({
               <AlertTitle>GS Supply-kataloget kunne ikke hentes</AlertTitle>
               <AlertDescription>
                 <div className="flex flex-col items-start gap-3">
-                  Priser, lager og leveringstid vises ikke. Du kan stadig bestille de koblede Produkter.
+                  Priser, lager og leveringstid vises ikke. Du kan stadig bestille de koblede produkter.
                   <Button variant="outline" onClick={reloadCatalog}>
                     <RefreshCwIcon data-icon="inline-start" />
                     Prøv igen
@@ -1226,9 +1256,9 @@ function Planner({
                 <EmptyTitle>Ingen produkter at vise</EmptyTitle>
                 <EmptyDescription>
                   {catalogSupplier && !rows.length
-                    ? "Ingen Produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
+                    ? "Ingen produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
                     : internalSupplier && !rows.length
-                      ? `Ingen Produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Bestilling.`
+                      ? `Ingen produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Bestilling.`
                       : "Prøv en anden søgning, eller tilpas filtrene."}
                 </EmptyDescription>
               </EmptyHeader>
@@ -1530,7 +1560,7 @@ function CatalogItemsTable({
         </h2>
         <HelpTooltip
           label="andre varer"
-          content="Varer fra kataloget, der ikke er koblet til et Produkt. De bestilles i hele pakker uden forslag og påvirker ikke lageret."
+          content="Varer fra kataloget, der ikke er koblet til et produkt. De bestilles i hele pakker uden forslag og påvirker ikke lageret."
         />
       </div>
       <div className="overflow-hidden rounded-xl border">

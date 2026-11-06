@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  readLocalDraft,
+  removeLocalDraft,
+  writeLocalDraft,
+} from "./local-draft";
 import { createLocationPreference } from "./location-preference";
 
 const preference = createLocationPreference("engine.transfer.location");
@@ -26,37 +31,23 @@ export type TransferDraft = {
   }>;
 };
 
-function draftKey(organizationId: string) {
-  return `engine.transfer.draft.${organizationId}`;
+function draftKey(organizationId: string, userId: string) {
+  return `transfer.${organizationId}.${userId}`;
 }
 
-export function readTransferDraft(organizationId: string): TransferDraft | null {
-  try {
-    const raw = window.localStorage.getItem(draftKey(organizationId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as TransferDraft;
-    if (!parsed || !Array.isArray(parsed.lines)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+export function readTransferDraft(organizationId: string, userId: string) {
+  const draft = readLocalDraft<TransferDraft>(draftKey(organizationId, userId));
+  return Array.isArray(draft?.lines) ? draft : null;
 }
 
 export function writeTransferDraft(
   organizationId: string,
+  userId: string,
   draft: TransferDraft,
 ) {
-  try {
-    window.localStorage.setItem(draftKey(organizationId), JSON.stringify(draft));
-  } catch {
-    // Drafts are best-effort; storage may be full or unavailable.
-  }
+  writeLocalDraft(draftKey(organizationId, userId), draft);
 }
 
-export function clearTransferDraft(organizationId: string) {
-  try {
-    window.localStorage.removeItem(draftKey(organizationId));
-  } catch {
-    // Ignore unavailable storage.
-  }
+export function clearTransferDraft(organizationId: string, userId: string) {
+  removeLocalDraft(draftKey(organizationId, userId));
 }

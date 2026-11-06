@@ -59,12 +59,12 @@ export function SectionNav({
             <li key={item.href} className="flex h-full shrink-0 max-sm:flex-1">
               <Link
                 href={item.href}
-                scroll={false}
                 aria-current={item.active ? "page" : undefined}
+                onClick={item.active ? (event) => event.preventDefault() : undefined}
                 className={cn(
                   "relative inline-flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-2 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4 sm:flex-none [&_svg]:hidden min-[420px]:[&_svg]:block [&_svg]:size-4 [&_svg]:shrink-0",
                   item.active &&
-                    "font-semibold text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary hover:text-primary",
+                    "font-semibold text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary",
                 )}
               >
                 {Icon ? <Icon aria-hidden="true" /> : null}

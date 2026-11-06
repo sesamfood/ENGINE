@@ -55,7 +55,13 @@ export function OrganizationTheme({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (!branding?.theme) return;
+    if (branding === undefined) return;
+    if (!branding?.theme) {
+      try {
+        window.localStorage.removeItem(STORED_THEME_KEY);
+      } catch {}
+      return;
+    }
     const root = document.documentElement;
     const variables = getOrganizationThemeCssVariables(branding.theme);
     try {
@@ -72,7 +78,7 @@ export function OrganizationTheme({ children }: { children: ReactNode }) {
         else root.style.removeProperty(name);
       }
     };
-  }, [branding?.theme]);
+  }, [branding]);
 
   return children;
 }

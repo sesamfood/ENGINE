@@ -33,7 +33,7 @@ export function AppBottomBar({
     <div
       ref={ref}
       className={cn(
-        "fixed inset-x-0 bottom-0 left-(--bar-left) z-10 border-t bg-background px-4 pt-3 pb-(--spacing-safe-inset) md:right-0",
+        "fixed inset-x-0 bottom-0 left-(--bar-left) z-30 border-t bg-background px-4 pt-3 pb-(--spacing-safe-inset) md:right-0",
         className,
       )}
       style={

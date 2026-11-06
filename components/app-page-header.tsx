@@ -63,7 +63,7 @@ export function PageTitle({
   return (
     <h1
       className={cn(
-        "text-3xl font-semibold tracking-tight sm:text-4xl",
+        "text-3xl font-semibold tracking-tight wrap-break-word sm:text-4xl",
         className,
       )}
     >
