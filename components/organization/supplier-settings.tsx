@@ -53,7 +53,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -90,7 +90,7 @@ export function SupplierSettings() {
   const [pendingDelete, setPendingDelete] = useState<Supplier | null>(null);
 
   if (!canManage) return null;
-  if (suppliers === undefined) return <Skeleton className="h-56 max-w-3xl" />;
+  if (suppliers === undefined) return <FormCardSkeleton className="max-w-3xl" />;
 
   function open(supplier: Supplier | null) {
     setError("");

@@ -47,6 +47,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { CardSkeleton, FormCardSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -142,7 +143,18 @@ export function BadDeliveryRegistration() {
   }, []);
 
   if (locations === undefined || (locationId && config === undefined)) {
-    return <Skeleton className="h-136" />;
+    return (
+      <div className="flex flex-col gap-6">
+        <CardSkeleton>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        </CardSkeleton>
+        <FormCardSkeleton fields={1} />
+        <FormCardSkeleton fields={2} />
+      </div>
+    );
   }
   if (!locations.length || !locationId) {
     return (

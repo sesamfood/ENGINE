@@ -9,31 +9,55 @@ import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { BottomBarSkeleton, CardGridSkeleton, DateRangeSkeleton, ProductFormSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
 import { ArrowRightLeftIcon, HistoryIcon, ShoppingCartIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+
+const tabSkeletons = {
+  new: (
+    <>
+      <ProductFormSkeleton fields={4} />
+      <BottomBarSkeleton />
+    </>
+  ),
+  orders: (
+    <>
+      <CardGridSkeleton count={3} cardClassName="h-52" />
+      <BottomBarSkeleton />
+    </>
+  ),
+  history: (
+    <div className="flex flex-col gap-6">
+      <DateRangeSkeleton />
+      <Skeleton className="h-5 w-32" />
+      <RowsSkeleton />
+      <BottomBarSkeleton />
+    </div>
+  ),
+};
 
 const TransferForm = dynamic(
   () =>
     import("@/components/transfers/transfer-form").then(
       (module) => module.TransferForm,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.new },
 );
 const InternalOrders = dynamic(
   () =>
     import("@/components/transfers/internal-orders").then(
       (module) => module.InternalOrders,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.orders },
 );
 const TransferHistory = dynamic(
   () =>
     import("@/components/transfers/transfer-history").then(
       (module) => module.TransferHistory,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.history },
 );
 
 function tabPath(tab: string) {
@@ -89,9 +113,7 @@ function TransfersContent() {
     router.replace(tabPath(selectedTab));
   }, [activeTab, router, selectedTab, showHistory, showNew]);
 
-  if (!access) {
-    return <Skeleton className="h-80 w-full" />;
-  }
+  if (!access) return tabSkeletons[activeTab];
 
   if (!showNew && !showHistory) {
     return (
@@ -127,7 +149,7 @@ function TransfersContent() {
         openOrders ? (
           <InternalOrders orders={openOrders} navigation={navigation} />
         ) : (
-          <Skeleton className="h-96 w-full" />
+          tabSkeletons.orders
         )
       ) : null}
       {showHistory && selectedTab === "history" ? (

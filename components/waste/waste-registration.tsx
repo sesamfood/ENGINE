@@ -57,6 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ProductGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -608,10 +609,20 @@ export function WasteRegistration() {
   }
   if (!locations || catalog === undefined) {
     return (
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 10 }, (_, index) => (
-          <Skeleton key={index} className="h-72" />
-        ))}
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-5 w-full max-w-xl" />
+        <ProductGridSkeleton>
+          <CardHeader appearance="product">
+            <Skeleton className="h-5 w-2/3" />
+            <Skeleton className="h-4 w-1/3" />
+          </CardHeader>
+          <CardContent appearance="productGrid" className="grid grid-cols-2">
+            <Skeleton className="h-12" />
+            <Skeleton className="h-12" />
+          </CardContent>
+        </ProductGridSkeleton>
       </div>
     );
   }

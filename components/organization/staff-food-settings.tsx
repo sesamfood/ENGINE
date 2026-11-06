@@ -69,7 +69,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
@@ -351,7 +351,7 @@ export function StaffFoodSettings() {
       </Alert>
     );
   }
-  if (!settings) return <Skeleton className="h-96 max-w-5xl" />;
+  if (!settings) return <FormCardSkeleton className="max-w-5xl" />;
 
   return (
     <div className="flex max-w-5xl flex-col gap-8">

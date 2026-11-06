@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 
 import { api } from "@/convex/_generated/api";
@@ -53,7 +53,7 @@ export function OwnCheckSettings() {
   const [confirmBlock, setConfirmBlock] = useState(false);
 
   if (!access || (canManage && settings === undefined)) {
-    return <Skeleton className="h-80 w-full max-w-3xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
   if (!canManage) {
     return (
@@ -63,7 +63,7 @@ export function OwnCheckSettings() {
       </Alert>
     );
   }
-  if (!settings) return <Skeleton className="h-80 w-full max-w-3xl" />;
+  if (!settings) return <FormCardSkeleton className="max-w-3xl" />;
 
   const days = lateSubmissionDays ?? settings.lateSubmissionDays;
   const secondPerson =

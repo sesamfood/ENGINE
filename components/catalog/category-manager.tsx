@@ -66,7 +66,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
@@ -435,11 +435,7 @@ export function CategoryManager() {
       </div>
 
       {showSkeleton ? (
-        <div className="flex flex-col gap-3">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-14 w-full" />
-          ))}
-        </div>
+        <TableSkeleton rows={4} />
       ) : null}
 
       {categories?.length === 0 ? (

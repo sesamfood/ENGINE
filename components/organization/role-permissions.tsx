@@ -46,7 +46,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
@@ -219,7 +219,12 @@ export function RolePermissions() {
     );
   }
 
-  if (!rows) return <Skeleton className="h-96 w-full" />;
+  if (!rows)
+    return (
+      <CardSkeleton className="max-w-6xl">
+        <RowsSkeleton rows={8} rowClassName="h-10" />
+      </CardSkeleton>
+    );
 
   return (
     <div className="max-w-6xl">

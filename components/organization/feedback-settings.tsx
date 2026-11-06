@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -114,7 +114,7 @@ export function FeedbackSettings() {
   }
 
   if (settings === undefined) {
-    return <Skeleton className="h-96 w-full" />;
+    return <FormCardSkeleton fields={5} />;
   }
 
   const enabled = enabledDraft ?? settings.enabled;

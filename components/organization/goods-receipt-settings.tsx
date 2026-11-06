@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/card";
 import { FieldGroup } from "@/components/ui/field";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 
 import { api } from "@/convex/_generated/api";
@@ -36,7 +36,7 @@ export function GoodsReceiptSettings() {
   const [receiptDraft, setReceiptDraft] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
 
-  if (!access) return <Skeleton className="h-72 max-w-3xl" />;
+  if (!access) return <FormCardSkeleton className="max-w-3xl" />;
   if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-3xl">
@@ -48,7 +48,7 @@ export function GoodsReceiptSettings() {
     );
   }
   if (settings === undefined) {
-    return <Skeleton className="h-72 max-w-3xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
 
   const photoEnabled = photoDraft ?? settings.transferDeliveryNotePhotoEnabled;

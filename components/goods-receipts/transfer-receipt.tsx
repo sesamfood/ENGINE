@@ -66,6 +66,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { RegistrationSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -938,12 +939,9 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
 
   if (!access) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
-        <Skeleton className="h-80 w-full" />
-        <div className="flex flex-col gap-5">
-          <Skeleton className="h-36 w-full" />
-          <Skeleton className="h-96 w-full" />
-        </div>
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-12 w-56" />
+        <RegistrationSkeleton />
       </div>
     );
   }
@@ -964,12 +962,9 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
     (receipt?.kind === "pending" && products === undefined)
   ) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
-        <Skeleton className="h-80 w-full" />
-        <div className="flex flex-col gap-5">
-          <Skeleton className="h-36 w-full" />
-          <Skeleton className="h-96 w-full" />
-        </div>
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-12 w-56" />
+        <RegistrationSkeleton />
       </div>
     );
   }

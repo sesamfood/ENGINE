@@ -8,7 +8,7 @@ import { useKiosk, useLocationAccess, usePermission } from "@/components/app-she
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { api } from "@/convex/_generated/api";
 import { addDateKey } from "@/lib/own-checks";
 import { OwnCheckForm } from "./own-check-form";
@@ -33,7 +33,7 @@ export function OwnCheckDetail({ templateId, locationId, dateKey }: {
   const backHref = `/own-checks?${new URLSearchParams({ locationId })}`;
 
   if (locations === undefined || (canAccess && location && (!result || !dateContext))) {
-    return <Skeleton className="h-136 w-full" />;
+    return <FormCardSkeleton fields={5} />;
   }
 
   const item = result?.items.find((item) => item.templateId === templateId);

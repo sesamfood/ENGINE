@@ -64,7 +64,7 @@ import {
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -807,7 +807,7 @@ export function ApiKeyManagement() {
   }
 
   if (!options || keys === null) {
-    return <Skeleton className="h-96 w-full" />;
+    return <FormCardSkeleton />;
   }
 
   return (

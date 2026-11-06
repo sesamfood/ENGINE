@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ExpenseFormSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -260,7 +260,7 @@ export function ExpenseForm({
     }
   }
 
-  if (!locations) return <Skeleton className="h-96 w-full" />;
+  if (!locations) return <ExpenseFormSkeleton />;
   if (!locations.length) {
     return (
       <>

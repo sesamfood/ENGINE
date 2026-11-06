@@ -66,6 +66,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -414,7 +415,7 @@ function HistoryList({
   return (
     <div className="flex flex-col gap-5">
       {status === "LoadingFirstPage" ? (
-        <Skeleton className="h-64 w-full" />
+        <TableSkeleton />
       ) : results.length === 0 ? (
         <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
@@ -841,7 +842,7 @@ function History({ organizationId }: { organizationId: string }) {
 export function OrderingHistory() {
   const { data: session } = authClient.useSession();
   const organizationId = useActiveOrganization().data?.id;
-  if (!organizationId) return <Skeleton className="h-96 w-full" />;
+  if (!organizationId) return <TableSkeleton />;
   return (
     <History
       key={`${organizationId}:${session?.user.id}`}

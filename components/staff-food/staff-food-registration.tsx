@@ -66,6 +66,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { BottomBarSkeleton, LocationHeaderSkeleton, ProductGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -226,6 +227,24 @@ function StaffFoodHeader({
         </Field>
       </div>
     </div>
+  );
+}
+
+function PickerSkeleton() {
+  return (
+    <Card className="mx-auto w-full max-w-3xl">
+      <CardHeader>
+        <Skeleton className="h-7 w-36" />
+      </CardHeader>
+      <CardContent appearance="relaxed" className="flex flex-col">
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-5 w-24" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -531,10 +550,11 @@ export function StaffFoodRegistration() {
 
   if (!locations) {
     return (
-      <div className="flex flex-col gap-6">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-96 w-full" />
-      </div>
+      <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
+        <LocationHeaderSkeleton title="Staff food" />
+        <PickerSkeleton />
+        <BottomBarSkeleton />
+      </section>
     );
   }
 
@@ -563,7 +583,7 @@ export function StaffFoodRegistration() {
           </EmptyHeader>
         </Empty>
       ) : picker === undefined ? (
-        <Skeleton className="h-96 w-full" />
+        <PickerSkeleton />
       ) : !picker.hasRules ? (
         <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>
@@ -588,7 +608,11 @@ export function StaffFoodRegistration() {
           ) : null}
         </Empty>
       ) : sessionId && state === undefined ? (
-        <Skeleton className="h-96 w-full" />
+        <ProductGridSkeleton>
+          <CardHeader appearance="dense">
+            <Skeleton className="h-5 w-2/3" />
+          </CardHeader>
+        </ProductGridSkeleton>
       ) : state ? (
         <>
           {!state.session.active ? (

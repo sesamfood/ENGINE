@@ -52,7 +52,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   InspectionReport,
@@ -681,7 +681,7 @@ export function InspectionDocumentation() {
         </AlertDescription>
       </Alert>
     );
-  if (locations === undefined) return <Skeleton className="h-96 w-full" />;
+  if (locations === undefined) return <FormCardSkeleton />;
   if (!locations.length || !locationId)
     return (
       <Empty appearance="outlined" className="min-h-72">

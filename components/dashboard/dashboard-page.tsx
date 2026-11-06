@@ -137,7 +137,7 @@ function DashboardLanding() {
     }
   }, [dashboards, router]);
 
-  if (!access || dashboards === undefined || initializing) return <Skeleton className="h-96 w-full" />;
+  if (!access || dashboards === undefined || initializing) return <DashboardSkeleton />;
   if (!canView) {
     return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
   }
@@ -155,7 +155,20 @@ function DashboardLanding() {
       </Empty>
     );
   }
-  return <Skeleton className="h-96 w-full" />;
+  return <DashboardSkeleton />;
+}
+
+function DashboardSkeleton() {
+  return (
+    <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-4 lg:gap-6">
+      <AppPageHeader><PageTitle>Dashboard</PageTitle></AppPageHeader>
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-20 w-full" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-80 w-full" />)}
+      </div>
+    </section>
+  );
 }
 
 function DashboardContent({ dashboardId }: { dashboardId: string }) {
@@ -362,9 +375,9 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   ) : null;
 
   if (!access || !canView) {
-    return canView ? <Skeleton className="h-96" /> : <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
+    return canView ? <DashboardSkeleton /> : <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
   }
-  if (!dashboard || !currentScope || !currentRange || dashboardsQuery === undefined || locations === undefined) return <Skeleton className="h-96 w-full" />;
+  if (!dashboard || !currentScope || !currentRange || dashboardsQuery === undefined || locations === undefined) return <DashboardSkeleton />;
   const visibleWidgets = dashboard.widgets.filter((widget) => widgetAvailable(widget, integrations, access.disabledFeatures));
   const hiddenWidgets = dashboard.widgets.filter((widget) => !visibleWidgets.includes(widget));
   const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];

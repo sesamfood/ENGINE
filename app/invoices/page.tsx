@@ -8,23 +8,39 @@ import { AppBottomBar } from "@/components/app-bottom-bar";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { SectionNav } from "@/components/section-nav";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BottomBarSkeleton, FieldSkeleton, ProductFormSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
 import { HistoryIcon, PlusIcon } from "lucide-react";
+
+const tabSkeletons = {
+  new: (
+    <>
+      <ProductFormSkeleton fields={6} />
+      <BottomBarSkeleton />
+    </>
+  ),
+  history: (
+    <div className="flex flex-col gap-5">
+      <FieldSkeleton className="max-w-sm" />
+      <TableSkeleton />
+      <BottomBarSkeleton />
+    </div>
+  ),
+};
 
 const InvoiceForm = dynamic(
   () =>
     import("@/components/invoices/invoice-form").then(
       (module) => module.InvoiceForm,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.new },
 );
 const InvoiceHistory = dynamic(
   () =>
     import("@/components/invoices/invoice-history").then(
       (module) => module.InvoiceHistory,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.history },
 );
 
 function InvoicesContent() {
@@ -58,9 +74,7 @@ function InvoicesContent() {
     );
   }, [activeTab, router, selectedTab, showHistory, showNew]);
 
-  if (!access) {
-    return <Skeleton className="h-80 w-full" />;
-  }
+  if (!access) return tabSkeletons[activeTab];
 
   if (!showNew && !showHistory) {
     return (

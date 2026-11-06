@@ -70,6 +70,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { OrderingChoiceSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
@@ -131,7 +132,7 @@ export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
   const organizationId = useActiveOrganization().data?.id;
   // An open internal order being edited.
   const editOrderId = useSearchParams().get("order") as Id<"orders"> | null;
-  if (!organizationId) return <Skeleton className="h-96 w-full" />;
+  if (!organizationId) return <OrderingChoiceSkeleton />;
   return (
     <Planner
       key={`${organizationId}:${session?.user.id}:${editOrderId}`}
@@ -1040,7 +1041,7 @@ function Planner({
       ) : settings === undefined ||
         suppliers === undefined ||
         internalSuppliers === undefined ? (
-        <Skeleton className="h-72 w-full" />
+        <OrderingChoiceSkeleton />
       ) : choosingSupplier ? (
         <section
           aria-labelledby="ordering-choose-supplier"

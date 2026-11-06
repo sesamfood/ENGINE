@@ -107,6 +107,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -377,8 +378,8 @@ function FormLoading() {
     <div className="flex flex-col gap-6">
       <Skeleton className="h-10 w-72" />
       <div className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)">
-        <Skeleton className="h-136 w-full" />
-        <Skeleton className="h-136 w-full" />
+        <FormCardSkeleton fields={6} />
+        <FormCardSkeleton fields={6} />
       </div>
     </div>
   );

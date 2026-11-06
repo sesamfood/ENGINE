@@ -82,7 +82,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
@@ -132,7 +132,7 @@ function SettingsContent() {
 
   if (!canManage) return null;
   if (!settings || !categories || !products) {
-    return <Skeleton className="h-56 max-w-3xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
 
   const savedIds = new Set(settings.suppliers.map((item) => item.locationId));

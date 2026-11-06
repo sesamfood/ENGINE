@@ -60,7 +60,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton, RowsSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -270,7 +270,13 @@ export function WasteReport() {
   const summaryLoading =
     reportSummary?.state !== "ready" && activeStatus !== "Exhausted";
 
-  if (!locations) return <Skeleton className="h-96" />;
+  if (!locations)
+    return (
+      <div className="flex flex-col gap-6">
+        <FormCardSkeleton />
+        <TableSkeleton />
+      </div>
+    );
   if (!canReport) {
     return (
       <Alert variant="destructive">
@@ -491,7 +497,7 @@ export function WasteReport() {
               </EmptyHeader>
             </Empty>
           ) : summaryLoading ? (
-            <Skeleton className="h-40" />
+            <RowsSkeleton rows={3} rowClassName="h-10" />
           ) : summary.length ? (
             <Table>
               <TableHeader>
@@ -543,7 +549,7 @@ export function WasteReport() {
         </CardHeader>
         <CardContent>
           {status === "LoadingFirstPage" ? (
-            <Skeleton className="h-56" />
+            <RowsSkeleton rows={4} rowClassName="h-10" />
           ) : results.length ? (
             <>
               <Table>

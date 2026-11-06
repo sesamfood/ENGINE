@@ -9,24 +9,35 @@ import { useAccess, useKioskPage, usePermission } from "@/components/app-shell";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { SectionNav } from "@/components/section-nav";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BottomBarSkeleton, ExpenseFormSkeleton, FieldSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { authClient } from "@/lib/auth-client";
 import { useActiveOrganization } from "@/lib/active-organization";
 import { HistoryIcon, PlusIcon } from "lucide-react";
+
+const tabSkeletons = {
+  new: <ExpenseFormSkeleton />,
+  history: (
+    <div className="flex flex-col gap-5">
+      <FieldSkeleton className="max-w-sm" />
+      <TableSkeleton />
+      <BottomBarSkeleton />
+    </div>
+  ),
+};
 
 const ExpenseForm = dynamic(
   () =>
     import("@/components/expenses/expense-form").then(
       (module) => module.ExpenseForm,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.new },
 );
 const ExpenseHistory = dynamic(
   () =>
     import("@/components/expenses/expense-history").then(
       (module) => module.ExpenseHistory,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.history },
 );
 
 function ExpensesContent() {
@@ -56,9 +67,7 @@ function ExpensesContent() {
     );
   }, [activeTab, canCreate, canView, router, selectedTab]);
 
-  if (!access || !organizationId || !sessionId) {
-    return <Skeleton className="h-96 w-full" />;
-  }
+  if (!access || !organizationId || !sessionId) return tabSkeletons[activeTab];
   if (!canCreate && !canView) {
     return (
       <Alert variant="destructive" className="max-w-xl">

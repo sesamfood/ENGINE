@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FieldSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -219,7 +220,18 @@ export function OwnChecksOverview() {
     });
   }
 
-  if (loading) return <Skeleton className="h-160 w-full" />;
+  if (loading)
+    return (
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-7 w-24" />
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <FieldSkeleton key={index} />
+          ))}
+        </div>
+        <TableSkeleton />
+      </div>
+    );
   if (!locations?.length || !locationId)
     return (
       <Empty appearance="outlined" className="min-h-72">

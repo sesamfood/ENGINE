@@ -72,6 +72,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { ProductGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1204,15 +1205,19 @@ function CountSkeleton({ single = false }: { single?: boolean }) {
     return (
       <div className="flex flex-col gap-3 md:grid md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
         <div className="hidden size-12 md:block" />
-        <Card appearance="fullscreen" className="h-full min-h-0">
+        <Card appearance="product" className="h-full min-h-0">
           <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
-            <Skeleton appearance="square" className="min-h-56 lg:min-h-full" />
-            <CardHeader appearance="hero">
-              <Skeleton className="h-5 w-16" />
-              <Skeleton className="h-8 w-2/3" />
-              <Skeleton className="h-11 w-full" />
-              <Skeleton className="h-11 w-full" />
-            </CardHeader>
+            <Skeleton appearance="square" className="hidden sm:block sm:h-60 lg:h-auto lg:min-h-full" />
+            <div className="flex flex-col">
+              <CardHeader appearance="heroCompact">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-12" />
+                <Skeleton className="h-10 w-2/3" />
+              </CardHeader>
+              <CardContent appearance="hero" className="flex flex-1 flex-col lg:justify-center">
+                <Skeleton className="h-28 w-full" />
+              </CardContent>
+            </div>
           </div>
         </Card>
         <div className="hidden size-12 md:block" />
@@ -1225,18 +1230,15 @@ function CountSkeleton({ single = false }: { single?: boolean }) {
   }
 
   return (
-    <div className={productGridClassName}>
-      {Array.from({ length: 8 }, (_, index) => (
-        <Card key={index} appearance="gallery">
-          <Skeleton appearance="square" className="aspect-video w-full lg:aspect-4/3" />
-          <CardHeader appearance="inset">
-            <Skeleton className="h-5 w-2/3" />
-            <Skeleton className="h-11 w-full" />
-            <Skeleton className="h-11 w-full" />
-          </CardHeader>
-        </Card>
-      ))}
-    </div>
+    <ProductGridSkeleton>
+      <CardHeader appearance="product">
+        <Skeleton className="h-5 w-2/3" />
+      </CardHeader>
+      <CardContent appearance="product" className="flex flex-col">
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-11 w-full" />
+      </CardContent>
+    </ProductGridSkeleton>
   );
 }
 

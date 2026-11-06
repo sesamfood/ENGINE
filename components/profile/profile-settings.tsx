@@ -28,7 +28,7 @@ import {
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { useKiosk } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
@@ -147,7 +147,7 @@ export function ProfileSettings() {
   }
 
   if (session.isPending) {
-    return <Skeleton className="h-64 w-full max-w-2xl" />;
+    return <FormCardSkeleton className="max-w-2xl" />;
   }
 
   if (session.error || !session.data) {

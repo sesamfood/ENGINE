@@ -33,7 +33,7 @@ import {
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
@@ -302,7 +302,7 @@ function LogoUploadCard({
 
 export function OrganizationAppearance() {
   const support = useSupportSession();
-  if (support === undefined) return <Skeleton className="h-96 w-full" />;
+  if (support === undefined) return <FormCardSkeleton className="max-w-4xl" />;
   if (support) return <SupportUnavailable>Udseendet kan kun ændres af organisationens egne Brugere.</SupportUnavailable>;
   return <OrganizationAppearanceContent />;
 }
@@ -320,8 +320,8 @@ function OrganizationAppearanceContent() {
   if (organization.isPending || !access) {
     return (
       <div className="flex max-w-4xl flex-col gap-6">
-        <Skeleton className="h-72 w-full" />
-        <Skeleton className="h-72 w-full" />
+        <FormCardSkeleton />
+        <FormCardSkeleton />
       </div>
     );
   }
@@ -340,8 +340,8 @@ function OrganizationAppearanceContent() {
   if (branding === undefined) {
     return (
       <div className="flex max-w-4xl flex-col gap-6">
-        <Skeleton className="h-72 w-full" />
-        <Skeleton className="h-72 w-full" />
+        <FormCardSkeleton />
+        <FormCardSkeleton />
       </div>
     );
   }

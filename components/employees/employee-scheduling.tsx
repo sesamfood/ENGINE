@@ -38,6 +38,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { BottomBarSkeleton, LocationHeaderSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -206,7 +207,7 @@ function ScheduleTab({
       </div>
 
       {week === undefined ? (
-        <Skeleton className="h-96 w-full" />
+        <TableSkeleton />
       ) : (
         <>
           {week.limitReached ? (
@@ -471,7 +472,7 @@ function DirectoryTab({
         </ToggleGroup>
       </div>
       {status === "LoadingFirstPage" ? (
-        <Skeleton className="h-72 w-full" />
+        <TableSkeleton />
       ) : results.length ? (
         <>
           <div className="hidden overflow-hidden rounded-xl border sm:block">
@@ -717,10 +718,12 @@ export function EmployeeScheduling() {
 
   if (!context || !locations)
     return (
-      <div className="flex flex-col gap-5">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-96 w-full" />
-      </div>
+      <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-5">
+        <LocationHeaderSkeleton title="Medarbejdere" />
+        <Skeleton className="h-11 w-full max-w-xl" />
+        <TableSkeleton />
+        <BottomBarSkeleton />
+      </section>
     );
   const effectiveRetryAt = retryAt ?? context.manualSyncRetryAt;
   const cooldown = effectiveRetryAt !== null && effectiveRetryAt > now;

@@ -7,22 +7,43 @@ import { SectionNav } from "@/components/section-nav";
 import { useAccess, useKioskPage, usePermission } from "@/components/app-shell";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BottomBarSkeleton, FieldSkeleton, LocationHeaderSkeleton, OrderingChoiceSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { HistoryIcon, ShoppingCartIcon } from "lucide-react";
+
+const tabSkeletons = {
+  new: (
+    <>
+      <LocationHeaderSkeleton title="Bestilling" />
+      <OrderingChoiceSkeleton />
+      <BottomBarSkeleton />
+    </>
+  ),
+  history: (
+    <>
+      <LocationHeaderSkeleton title="Bestillingshistorik" />
+      <div className="flex flex-col gap-5 sm:flex-row">
+        <FieldSkeleton className="sm:max-w-60" />
+        <FieldSkeleton className="sm:max-w-60" />
+      </div>
+      <TableSkeleton />
+      <BottomBarSkeleton />
+    </>
+  ),
+};
 
 const OrderingPlanner = dynamic(
   () =>
     import("@/components/ordering/ordering-planner").then(
       (module) => module.OrderingPlanner,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.new },
 );
 const OrderingHistory = dynamic(
   () =>
     import("@/components/ordering/ordering-history").then(
       (module) => module.OrderingHistory,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.history },
 );
 
 function OrderingContent() {
@@ -33,7 +54,7 @@ function OrderingContent() {
   const showHistory = useKioskPage("ordering.history");
   const activeTab = pathname === "/ordering/history" ? "history" : "new";
 
-  if (!access) return <Skeleton className="h-96 w-full" />;
+  if (!access) return tabSkeletons[activeTab];
 
   if (!canPlan) {
     return (

@@ -33,6 +33,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -230,7 +231,7 @@ export function InvoiceHistory() {
         </Field>
       </FieldGroup>
       {loading ? (
-        <Skeleton className="h-64 w-full" />
+        <TableSkeleton />
       ) : !location ? (
         <Empty appearance="outlined">
           <EmptyHeader>

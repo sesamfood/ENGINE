@@ -17,7 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { authClient } from "@/lib/auth-client";
 import { selectedLocationId } from "@/lib/location-preference";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
@@ -43,7 +43,7 @@ export function DateLabelSettings() {
     lockedName ??
     "";
 
-  if (!access) return <Skeleton className="h-64 max-w-3xl" />;
+  if (!access) return <FormCardSkeleton className="max-w-3xl" />;
   if (!canPrint || kiosk?.kioskModeEnabled) {
     return (
       <Alert variant="destructive" className="max-w-3xl">

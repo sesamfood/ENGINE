@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import { useAccess, usePermission } from "@/components/app-shell";
@@ -47,7 +47,7 @@ export function ScheduleSettings() {
   }, []);
 
   if (!access) {
-    return <Skeleton className="h-64 w-full max-w-3xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
 
   if (!canManage) {
@@ -62,7 +62,7 @@ export function ScheduleSettings() {
   }
 
   if (!context) {
-    return <Skeleton className="h-64 w-full max-w-3xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
 
   const timeZone = draft ?? context.timeZone;

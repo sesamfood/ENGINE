@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CardSkeleton, FieldSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -68,6 +69,19 @@ type Range = { from: string; to: string };
 function formatHours(minutes: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(
     minutes / 60,
+  );
+}
+
+function ReportDataSkeleton() {
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+      <TableSkeleton />
+    </>
   );
 }
 
@@ -280,7 +294,22 @@ export function StaffFoodReport() {
       </Alert>
     );
   }
-  if (!locations) return <Skeleton className="h-96" />;
+  if (!locations)
+    return (
+      <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-20">
+        <AppPageHeader>
+          <PageTitle>Staff food-rapport</PageTitle>
+        </AppPageHeader>
+        <CardSkeleton>
+          <div className="grid gap-5 md:grid-cols-3">
+            <FieldSkeleton />
+            <FieldSkeleton />
+            <FieldSkeleton />
+          </div>
+        </CardSkeleton>
+        <ReportDataSkeleton />
+      </section>
+    );
 
   return (
     <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-20">
@@ -384,7 +413,7 @@ export function StaffFoodReport() {
           </AlertDescription>
         </Alert>
       ) : loading ? (
-        <Skeleton className="h-96" />
+        <ReportDataSkeleton />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">

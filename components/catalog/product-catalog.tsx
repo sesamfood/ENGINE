@@ -60,6 +60,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { RowsSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -809,7 +810,13 @@ export function ProductCatalog() {
         </div>
       </div>
 
-      {showSkeleton ? <CatalogSkeleton /> : null}
+      {showSkeleton ? (
+        catalogView === "list" ? (
+          <RowsSkeleton rows={8} rowClassName="h-20" />
+        ) : (
+          <CatalogSkeleton />
+        )
+      ) : null}
 
       {!loading && results.length === 0 ? (
         <Empty appearance="outlined" className="min-h-80">

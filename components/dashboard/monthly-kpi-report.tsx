@@ -27,7 +27,7 @@ import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/compo
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FieldSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -321,9 +321,22 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
           </div>
           {validMonth ? state instanceof Error ? <Alert variant="destructive"><AlertTitle>Rapporten kunne ikke indlæses</AlertTitle><AlertDescription>{getUserErrorMessage(state, "Kontrollér din adgang, og prøv igen.")}</AlertDescription></Alert>
             : state ? <ReportData key={`${context.organizationId}:${month}:${selectedLocation?.id ?? "all"}:${state.revision}`} state={state} month={month} locationId={selectedLocation?.id ?? null} locationName={selectedLocation?.name ?? "alle tilgængelige lokationer"} now={now} timeZone={context.timeZone} pendingReads={pendingReads} />
-              : <Skeleton className="h-80 w-full" /> : null}
+              : <RowsSkeleton rows={8} rowClassName="h-16" /> : null}
         </>
       )}
+    </section>
+  );
+}
+
+function MonthlyReportSkeleton() {
+  return (
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
+      <AppPageHeader><PageTitle>Månedsrapport</PageTitle></AppPageHeader>
+      <div className="flex flex-col gap-5 rounded-xl border bg-card p-4 sm:max-w-none sm:flex-row">
+        <FieldSkeleton className="sm:max-w-72" />
+        <FieldSkeleton className="sm:max-w-72" />
+      </div>
+      <RowsSkeleton rows={8} rowClassName="h-16" />
     </section>
   );
 }
@@ -335,9 +348,9 @@ function MonthlyReportAccess() {
   const canViewFinancials = usePermission("dashboard.viewFinancials");
   const allowed = canView && canViewFinancials && access?.granularity === "detail";
   const context = useQuery(api.monthlyKpi.getContext, allowed && organization.data ? {} : "skip");
-  if (!access) return <Skeleton className="h-96 w-full" />;
+  if (!access) return <MonthlyReportSkeleton />;
   if (!allowed) return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til månedsrapportens økonomiske data.</AlertDescription></Alert>;
-  if (!context || !organization.data || context.organizationId !== organization.data.id) return <Skeleton className="h-96 w-full" />;
+  if (!context || !organization.data || context.organizationId !== organization.data.id) return <MonthlyReportSkeleton />;
   return <MonthlyReportContent key={JSON.stringify([context.organizationId, access.permissions, access.locationScope])} context={context} />;
 }
 

@@ -42,7 +42,7 @@ import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardGridSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -548,7 +548,7 @@ export function OwnCheckTemplates() {
   const [actionReason, setActionReason] = useState("");
   const [actionPending, setActionPending] = useState(false);
 
-  if (!access || (canManage && activeTemplates.status === "LoadingFirstPage")) return <Skeleton className="h-120 w-full" />;
+  if (!access || (canManage && activeTemplates.status === "LoadingFirstPage")) return <CardGridSkeleton />;
   if (!canManage) {
     return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at administrere egenkontroller.</AlertDescription></Alert>;
   }
