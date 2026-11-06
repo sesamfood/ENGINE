@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { FileTextIcon, SaveIcon, UploadCloudIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
-import { DatePicker } from "@/components/date-picker";
+import { DatePicker, MonthPicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
@@ -467,14 +467,12 @@ export function ExpenseForm({
                 </Field>
                 <Field data-invalid={Boolean(errors.period)}>
                   <FieldLabel htmlFor="expense-period">Periode</FieldLabel>
-                  <Input
+                  <MonthPicker
                     id="expense-period"
-                    type="month"
-                    className="h-11"
                     min="1900-01"
                     max="2199-12"
                     value={period}
-                    onChange={(event) => setPeriod(event.target.value)}
+                    onValueChange={setPeriod}
                     aria-invalid={Boolean(errors.period)}
                   />
                   <FieldError>{errors.period}</FieldError>

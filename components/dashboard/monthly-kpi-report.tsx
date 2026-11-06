@@ -16,6 +16,7 @@ import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
+import { MonthPicker } from "@/components/date-picker";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +26,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FieldSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
@@ -297,7 +297,7 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
             <FieldGroup className="sm:max-w-xl sm:flex-row">
               <Field data-invalid={!validMonth}>
                 <FieldLabel htmlFor="monthly-report-month">Måned</FieldLabel>
-                <Input id="monthly-report-month" type="month" className="h-11" min="1900-01" max={currentMonth} value={month} onChange={(event) => setMonth(event.target.value)} aria-invalid={!validMonth} aria-describedby={!validMonth ? "monthly-report-month-error" : undefined} />
+                <MonthPicker id="monthly-report-month" min="1900-01" max={currentMonth} value={month} onValueChange={setMonth} aria-invalid={!validMonth} aria-describedby={!validMonth ? "monthly-report-month-error" : undefined} />
                 {!validMonth ? <FieldError id="monthly-report-month-error">Vælg den aktuelle måned eller en tidligere måned.</FieldError> : null}
               </Field>
               <Field>
