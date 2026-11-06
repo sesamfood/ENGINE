@@ -531,7 +531,7 @@ function SingleProductCounter({
   }
 
   return (
-    <div className="flex flex-col gap-3 md:grid md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
+    <div className="flex flex-col gap-3 md:grid md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4 lg:min-h-(--spacing-count-panel)">
       <Button
         type="button"
         variant="outline"
@@ -1203,7 +1203,7 @@ function SortableProduct({
 function CountSkeleton({ single = false }: { single?: boolean }) {
   if (single) {
     return (
-      <div className="flex flex-col gap-3 md:grid md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
+      <div className="flex flex-col gap-3 md:grid md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4 lg:min-h-(--spacing-count-panel)">
         <div className="hidden size-12 md:block" />
         <Card appearance="product" className="h-full min-h-0">
           <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
@@ -1969,7 +1969,7 @@ export function CountSheet() {
   );
 
   return (
-    <div className="flex flex-col gap-4 pb-44 sm:pb-28">
+    <div className="flex flex-col gap-4">
       {activeCountAreaId && state && !lockedReason ? (
         <CountAreaPresence countAreaId={activeCountAreaId} />
       ) : null}

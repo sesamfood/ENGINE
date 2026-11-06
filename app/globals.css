@@ -100,7 +100,7 @@
   --spacing-small-viewport-inset: calc(100svh - 2rem);
   --spacing-help-sidebar: calc(100dvh - 7rem);
   --spacing-help-navigation: calc(100dvh - 9rem);
-  --spacing-count-panel: calc(100svh - 20rem);
+  --spacing-count-panel: calc(100svh - 21.5rem);
   --spacing-stock-panel: calc(100svh - 15rem);
   --spacing-dialog-dynamic: 90dvh;
   --spacing-dialog: 90vh;

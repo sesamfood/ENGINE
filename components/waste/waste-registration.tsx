@@ -614,7 +614,7 @@ export function WasteRegistration() {
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-5 w-full max-w-xl" />
         <ProductGridSkeleton>
-          <CardHeader appearance="product">
+          <CardHeader appearance="productCompact">
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="h-4 w-1/3" />
           </CardHeader>
@@ -719,7 +719,7 @@ export function WasteRegistration() {
                       }
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                     />
-                    <CardHeader appearance="product">
+                    <CardHeader appearance="productCompact">
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <CardTitle appearance="productName" className="min-w-0">
                           {product.name}

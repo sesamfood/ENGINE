@@ -1022,23 +1022,21 @@ export function TransferForm({
               open={optionalOpen || Boolean(errors.comment || errors.transferredAt)}
               onOpenChange={setOptionalOpen}
             >
-              <div className="-ml-3">
-                <CollapsibleTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      appearance="compact"
-                      className="mt-2 min-h-11 w-full justify-between"
-                    />
-                  }
-                >
-                  Kommentar og tidspunkt
-                  <ChevronDownIcon data-icon="inline-end" className="transition-transform [[aria-expanded=true]_&]:rotate-180" />
-                </CollapsibleTrigger>
-              </div>
+              <CollapsibleTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    appearance="compact"
+                    className="mt-5 min-h-11 w-full justify-between"
+                  />
+                }
+              >
+                Kommentar og tidspunkt
+                <ChevronDownIcon data-icon="inline-end" className="transition-transform [[aria-expanded=true]_&]:rotate-180" />
+              </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="pt-2">
+                <div className="pt-5">
                   <FieldGroup>
               <Field data-invalid={Boolean(errors.comment)}>
                 <FieldLabel htmlFor={`${inputIdPrefix}-comment`}>

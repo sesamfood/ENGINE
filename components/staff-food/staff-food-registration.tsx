@@ -609,9 +609,12 @@ export function StaffFoodRegistration() {
         </Empty>
       ) : sessionId && state === undefined ? (
         <ProductGridSkeleton>
-          <CardHeader appearance="dense">
+          <CardHeader appearance="product">
             <Skeleton className="h-5 w-2/3" />
           </CardHeader>
+          <CardFooter appearance="product" className="mt-auto">
+            <Skeleton className="h-12 w-full" />
+          </CardFooter>
         </ProductGridSkeleton>
       ) : state ? (
         <>
@@ -730,7 +733,7 @@ export function StaffFoodRegistration() {
                                         />
                                       }
                                     />
-                                    <CardHeader appearance="dense">
+                                    <CardHeader appearance="product">
                                       <CardTitle appearance="truncate">
                                         {product.name}
                                       </CardTitle>
