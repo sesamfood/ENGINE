@@ -227,6 +227,7 @@ async function openOrderSummary(ctx: QueryCtx, order: Doc<"orders">) {
     createdAt: order.createdAt,
     createdByName: order.createdByName,
     itemCount: order.itemCount,
+    comment: order.comment,
   };
 }
 
@@ -239,6 +240,7 @@ const openOrderValidator = v.object({
   createdAt: v.number(),
   createdByName: v.string(),
   itemCount: v.number(),
+  comment: v.optional(v.string()),
 });
 
 // Null when internal orders are not in use, so the Transfer page can hide the tab.

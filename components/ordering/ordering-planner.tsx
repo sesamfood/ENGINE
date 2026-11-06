@@ -67,6 +67,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -175,6 +176,9 @@ function Planner({
   const [supplierChoice, setSupplierValue] = useState<string | null>(null);
   const supplierValue = editOrder?.fulfillingLocationId ?? supplierChoice;
   const [sendEmail, setSendEmail] = useState(true);
+  // null until the user has typed, so editing starts from the saved comment.
+  const [commentInput, setCommentInput] = useState<string | null>(null);
+  const comment = commentInput ?? editOrder?.comment ?? "";
   const [catalogInputs, setCatalogInputs] = useState<Record<string, string>>(
     {},
   );
@@ -690,7 +694,7 @@ function Planner({
     setPlacing(true);
     if (editOrder) {
       try {
-        await updateOrder({ orderId: editOrder.id, lines: orderLines });
+        await updateOrder({ orderId: editOrder.id, lines: orderLines, comment });
         if (!mounted.current) return;
         setConfirming(false);
         toast.success("Bestillingen er opdateret");
@@ -719,6 +723,7 @@ function Planner({
         bufferPercent,
         lines: orderLines,
         catalogLines,
+        ...(internalSupplier ? { comment } : {}),
       });
       if (!mounted.current) return;
       setOrderingLocation(organizationId, locationId);
@@ -1401,6 +1406,21 @@ function Planner({
                   <FieldLabel htmlFor="ordering-send-email">
                     Send bestillingen til {supplier.email}
                   </FieldLabel>
+                </Field>
+              ) : null}
+              {internalSupplier ? (
+                <Field>
+                  <FieldLabel htmlFor="ordering-comment">
+                    Kommentar (valgfri)
+                  </FieldLabel>
+                  <Textarea
+                    id="ordering-comment"
+                    value={comment}
+                    maxLength={500}
+                    onChange={(event) => setCommentInput(event.target.value)}
+                    placeholder={`Besked til ${internalSupplier.name}`}
+                    disabled={placing}
+                  />
                 </Field>
               ) : null}
               <AlertDialogFooter>

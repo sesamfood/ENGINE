@@ -1389,6 +1389,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Afgiv og find bestillingen",
             steps: [
               "Vælg Afgiv bestilling, og bekræft. Alle mængder over nul medtages, højst 500 Produkter.",
+              "Ved en intern bestilling kan du tilføje en kommentar, når du bekræfter. Den vises for Lokationen, der skal sende Produkterne.",
               "Find bestillingen i Bestillingshistorik. Vælg periode under Afgivet i perioden.",
               "Bestillingen afventer nu modtagelse under Varemodtagelse på samme Lokation.",
               "Eksportér CSV henter én bestilling eller alle bestillinger i perioden.",
