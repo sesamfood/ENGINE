@@ -6,6 +6,7 @@ import { useConvex, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   ArrowRightIcon,
+  MessageSquareIcon,
   ShoppingCartIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardAction,
+  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -74,6 +76,15 @@ function OrderTransfer({
         Mængderne er udfyldt fra bestillingen. Ret dem, hvis I sender noget
         andet. Bestillingen lukkes, når transferen er gemt.
       </p>
+      {order.comment ? (
+        <Alert>
+          <MessageSquareIcon />
+          <AlertTitle>Kommentar fra {order.locationName}</AlertTitle>
+          <AlertDescription className="wrap-anywhere whitespace-pre-line">
+            {order.comment}
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {order.unavailableItems.length > 0 ? (
         <Alert>
           <TriangleAlertIcon />
@@ -179,6 +190,13 @@ export function InternalOrders({
                     <Badge variant="secondary">{item.itemCount} Produkter</Badge>
                   </CardAction>
                 </CardHeader>
+                {item.comment ? (
+                  <CardContent>
+                    <p className="line-clamp-2 text-sm wrap-anywhere">
+                      {item.comment}
+                    </p>
+                  </CardContent>
+                ) : null}
                 <CardFooter appearance="emphasized" className="justify-between">
                   <span>Opret transfer</span>
                   {loadingId === item.id ? (
