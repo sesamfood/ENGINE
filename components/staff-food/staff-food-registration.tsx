@@ -622,7 +622,7 @@ export function StaffFoodRegistration() {
             <>
               <div className="flex min-w-0 flex-col gap-5">
                 <Tabs value={effectiveCategoryId} onValueChange={setCategoryId}>
-                  <TabsList variant="filter" className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFade">
+                  <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFade">
                     <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
                       Alle
                     </TabsTrigger>

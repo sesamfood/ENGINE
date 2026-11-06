@@ -81,7 +81,7 @@ export function RangeSelector({
           </SelectGroup>
         </SelectContent>
       </Select>
-      <div ref={scrollRef} data-scroll-right={canScrollRight ? "true" : undefined} className="no-scrollbar hidden overflow-x-auto pb-1 lg:block">
+      <div ref={scrollRef} data-scroll-right={canScrollRight ? "true" : undefined} className="no-scrollbar hidden overflow-x-auto lg:block">
         <ToggleGroup value={[range.preset]} onValueChange={select} variant="outline" size="lg" spacing={0} className="min-w-max">
           {presets.map((preset) => <ToggleGroupItem key={preset.value} value={preset.value} className="min-h-11">{preset.label}</ToggleGroupItem>)}
         </ToggleGroup>

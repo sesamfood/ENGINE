@@ -640,16 +640,15 @@ export function WasteRegistration() {
     <div className="flex flex-col gap-5">
       <Tabs value={category} onValueChange={setCategory}>
         <TabsList
-          variant="filter"
           className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
           appearance="scrollFade"
           aria-label="Produktkategorier"
         >
-          <TabsTrigger value="all" appearance="standard" className="shrink-0 flex-none">
+          <TabsTrigger value="all" appearance="standard" className="shrink-0">
             Alle
           </TabsTrigger>
           {categories.map(([id, name]) => (
-            <TabsTrigger key={id} value={id} appearance="standard" className="shrink-0 flex-none">
+            <TabsTrigger key={id} value={id} appearance="standard" className="shrink-0">
               {name}
             </TabsTrigger>
           ))}
@@ -760,7 +759,7 @@ export function WasteRegistration() {
                     </Tooltip>
                   </div>
                   <CardContent appearance="productGrid" className="grid grid-cols-2">
-                    {shortcuts.map((shortcut) => {
+                    {shortcuts.map((shortcut, index) => {
                       const unit = product.units.find(
                         (item) => item.id === shortcut.unitId,
                       );
@@ -768,7 +767,7 @@ export function WasteRegistration() {
                       return (
                         <Button
                           key={`${shortcut.unitId}:${shortcut.quantity}`}
-                          variant="outline"
+                          variant={index === 0 ? "default" : "outline"}
                           appearance={
                             recent === key ? "recentQuantity" : "quantity"
                           }

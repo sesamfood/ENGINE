@@ -1440,20 +1440,6 @@ function SidebarAccount({
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : null}
-      {!kiosk?.kioskModeEnabled ? (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="lg"
-            appearance="icon"
-            tooltip="Hjælp"
-            className="text-base group-data-[collapsible=icon]:h-16! group-data-[collapsible=icon]:w-full! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:p-1!"
-            render={<Link href="/help" />}
-          >
-            <CircleHelpIcon aria-hidden="true" />
-            <span className="group-data-[collapsible=icon]:line-clamp-2 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:overflow-hidden group-data-[collapsible=icon]:text-center group-data-[collapsible=icon]:text-xs group-data-[collapsible=icon]:leading-tight group-data-[collapsible=icon]:wrap-break-word group-data-[collapsible=icon]:whitespace-normal">Hjælp</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ) : null}
       <SidebarMenuItem>
         <FeedbackDialog permissions={access?.permissions} />
       </SidebarMenuItem>

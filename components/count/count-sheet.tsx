@@ -2098,7 +2098,6 @@ export function CountSheet() {
                 className="w-full min-w-0"
               >
                 <TabsList
-                  variant="filter"
                   aria-label="Produktkategorier"
                   className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
                   appearance="scrollFade"
