@@ -875,9 +875,9 @@ export function TransferForm({
     ? `${missingText.charAt(0).toUpperCase()}${missingText.slice(1)} for at gemme`
     : null;
   const actions = (
-    <div className="flex flex-col-reverse gap-2 lg:ml-auto lg:flex-row lg:items-center">
+    <div className="flex flex-col-reverse gap-2 xl:ml-auto xl:flex-row xl:items-center">
       {missingForSave ? (
-        <p className="text-xs text-muted-foreground max-lg:order-first max-lg:text-center lg:whitespace-nowrap">
+        <p className="text-xs text-muted-foreground max-xl:order-first max-xl:text-center xl:whitespace-nowrap">
           {missingForSave}
         </p>
       ) : null}
@@ -1346,7 +1346,7 @@ export function TransferForm({
         </div>
       ) : (
         <AppBottomBar>
-          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 lg:flex-row lg:items-center">
+          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 xl:flex-row xl:items-center">
             {navigation ? (
               <div className="min-w-0" inert={isSaving}>
                 {navigation}
