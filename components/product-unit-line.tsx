@@ -61,7 +61,7 @@ export function ProductUnitLine({
         </FieldLabel>
         <Select
           items={units.map((unit) => ({ value: unit.id, label: unit.name }))}
-          value={unitId}
+          value={units.some((unit) => unit.id === unitId) ? unitId : null}
           onValueChange={(value) => {
             const unit = units.find((item) => item.id === value);
             if (unit) onUnitChange(unit.id);

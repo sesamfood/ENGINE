@@ -80,6 +80,8 @@ type TransferLine = {
   units: Array<{ id: Id<"units">; name: string }>;
   unitsLoaded: boolean;
   quantity: number;
+  // Set when the line comes from an internal order.
+  orderedUnitName?: string;
 };
 
 export type EditableTransfer = {
@@ -118,8 +120,16 @@ export type TransferOrder = {
     unitName: string;
     quantity: number;
     maxTemperatureCelsius: number | null;
+    units: Array<{ id: Id<"units">; name: string }>;
   }>;
 };
+
+function hasMissingUnit(line: TransferLine) {
+  return (
+    line.orderedUnitName !== undefined &&
+    !line.units.some((unit) => unit.id === line.unitId)
+  );
+}
 
 type ProductTemperatureState = {
   value: string;
@@ -264,9 +274,13 @@ export function TransferForm({
       productName: item.productName,
       imageUrl: null,
       unitId: item.unitId,
-      units: [{ id: item.unitId, name: item.unitName }],
+      units:
+        "units" in item
+          ? item.units
+          : [{ id: item.unitId, name: item.unitName }],
       unitsLoaded: false,
       quantity: item.quantity,
+      ...("units" in item ? { orderedUnitName: item.unitName } : {}),
     })),
   );
   const [productToAdd, setProductToAdd] = useState<string | null>(null);
@@ -557,6 +571,9 @@ export function TransferForm({
     if (lines.length === 0) nextErrors.items = "Tilføj mindst ét produkt";
     if (lines.some((line) => line.quantity <= 0)) {
       nextErrors.items = "Mængden skal være større end nul";
+    }
+    if (lines.some(hasMissingUnit)) {
+      nextErrors.items = "Vælg en enhed for de markerede Produkter";
     }
 
     const temperatures: ProductTemperatureInput[] = [];
@@ -1021,15 +1038,20 @@ export function TransferForm({
                               unavailableUnitIds={usedUnitIds}
                               quantity={line.quantity}
                               integer
-                              onUnitChange={(unitId) =>
+                              onUnitChange={(unitId) => {
                                 setLines((current) =>
                                   current.map((item) =>
                                     item.key === line.key
                                       ? { ...item, unitId }
                                       : item,
                                   ),
-                                )
-                              }
+                                );
+                                setErrors((current) => {
+                                  const next = { ...current };
+                                  delete next.items;
+                                  return next;
+                                });
+                              }}
                               onQuantityChange={(value) => {
                                 const next = Number(value.replace(",", "."));
                                 if (!Number.isFinite(next)) return;
@@ -1048,6 +1070,11 @@ export function TransferForm({
                                 );
                               }}
                               onRemove={() => removeLine(line)}
+                              error={
+                                hasMissingUnit(line)
+                                  ? `Bestilt i ${line.orderedUnitName}, som Produktet ikke længere har. Vælg en enhed, og tjek mængden.`
+                                  : undefined
+                              }
                             />
                           </li>
                         ))}
