@@ -183,7 +183,7 @@ function StaffFoodHeader({
   lockedName?: string | null;
 }) {
   return (
-    <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-end">
+    <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-center">
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>
           Staff food
@@ -197,7 +197,7 @@ function StaffFoodHeader({
       >
         {employeeName ? (
           <Field>
-            <FieldLabel>Medarbejder</FieldLabel>
+            <FieldLabel className="sr-only">Medarbejder</FieldLabel>
             <Button
               variant="outline"
               appearance="compact"
@@ -210,7 +210,7 @@ function StaffFoodHeader({
           </Field>
         ) : null}
         <Field>
-          <FieldLabel htmlFor="staff-food-location">Lokation</FieldLabel>
+          <FieldLabel htmlFor="staff-food-location" className="sr-only">Lokation</FieldLabel>
           <LocationField
             id="staff-food-location"
             locations={locations}

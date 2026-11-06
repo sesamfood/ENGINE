@@ -51,14 +51,15 @@ export function SectionNav({
   }, [items]);
 
   return (
-    <nav ref={navRef} aria-label={label} className={cn("min-w-0", className)}>
+    <nav ref={navRef} aria-label={label} className={cn("min-w-0 sm:shrink-0", className)}>
       <ul ref={listRef} data-scroll-right={canScrollRight ? "true" : undefined} className="no-scrollbar scroll-fade-x flex h-12 max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden">
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <li key={item.href} className="flex h-full shrink-0">
+            <li key={item.href} className="flex h-full shrink-0 max-sm:flex-1">
               <Link
                 href={item.href}
+                scroll={false}
                 aria-current={item.active ? "page" : undefined}
                 className={cn(
                   "relative inline-flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-2 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4 sm:flex-none [&_svg]:hidden min-[420px]:[&_svg]:block [&_svg]:size-4 [&_svg]:shrink-0",

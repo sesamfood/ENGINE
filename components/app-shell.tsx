@@ -110,7 +110,6 @@ import {
   AppMobilePageHeaderTarget,
   AppPageHeaderProvider,
   AppPageHeaderTarget,
-  AppSectionNavTarget,
 } from "@/components/app-page-header";
 import { BrowserBranding } from "@/components/browser-branding";
 import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
@@ -963,7 +962,7 @@ function NavigationList() {
     <SidebarGroup>
       <SidebarGroupContent>
         <nav ref={navRef} aria-label="Primær navigation">
-          <SidebarMenu>
+          <SidebarMenu appearance="compact">
             {navigation.map((item) => {
               const Icon = navigationIcons[item.id];
               const active =
@@ -1808,7 +1807,7 @@ export function AppShell({
                       Spring til indhold
                     </a>
                     <Sidebar collapsible="icon">
-                      <SidebarHeader className="h-16 items-center justify-center">
+                      <SidebarHeader className="h-16 items-center justify-center md:h-18">
                         <OrganizationHome />
                       </SidebarHeader>
 
@@ -1825,8 +1824,7 @@ export function AppShell({
                     <SidebarInset id="main-content" tabIndex={-1} className="min-w-0">
                       <header
                         className={cn(
-                          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                          showPageHeader && "md:h-auto md:items-start md:py-3 md:px-4",
+                          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:h-auto md:min-h-18 md:py-2 md:border-b-0",
                         )}
                       >
                         <SidebarTrigger size="icon-lg">
@@ -1839,7 +1837,6 @@ export function AppShell({
                           <Button
                             variant="outline"
                             size="lg"
-                            className="md:hidden"
                             render={
                               <Link
                                 href={showIntegrationsBack
@@ -1869,19 +1866,16 @@ export function AppShell({
                         </div>
                       </header>
                       {showPageHeader ? <AppMobilePageHeaderTarget /> : null}
-                      <AppSectionNavTarget />
                       {/* Sticks below the sticky header, so offsets match its heights. */}
-                      <SupportBanner
-                        className={cn("top-16", showPageHeader && "md:top-20")}
-                      />
+                      <SupportBanner className="top-16 md:top-18" />
                       <TestOrganizationBanner />
 
                       <div
                         className={cn(
-                          "flex-1",
+                          "flex-1 pb-safe-bottom-bar",
                           showPageHeader
-                            ? "p-4"
-                            : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
+                            ? "px-4 pt-4"
+                            : "px-5 pt-8 sm:px-8 lg:px-12 lg:pt-11",
                         )}
                       >
                         <KioskDayPrompts />

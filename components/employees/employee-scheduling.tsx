@@ -7,7 +7,7 @@ import { dateKey, addDays, dateTimeFormatter } from "@/lib/date";
 import { selectedLocationId } from "@/lib/location-preference";
 
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { cn } from "@/lib/utils";
+import { SectionNav } from "@/components/section-nav";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { EmployeeAvatar } from "@/components/employees/employee-avatar";
@@ -48,7 +48,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -734,14 +733,14 @@ export function EmployeeScheduling() {
   const lastSync = context.lastShiftSyncAt ?? context.lastEmployeeSyncAt;
   const stale = Boolean(lastSync && now - lastSync > 45 * 60 * 1_000);
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>
           Medarbejdere
         </PageTitle>
       </div>
       <Field>
-        <FieldLabel htmlFor="employees-location">Lokation</FieldLabel>
+        <FieldLabel htmlFor="employees-location" className="sr-only">Lokation</FieldLabel>
         <LocationField
           id="employees-location"
           locations={locations}
@@ -783,10 +782,7 @@ export function EmployeeScheduling() {
   }
   return (
     <main
-      className={cn(
-        "mx-auto flex w-full max-w-(--container-page) flex-col gap-6",
-        showSectionTabs && "pb-(--spacing-safe-actions-compact)",
-      )}
+      className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6"
     >
       <AppPageHeader>{header}</AppPageHeader>
 
@@ -828,65 +824,34 @@ export function EmployeeScheduling() {
         </Alert>
       ) : null}
 
-      <Tabs
-        value={selectedTab}
-        onValueChange={(value) =>
-          router.push(
-            value === "directory" ? "/employees/directory" : "/employees",
-            { scroll: false },
-          )
-        }
-      >
-        {showSectionTabs ? (
-          <AppBottomBar>
-            <div className="mx-auto w-full max-w-(--container-page)">
-              <TabsList
-                variant="line"
-                aria-label="Medarbejdersektioner"
-                className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
-              >
-                {showSchedule ? (
-                  <TabsTrigger
-                    value="schedule"
-                    appearance="standard"
-                    className="min-w-32"
-                  >
-                    Vagtplan
-                  </TabsTrigger>
-                ) : null}
-                {showDirectory ? (
-                  <TabsTrigger
-                    value="directory"
-                    appearance="standard"
-                    className="min-w-32"
-                  >
-                    Medarbejdere
-                  </TabsTrigger>
-                ) : null}
-              </TabsList>
-            </div>
-          </AppBottomBar>
-        ) : null}
-        {showSchedule ? (
-          <TabsContent value="schedule">
-            <ScheduleTab
-              locationId={activeLocationId}
-              hasLocations={Boolean(locations.length)}
-              syncButton={syncButton}
-              timeZone={context.timeZone}
+      {showSectionTabs ? (
+        <AppBottomBar>
+          <div className="mx-auto w-full max-w-(--container-page)">
+            <SectionNav
+              label="Medarbejdersektioner"
+              items={[
+                { href: "/employees", label: "Vagtplan", icon: CalendarDaysIcon, active: selectedTab === "schedule" },
+                { href: "/employees/directory", label: "Medarbejdere", icon: UsersRoundIcon, active: selectedTab === "directory" },
+              ]}
             />
-          </TabsContent>
-        ) : null}
-        {showDirectory ? (
-          <TabsContent value="directory">
-            <DirectoryTab
-              key={`${organizationId}:${activeLocationId}`}
-              locationId={activeLocationId}
-              syncButton={syncButton}
-            />
-          </TabsContent>
-        ) : null}
-      </Tabs>
+          </div>
+        </AppBottomBar>
+      ) : null}
+      {showSchedule && selectedTab === "schedule" ? (
+        <ScheduleTab
+          locationId={activeLocationId}
+          hasLocations={Boolean(locations.length)}
+          syncButton={syncButton}
+          timeZone={context.timeZone}
+        />
+      ) : null}
+      {showDirectory && selectedTab === "directory" ? (
+        <DirectoryTab
+          key={`${organizationId}:${activeLocationId}`}
+          locationId={activeLocationId}
+          syncButton={syncButton}
+        />
+      ) : null}
     </main>
   );
 }

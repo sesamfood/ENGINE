@@ -6,10 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
+import { SectionNav } from "@/components/section-nav";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
+import { HistoryIcon, PlusIcon } from "lucide-react";
 
 const InvoiceForm = dynamic(
   () =>
@@ -73,49 +74,31 @@ function InvoicesContent() {
   }
 
   const sectionTabs = showSectionTabs ? (
-    <TabsList
-      variant="line"
-      aria-label="Salgssektioner"
-      className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
-    >
-      {showNew ? (
-        <TabsTrigger value="new" appearance="standard" className="min-w-36">
-          Nyt salg
-        </TabsTrigger>
-      ) : null}
-      {showHistory ? (
-        <TabsTrigger value="history" appearance="standard" className="min-w-36">
-          Registrerede salg
-        </TabsTrigger>
-      ) : null}
-    </TabsList>
+    <SectionNav
+      label="Salgssektioner"
+      items={[
+        { href: "/invoices", label: "Nyt salg", icon: PlusIcon, active: selectedTab === "new" },
+        { href: "/invoices/history", label: "Registrerede salg", icon: HistoryIcon, active: selectedTab === "history" },
+      ]}
+    />
   ) : null;
 
   return (
-    <Tabs
-      value={selectedTab}
-      onValueChange={(value) =>
-        router.push(value === "history" ? "/invoices/history" : "/invoices", {
-          scroll: false,
-        })
-      }
-    >
+    <>
       {showNew && selectedTab === "new" ? (
-        <TabsContent value="new">
-          <InvoiceForm navigation={sectionTabs} />
-        </TabsContent>
+        <InvoiceForm navigation={sectionTabs} />
       ) : null}
       {showHistory && selectedTab === "history" ? (
-        <TabsContent value="history">
+        <>
           <InvoiceHistory />
           {sectionTabs ? (
             <AppBottomBar>
               <div className="mx-auto w-full max-w-(--container-page)">{sectionTabs}</div>
             </AppBottomBar>
           ) : null}
-        </TabsContent>
+        </>
       ) : null}
-    </Tabs>
+    </>
   );
 }
 
@@ -129,7 +112,7 @@ export default function InvoicesPage() {
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4 pb-(--spacing-safe-actions) sm:pb-(--spacing-safe-actions-compact)">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <InvoicesContent />

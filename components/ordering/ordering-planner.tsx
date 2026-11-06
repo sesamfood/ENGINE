@@ -630,7 +630,7 @@ function Planner({
     !choosingSupplier;
 
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>
           {editing ? "Redigér bestilling" : "Bestilling"}
@@ -1496,7 +1496,7 @@ function Planner({
         </div>
       )}
       {canPlan && (!locationId || choosingSupplier) && navigation ? (
-        <AppBottomBar className="md:hidden">
+        <AppBottomBar>
           <div className="mx-auto w-full max-w-(--container-page)">
             {navigation}
           </div>

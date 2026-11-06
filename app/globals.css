@@ -114,9 +114,8 @@
   --spacing-field-label: calc(1.375em + 0.5rem);
   --spacing-panel-inset: calc(100% - 2rem);
   --spacing-panel-wide-inset: calc(100% - 4rem);
-  --spacing-safe-actions-tall: calc(9rem + env(safe-area-inset-bottom));
   --spacing-safe-actions: calc(8rem + env(safe-area-inset-bottom));
-  --spacing-safe-actions-compact: calc(6rem + env(safe-area-inset-bottom));
+  --spacing-safe-bottom-bar: calc(var(--bottom-bar-height, 0px) + 1rem);
   --spacing-safe-inset: max(0.75rem, env(safe-area-inset-bottom));
 }
 

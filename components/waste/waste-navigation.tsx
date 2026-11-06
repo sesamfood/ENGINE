@@ -1,7 +1,6 @@
 "use client";
 
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { AppSectionNav } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
 
 import { useKiosk, usePermission } from "@/components/app-shell";
@@ -79,22 +78,18 @@ export function WasteNavigation() {
   ];
 
   return (
-    <>
-      {showSectionTabs ? (
-        <AppSectionNav>
-          <SectionNav label="Waste-sektioner" items={items} className="mx-auto w-full max-w-(--container-page)" />
-        </AppSectionNav>
-      ) : null}
-      {value === "badDelivery" ? (
-        <AppBottomBar>
-          <div className="mx-auto flex w-full max-w-(--container-page) items-center">
-            <div
-              id="bad-delivery-primary-action"
-              className="w-full sm:ml-auto sm:w-auto"
-            />
-          </div>
-        </AppBottomBar>
-      ) : null}
-    </>
+    <AppBottomBar>
+      <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse gap-2 sm:flex-row sm:items-center">
+        {showSectionTabs ? (
+          <SectionNav label="Waste-sektioner" items={items} />
+        ) : null}
+        {value === "badDelivery" ? (
+          <div
+            id="bad-delivery-primary-action"
+            className="w-full sm:ml-auto sm:w-auto"
+          />
+        ) : null}
+      </div>
+    </AppBottomBar>
   );
 }

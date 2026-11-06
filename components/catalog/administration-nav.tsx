@@ -2,7 +2,6 @@
 
 import { useIntegrations } from "@/integrations/use-integrations";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
@@ -14,7 +13,8 @@ import {
   ShieldCheckIcon,
   UsersIcon,
 } from "lucide-react";
-import { AppPageHeader, AppSectionNav, PageTitle } from "@/components/app-page-header";
+import { AppBottomBar } from "@/components/app-bottom-bar";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { SectionNav, type SectionNavItem } from "@/components/section-nav";
 import { usePermission } from "@/components/app-shell";
 
@@ -151,19 +151,6 @@ export function AdministrationHeader() {
 
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
-      {pathname === administrationPath ? null : (
-        <>
-          <Link
-            href={administrationPath}
-            className="w-fit text-sm font-semibold uppercase tracking-widest text-primary hover:underline max-md:hidden"
-          >
-            Administration
-          </Link>
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary md:hidden">
-            Administration
-          </p>
-        </>
-      )}
       <PageTitle>
         {title}
       </PageTitle>
@@ -200,13 +187,11 @@ export function AdministrationHeader() {
     <>
       <AppPageHeader>{header}</AppPageHeader>
       {nav ? (
-        <AppSectionNav>
-          <SectionNav
-            label={nav.label}
-            items={nav.items}
-            className="mx-auto w-full max-w-(--container-page)"
-          />
-        </AppSectionNav>
+        <AppBottomBar>
+          <div className="mx-auto w-full max-w-(--container-page)">
+            <SectionNav label={nav.label} items={nav.items} />
+          </div>
+        </AppBottomBar>
       ) : null}
     </>
   );

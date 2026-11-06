@@ -355,10 +355,8 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   }
 
   const title = currentScope ? (
-    <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-      <div className="flex min-w-0 flex-col gap-2">
-        <PageTitle>Dashboard</PageTitle>
-      </div>
+    <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <PageTitle>Dashboard</PageTitle>
       <ScopeSelector scope={currentScope} locations={locations} onChange={updateScope} />
     </div>
   ) : null;

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { AppSectionNav } from "@/components/app-page-header";
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import { SectionNav } from "@/components/section-nav";
 import { useAccess, useKioskPage, usePermission } from "@/components/app-shell";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
@@ -54,23 +54,22 @@ function OrderingContent() {
       ? [{ href: "/ordering/history", label: "Bestillingshistorik", shortLabel: "Historik", icon: HistoryIcon, active: activeTab === "history" }]
       : []),
   ];
-  return (
+  const navigation = <SectionNav label="Bestillingssektioner" items={navItems} />;
+  return activeTab === "new" ? (
+    <OrderingPlanner navigation={navigation} />
+  ) : (
     <>
-      <AppSectionNav>
-        <SectionNav label="Bestillingssektioner" items={navItems} className="mx-auto w-full max-w-(--container-page)" />
-      </AppSectionNav>
-      {activeTab === "new" ? (
-        <OrderingPlanner />
-      ) : (
-        <OrderingHistory />
-      )}
+      <OrderingHistory />
+      <AppBottomBar>
+        <div className="mx-auto w-full max-w-(--container-page)">{navigation}</div>
+      </AppBottomBar>
     </>
   );
 }
 
 export default function OrderingPage() {
   return (
-    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <OrganizationAuthGate>
         <OrderingContent />
       </OrganizationAuthGate>

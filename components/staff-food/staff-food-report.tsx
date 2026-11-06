@@ -253,11 +253,8 @@ export function StaffFoodReport() {
   }
 
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Staff food
-        </p>
         <PageTitle>
           Staff food-rapport
         </PageTitle>

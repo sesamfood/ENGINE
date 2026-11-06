@@ -149,14 +149,14 @@ export function DateLabels() {
   return (
     <div className="flex flex-col gap-6">
       <AppPageHeader>
-        <div className="grid gap-4 sm:grid-cols-(--grid-cols-settings-header) sm:items-end">
+        <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
           <div className="flex flex-col gap-1">
             <PageTitle>
               Datomærkning
             </PageTitle>
           </div>
           <Field>
-            <FieldLabel htmlFor="date-label-location">Lokation</FieldLabel>
+            <FieldLabel htmlFor="date-label-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="date-label-location"
               locations={locations}

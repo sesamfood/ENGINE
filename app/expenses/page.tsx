@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useAccess, useKioskPage, usePermission } from "@/components/app-shell";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
+import { SectionNav } from "@/components/section-nav";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth-client";
 import { useActiveOrganization } from "@/lib/active-organization";
+import { HistoryIcon, PlusIcon } from "lucide-react";
 
 const ExpenseForm = dynamic(
   () =>
@@ -71,65 +72,42 @@ function ExpensesContent() {
 
   const navigation =
     canCreate && canView ? (
-      <TabsList
-        variant="line"
-        aria-label="Udgiftssektioner"
-        className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
-      >
-        <TabsTrigger value="new" appearance="standard" className="min-w-32">
-          Opret udgift
-        </TabsTrigger>
-        <TabsTrigger value="history" appearance="standard" className="min-w-32">
-          Udgifter
-        </TabsTrigger>
-      </TabsList>
+      <SectionNav
+        label="Udgiftssektioner"
+        items={[
+          { href: "/expenses", label: "Opret udgift", icon: PlusIcon, active: selectedTab === "new" },
+          { href: "/expenses/history", label: "Udgifter", icon: HistoryIcon, active: selectedTab === "history" },
+        ]}
+      />
     ) : null;
 
   return (
-    <Tabs
-      key={`${organizationId}:${sessionId}`}
-      value={selectedTab}
-      onValueChange={(value) =>
-        router.push(value === "history" ? "/expenses/history" : "/expenses", {
-          scroll: false,
-        })
-      }
-    >
+    <Fragment key={`${organizationId}:${sessionId}`}>
       {canCreate && selectedTab === "new" ? (
-        <TabsContent value="new">
-          <ExpenseForm
-            organizationId={organizationId}
-            navigation={navigation}
-          />
-        </TabsContent>
+        <ExpenseForm organizationId={organizationId} navigation={navigation} />
       ) : null}
       {canView && selectedTab === "history" ? (
-        <TabsContent value="history">
+        <>
           <ExpenseHistory organizationId={organizationId} />
           {navigation ? (
             <AppBottomBar>
               <div className="mx-auto w-full max-w-(--container-page)">{navigation}</div>
             </AppBottomBar>
           ) : null}
-        </TabsContent>
+        </>
       ) : null}
-    </Tabs>
+    </Fragment>
   );
 }
 
 export default function ExpensesPage() {
   const pathname = usePathname();
   return (
-    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4 pb-(--spacing-safe-actions-tall) sm:pb-(--spacing-safe-actions-compact)">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AppPageHeader>
-        <div className="flex min-w-0 flex-col gap-2">
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-            Udgift
-          </p>
-          <PageTitle>
-            {pathname === "/expenses/history" ? "Udgifter" : "Opret udgift"}
-          </PageTitle>
-        </div>
+        <PageTitle>
+          {pathname === "/expenses/history" ? "Udgifter" : "Opret udgift"}
+        </PageTitle>
       </AppPageHeader>
       <OrganizationAuthGate>
         <ExpensesContent />

@@ -16,15 +16,11 @@ const HeaderContext = createContext<{
   setTarget: (target: HTMLDivElement | null) => void;
   mobileTarget: HTMLDivElement | null;
   setMobileTarget: (target: HTMLDivElement | null) => void;
-  sectionTarget: HTMLDivElement | null;
-  setSectionTarget: (target: HTMLDivElement | null) => void;
 } | null>(null);
 
 export function AppPageHeaderProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<HTMLDivElement | null>(null);
   const [mobileTarget, setMobileTarget] =
-    useState<HTMLDivElement | null>(null);
-  const [sectionTarget, setSectionTarget] =
     useState<HTMLDivElement | null>(null);
   const value = useMemo(
     () => ({
@@ -32,27 +28,12 @@ export function AppPageHeaderProvider({ children }: { children: ReactNode }) {
       setTarget,
       mobileTarget,
       setMobileTarget,
-      sectionTarget,
-      setSectionTarget,
     }),
-    [mobileTarget, sectionTarget, target],
+    [mobileTarget, target],
   );
   return (
     <HeaderContext.Provider value={value}>{children}</HeaderContext.Provider>
   );
-}
-
-export function AppSectionNavTarget() {
-  const context = useContext(HeaderContext);
-  return (
-    <div ref={context?.setSectionTarget} className="px-4 empty:hidden" />
-  );
-}
-
-export function AppSectionNav({ children }: { children: ReactNode }) {
-  const context = useContext(HeaderContext);
-  if (!context?.sectionTarget) return null;
-  return createPortal(children, context.sectionTarget);
 }
 
 export function AppPageHeaderTarget() {

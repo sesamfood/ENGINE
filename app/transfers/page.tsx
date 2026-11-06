@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { AppPageHeader, AppSectionNav, PageTitle } from "@/components/app-page-header";
+import { AppBottomBar } from "@/components/app-bottom-bar";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -114,24 +115,31 @@ function TransfersContent() {
       ? [{ href: "/transfers/history", label: "Transferhistorik", shortLabel: "Historik", icon: HistoryIcon, active: selectedTab === "history" }]
       : []),
   ];
+  const navigation = showSectionTabs ? (
+    <SectionNav label="Transfersektioner" items={navItems} />
+  ) : null;
   return (
     <>
-      {showSectionTabs ? (
-        <AppSectionNav>
-          <SectionNav label="Transfersektioner" items={navItems} className="mx-auto w-full max-w-(--container-page)" />
-        </AppSectionNav>
-      ) : null}
       {showNew && selectedTab === "new" ? (
-        <TransferForm />
+        <TransferForm navigation={navigation} />
       ) : null}
       {selectedTab === "orders" ? (
         openOrders ? (
-          <InternalOrders orders={openOrders} />
+          <InternalOrders orders={openOrders} navigation={navigation} />
         ) : (
           <Skeleton className="h-96 w-full" />
         )
       ) : null}
-      {showHistory && selectedTab === "history" ? <TransferHistory /> : null}
+      {showHistory && selectedTab === "history" ? (
+        <>
+          <TransferHistory />
+          {navigation ? (
+            <AppBottomBar>
+              <div className="mx-auto w-full max-w-(--container-page)">{navigation}</div>
+            </AppBottomBar>
+          ) : null}
+        </>
+      ) : null}
     </>
   );
 }
@@ -146,7 +154,7 @@ export default function TransfersPage() {
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4 pb-(--spacing-safe-actions) sm:pb-(--spacing-safe-actions-compact)">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <TransfersContent />

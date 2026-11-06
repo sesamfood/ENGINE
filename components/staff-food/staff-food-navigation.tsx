@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { useKiosk, useKioskPage, usePermission } from "@/components/app-shell";
-import { AppSectionNav } from "@/components/app-page-header";
 import { SectionNav } from "@/components/section-nav";
 
 export function StaffFoodNavigation({ action }: { action?: ReactNode }) {
@@ -36,19 +35,13 @@ export function StaffFoodNavigation({ action }: { action?: ReactNode }) {
   ];
 
   return (
-    <>
-      {showSectionTabs ? (
-        <AppSectionNav>
-          <SectionNav label="Staff food-sektioner" items={items} className="mx-auto w-full max-w-(--container-page)" />
-        </AppSectionNav>
-      ) : null}
-      {action ? (
-        <AppBottomBar>
-          <div className="mx-auto flex w-full max-w-(--container-page) items-center">
-            {action}
-          </div>
-        </AppBottomBar>
-      ) : null}
-    </>
+    <AppBottomBar>
+      <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse gap-2 sm:flex-row sm:items-center">
+        {showSectionTabs ? (
+          <SectionNav label="Staff food-sektioner" items={items} />
+        ) : null}
+        {action}
+      </div>
+    </AppBottomBar>
   );
 }

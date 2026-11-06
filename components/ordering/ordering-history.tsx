@@ -710,19 +710,16 @@ function History({ organizationId }: { organizationId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-(--spacing-safe-actions-compact)">
+    <div className="flex flex-col gap-6">
       <AppPageHeader>
-        <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+        <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
           <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-              Bestilling
-            </p>
             <PageTitle>
               Bestillingshistorik
             </PageTitle>
           </div>
           <Field>
-            <FieldLabel htmlFor="ordering-history-location">Lokation</FieldLabel>
+            <FieldLabel htmlFor="ordering-history-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="ordering-history-location"
               locations={locations}
