@@ -24,7 +24,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { useQuery } from "convex/react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useActiveOrganization } from "@/lib/active-organization";
 
@@ -83,7 +83,6 @@ function Controls({
 }
 
 export function WasteHeader({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
@@ -137,7 +136,6 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
         timer = window.setTimeout(reset, seconds * 1000);
         return;
       }
-      router.replace("/waste", { scroll: false });
       setResetToken((value) => value + 1);
       window.scrollTo({ top: 0 });
     }
@@ -156,7 +154,6 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
     canRegister,
     kiosk?.kioskModeEnabled,
     pathname,
-    router,
     viewState?.settings.inactivitySeconds,
   ]);
 
@@ -182,7 +179,7 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
     >
       <AppPageHeader>{controls}</AppPageHeader>
       <div
-        key={`${resetToken}:${pathname.startsWith("/waste/bad-delivery") ? locationId : ""}`}
+        key={pathname.startsWith("/waste/bad-delivery") ? locationId : undefined}
       >
         {children}
       </div>

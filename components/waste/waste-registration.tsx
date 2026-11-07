@@ -273,7 +273,7 @@ function WasteUndoControls({
 }
 
 export function WasteRegistration() {
-  const { locationId, locations, setDraftState } = useWasteContext();
+  const { locationId, locations, resetToken, setDraftState } = useWasteContext();
   const catalog = useCompleteCatalog(
     api.waste.listCatalogPage,
     locationId ? { locationId } : "skip",
@@ -309,6 +309,12 @@ export function WasteRegistration() {
   const canManageSettings = usePermission("waste.settings");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [handledResetToken, setHandledResetToken] = useState(resetToken);
+  if (handledResetToken !== resetToken) {
+    setHandledResetToken(resetToken);
+    setSearch("");
+    setCategory("all");
+  }
   const [selectedId, setSelectedId] = useState<Id<"products"> | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [quantityError, setQuantityError] = useState<string>();
