@@ -967,7 +967,6 @@ export const operationFeatures: HelpFeature[] = [
             id: "opsaetning",
             title: "Opsætning",
             bullets: [
-              "Administration → Waste: Nulstil efter inaktivitet rydder søgning og dialoger på fælles tablets.",
               "Popularitetsperiode og Brug historik fra hele organisationen bestemmer de anbefalede mængdegenveje.",
             ],
           },

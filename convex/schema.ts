@@ -1496,7 +1496,8 @@ export default defineSchema({
 
   wasteSettings: defineTable({
     organizationId: v.string(),
-    inactivitySeconds: v.number(),
+    // Unused. Older rows still carry it.
+    inactivitySeconds: v.optional(v.number()),
     popularityPeriod: v.union(
       v.literal("allTime"),
       v.literal("30Days"),

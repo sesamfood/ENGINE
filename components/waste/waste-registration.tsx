@@ -273,7 +273,7 @@ function WasteUndoControls({
 }
 
 export function WasteRegistration() {
-  const { locationId, locations, resetToken, setDraftState } = useWasteContext();
+  const { locationId, locations, setDraftState } = useWasteContext();
   const catalog = useCompleteCatalog(
     api.waste.listCatalogPage,
     locationId ? { locationId } : "skip",
@@ -309,12 +309,6 @@ export function WasteRegistration() {
   const canManageSettings = usePermission("waste.settings");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [handledResetToken, setHandledResetToken] = useState(resetToken);
-  if (handledResetToken !== resetToken) {
-    setHandledResetToken(resetToken);
-    setSearch("");
-    setCategory("all");
-  }
   const [selectedId, setSelectedId] = useState<Id<"products"> | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [quantityError, setQuantityError] = useState<string>();
@@ -425,12 +419,10 @@ export function WasteRegistration() {
     new Set(),
   );
 
-  const draftDirty =
-    selectedId !== null || undoDialogOpen || editingShortcuts;
   const draftBusy = pendingKeys.size > 0 || undoingIds.length > 0;
   useEffect(() => {
-    setDraftState({ dirty: draftDirty, busy: draftBusy });
-  }, [draftBusy, draftDirty, setDraftState]);
+    setDraftState({ dirty: false, busy: draftBusy });
+  }, [draftBusy, setDraftState]);
   useEffect(
     () => () => setDraftState({ dirty: false, busy: false }),
     [setDraftState],
