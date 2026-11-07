@@ -419,12 +419,10 @@ export function WasteRegistration() {
     new Set(),
   );
 
-  const draftDirty =
-    selectedId !== null || undoDialogOpen || editingShortcuts;
   const draftBusy = pendingKeys.size > 0 || undoingIds.length > 0;
   useEffect(() => {
-    setDraftState({ dirty: draftDirty, busy: draftBusy });
-  }, [draftBusy, draftDirty, setDraftState]);
+    setDraftState({ dirty: false, busy: draftBusy });
+  }, [draftBusy, setDraftState]);
   useEffect(
     () => () => setDraftState({ dirty: false, busy: false }),
     [setDraftState],
