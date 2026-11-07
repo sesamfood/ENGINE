@@ -20,6 +20,8 @@ import {
   ReceiptTextIcon,
   WalletIcon,
   ShoppingBagIcon,
+  ChevronRightIcon,
+  SearchIcon,
   ShoppingCartIcon,
   StoreIcon,
   Trash2Icon,
@@ -37,7 +39,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState } from "react";
 import type { PermissionId } from "@/lib/auth-permissions";
 import type { FeatureId } from "@/lib/features";
 
@@ -86,7 +95,7 @@ const categories: AdministrationCategory[] = [
     sections: [
       {
         title: "Lokationer",
-        description: "Administrér de lokationer, der bruges i Transfer.",
+        description: "Opret og redigér organisationens lokationer.",
         href: "/administration/locations",
         icon: StoreIcon,
         permissions: ["locations.manage"],
@@ -291,6 +300,7 @@ const categories: AdministrationCategory[] = [
 ];
 
 export function AdministrationOverview() {
+  const [search, setSearch] = useState("");
   const access = useAccess();
   const canCatalog = usePermission("catalog.manage");
   const canLocations = usePermission("locations.manage");
@@ -350,10 +360,14 @@ export function AdministrationOverview() {
     );
   }
 
+  const query = search.trim().toLocaleLowerCase("da");
   const availableCategories = categories
     .map((category) => ({
       ...category,
       sections: category.sections.filter((section) =>
+        (!query ||
+          section.title.toLocaleLowerCase("da").includes(query) ||
+          section.description.toLocaleLowerCase("da").includes(query)) &&
         (section.href !== "/administration/wolt-orders" || access.woltEnabled === true) &&
         !(
           access.hideUnavailable &&
@@ -363,10 +377,39 @@ export function AdministrationOverview() {
         section.permissions.some((permission) => allowedPermissions[permission]),
       ),
     }))
+    .map((category) => ({
+      ...category,
+      sections: [...category.sections].sort((left, right) =>
+        left.title.localeCompare(right.title, "da"),
+      ),
+    }))
     .filter((category) => category.sections.length > 0);
 
   return (
     <div className="flex flex-col gap-10 pb-10">
+      <InputGroup className="h-12 max-w-xl">
+        <InputGroupAddon>
+          <SearchIcon />
+          <span className="sr-only">Søg</span>
+        </InputGroupAddon>
+        <InputGroupInput
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Søg i administration"
+          aria-label="Søg i administration"
+          type="search"
+        />
+      </InputGroup>
+      {availableCategories.length === 0 ? (
+        <Empty appearance="outlined">
+          <EmptyHeader>
+            <EmptyTitle>Ingen resultater</EmptyTitle>
+            <EmptyDescription>
+              Prøv en anden søgning.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : null}
       {availableCategories.map((category) => (
         <section
           key={category.id}
@@ -400,16 +443,15 @@ export function AdministrationOverview() {
                     className="h-full"
                   >
                     <CardHeader>
-                      <CardTitle>{section.title}</CardTitle>
+                      <CardTitle>
+                        <span className="flex items-center gap-2">
+                          <Icon aria-hidden="true" className="text-muted-foreground" />
+                          {section.title}
+                        </span>
+                      </CardTitle>
                       <CardDescription>
                         Ikke en del af jeres abonnement.
                       </CardDescription>
-                      <CardAction>
-                        <Icon
-                          className="text-muted-foreground"
-                          aria-hidden="true"
-                        />
-                      </CardAction>
                     </CardHeader>
                   </Card>
                 );
@@ -424,18 +466,20 @@ export function AdministrationOverview() {
                   key={section.href}
                   href={href}
                   aria-label={`Åbn ${section.title.toLocaleLowerCase("da")}`}
-                  className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring"
                 >
                   <Card size="sm" appearance="link" className="h-full"
                   >
                     <CardHeader>
-                      <CardTitle>{section.title}</CardTitle>
+                      <CardTitle>
+                        <span className="flex items-center gap-2">
+                          <Icon aria-hidden="true" className="text-muted-foreground" />
+                          {section.title}
+                        </span>
+                      </CardTitle>
                       <CardDescription>{section.description}</CardDescription>
                       <CardAction>
-                        <Icon
-                          className="text-muted-foreground"
-                          aria-hidden="true"
-                        />
+                        <ChevronRightIcon aria-hidden="true" className="text-muted-foreground" />
                       </CardAction>
                     </CardHeader>
                   </Card>

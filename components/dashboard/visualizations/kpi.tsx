@@ -21,7 +21,7 @@ export function KpiVisualization({
 }) {
   const value = total(result);
   const label = formatMetricValue(value, result);
-  const fontSize = `clamp(1rem, ${160 / Math.max(label.length, 1)}cqw, 3rem)`;
+  const fontSize = `clamp(1rem, ${130 / Math.max(label.length, 1)}cqw, 2.25rem)`;
   const visibleSeries = result.series.slice(0, compact ? 2 : 3);
   const hiddenSeries = result.series.length - visibleSeries.length;
   return (

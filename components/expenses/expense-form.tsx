@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { FileTextIcon, SaveIcon, UploadCloudIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
+import { DatePicker, MonthPicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
@@ -31,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ExpenseFormSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -260,7 +261,7 @@ export function ExpenseForm({
     }
   }
 
-  if (!locations) return <Skeleton className="h-96 w-full" />;
+  if (!locations) return <ExpenseFormSkeleton />;
   if (!locations.length) {
     return (
       <>
@@ -450,15 +451,12 @@ export function ExpenseForm({
               <FieldGroup className="grid sm:grid-cols-2">
                 <Field data-invalid={Boolean(errors.date)}>
                   <FieldLabel htmlFor="expense-date">Dato</FieldLabel>
-                  <Input
+                  <DatePicker
                     id="expense-date"
-                    type="date"
-                    className="h-11"
                     min="1900-01-01"
                     max="2199-12-31"
                     value={date}
-                    onChange={(event) => {
-                      const next = event.target.value;
+                    onValueChange={(next) => {
                       if (period === date.slice(0, 7))
                         setPeriod(next.slice(0, 7));
                       setDate(next);
@@ -469,14 +467,12 @@ export function ExpenseForm({
                 </Field>
                 <Field data-invalid={Boolean(errors.period)}>
                   <FieldLabel htmlFor="expense-period">Periode</FieldLabel>
-                  <Input
+                  <MonthPicker
                     id="expense-period"
-                    type="month"
-                    className="h-11"
                     min="1900-01"
                     max="2199-12"
                     value={period}
-                    onChange={(event) => setPeriod(event.target.value)}
+                    onValueChange={setPeriod}
                     aria-invalid={Boolean(errors.period)}
                   />
                   <FieldError>{errors.period}</FieldError>

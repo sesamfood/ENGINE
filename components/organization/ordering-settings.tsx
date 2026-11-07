@@ -27,7 +27,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 
 import { api } from "@/convex/_generated/api";
@@ -61,7 +61,7 @@ function Settings() {
     useState<ForecastSettingsDraft | null>(null);
   const [saving, setSaving] = useState(false);
 
-  if (!access) return <Skeleton className="h-56 max-w-3xl" />;
+  if (!access) return <FormCardSkeleton className="max-w-3xl" />;
   if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-3xl">
@@ -73,7 +73,7 @@ function Settings() {
     );
   }
   if (settings === undefined) {
-    return <Skeleton className="h-56 max-w-3xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
 
   const includeRecipes = includeRecipesDraft ?? settings.includeRecipes;
@@ -127,7 +127,7 @@ function Settings() {
             help={{
               label: "vælg leverandør før bestilling",
               content:
-                "Når der er oprettet leverandører, vælger brugeren først en leverandør eller Ingen leverandør. Slå fra for at vise alle Produkter, der kan bestilles, med det samme.",
+                "Når der er oprettet leverandører, vælger brugeren først en leverandør eller Alle produkter. Slå fra for at vise alle produkter, der kan bestilles, med det samme.",
             }}
             checked={chooseSupplierFirst}
             onCheckedChange={setChooseSupplierFirstDraft}
@@ -136,8 +136,8 @@ function Settings() {
           <FieldSet>
             <FieldLegend variant="label">Uden leverandør</FieldLegend>
             <FieldDescription>
-              Bruges, når der bestilles med Ingen leverandør. Hver leverandør
-              har sin egen dækning og buffer.
+              Bruges, når der bestilles under Alle produkter uden leverandør.
+              Hver leverandør har sin egen dækning og buffer.
             </FieldDescription>
             <ForecastSettingsFields
               id="ordering-forecast"

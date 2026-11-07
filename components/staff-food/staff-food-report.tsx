@@ -4,7 +4,8 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import { DownloadIcon, UtensilsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AppPageHeader } from "@/components/app-page-header";
+import { DatePicker } from "@/components/date-picker";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 import { LocationField } from "@/components/location-field";
@@ -24,7 +25,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CardSkeleton, FieldSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -68,6 +69,19 @@ type Range = { from: string; to: string };
 function formatHours(minutes: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(
     minutes / 60,
+  );
+}
+
+function ReportDataSkeleton() {
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+      <TableSkeleton />
+    </>
   );
 }
 
@@ -253,14 +267,11 @@ export function StaffFoodReport() {
   }
 
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Staff food
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+        <PageTitle>
           Staff food-rapport
-        </h1>
+        </PageTitle>
       </div>
       <Button
         size="lg"
@@ -283,7 +294,22 @@ export function StaffFoodReport() {
       </Alert>
     );
   }
-  if (!locations) return <Skeleton className="h-96" />;
+  if (!locations)
+    return (
+      <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-20">
+        <AppPageHeader>
+          <PageTitle>Staff food-rapport</PageTitle>
+        </AppPageHeader>
+        <CardSkeleton>
+          <div className="grid gap-5 md:grid-cols-3">
+            <FieldSkeleton />
+            <FieldSkeleton />
+            <FieldSkeleton />
+          </div>
+        </CardSkeleton>
+        <ReportDataSkeleton />
+      </section>
+    );
 
   return (
     <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-20">
@@ -319,22 +345,20 @@ export function StaffFoodReport() {
           </div>
           <Field data-invalid={!rangeValid}>
             <FieldLabel htmlFor="staff-food-report-from">Fra</FieldLabel>
-            <Input
+            <DatePicker
               id="staff-food-report-from"
-              type="date"
               value={resolvedFrom}
               aria-invalid={!rangeValid}
-              onChange={(event) => setFrom(event.target.value)}
+              onValueChange={setFrom}
             />
           </Field>
           <Field data-invalid={!rangeValid}>
             <FieldLabel htmlFor="staff-food-report-to">Til</FieldLabel>
-            <Input
+            <DatePicker
               id="staff-food-report-to"
-              type="date"
               value={resolvedTo}
               aria-invalid={!rangeValid}
-              onChange={(event) => setTo(event.target.value)}
+              onValueChange={setTo}
             />
           </Field>
           <Field>
@@ -387,7 +411,7 @@ export function StaffFoodReport() {
           </AlertDescription>
         </Alert>
       ) : loading ? (
-        <Skeleton className="h-96" />
+        <ReportDataSkeleton />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">

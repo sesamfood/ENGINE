@@ -289,6 +289,7 @@ function DraggableWidget({
   visualizations,
   onChange,
   onEditCustomMetric,
+  onLiveRetry,
   onResize,
   onRemove,
 }: {
@@ -296,6 +297,7 @@ function DraggableWidget({
   sourceSize: WidgetSize;
   result?: MetricResult | Error;
   live?: LiveMetricState;
+  onLiveRetry?: () => void;
   metricLabel?: string;
   tooltipLabel?: string;
   range: DashboardRange;
@@ -370,6 +372,7 @@ function DraggableWidget({
           options: { ...widget.options, goalPercent },
         })}
         onEditCustomMetric={onEditCustomMetric}
+        onLiveRetry={onLiveRetry}
         onResize={onResize}
         onRemove={onRemove}
       />
@@ -543,11 +546,17 @@ export function DashboardGrid({
       <div
         data-dashboard-grid
         className={cn(
-          "dashboard-grid col-start-1 row-start-1 grid grid-flow-dense xl:grid-flow-row",
+          "dashboard-grid col-start-1 row-start-1 grid grid-flow-row",
           activeKey && "cursor-grabbing",
         )}
       >
-        {displayedWidgets.map((widget) => {
+        {[...displayedWidgets]
+          .sort(
+            (left, right) =>
+              (left.position?.row ?? 0) - (right.position?.row ?? 0) ||
+              (left.position?.column ?? 0) - (right.position?.column ?? 0),
+          )
+          .map((widget) => {
           const source = layout.find((item) => item.key === widget.key) ?? widget;
           const customMetric = widget.metric.kind === "custom"
             ? customMetricsById.get(String(widget.metric.id))
@@ -563,6 +572,7 @@ export function DashboardGrid({
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
               live={liveMetrics.byWidget.get(widget.key)}
+              onLiveRetry={liveMetrics.retry}
               metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
               tooltipLabel={comparisonTooltipLabel(scope, metricResults.get(widget.key))}
               range={range}

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { useMemo, useState } from "react";
+import { DatePicker } from "@/components/date-picker";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -427,13 +428,10 @@ function WoltOrdersContent() {
               <FieldLabel htmlFor="wolt-from-date">Fra dato</FieldLabel>
               <div className="relative">
                 <CalendarDaysIcon className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
+                <DatePicker
                   id="wolt-from-date"
-                  type="date"
                   value={fromDate}
-                  onChange={(event) => setFromDate(event.target.value)}
-                  appearance="search"
-                  className="h-11"
+                  onValueChange={setFromDate}
                 />
               </div>
             </Field>
@@ -441,13 +439,10 @@ function WoltOrdersContent() {
               <FieldLabel htmlFor="wolt-to-date">Til dato</FieldLabel>
               <div className="relative">
                 <CalendarDaysIcon className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
+                <DatePicker
                   id="wolt-to-date"
-                  type="date"
                   value={toDate}
-                  onChange={(event) => setToDate(event.target.value)}
-                  appearance="search"
-                  className="h-11"
+                  onValueChange={setToDate}
                 />
               </div>
             </Field>

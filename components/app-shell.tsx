@@ -43,6 +43,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -106,6 +107,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
+  AppMobilePageHeaderTarget,
   AppPageHeaderProvider,
   AppPageHeaderTarget,
 } from "@/components/app-page-header";
@@ -114,11 +116,12 @@ import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
 import { authClient } from "@/lib/auth-client";
 import type { DataGranularity, PermissionId } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
+import { clearLocalDrafts } from "@/lib/local-draft";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { featureForPath, featureLabels, type FeatureId } from "@/lib/features";
-import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
+import { OrganizationTheme } from "@/components/organization/organization-theme";
 import { kioskDestinationMatches, type KioskDestinationId } from "@/lib/kiosk";
 import { isPreview } from "@/lib/page-title";
 import type { KioskDayTask } from "@/lib/kiosk-day";
@@ -935,6 +938,7 @@ function OrganizationHome() {
 
 function NavigationList() {
   const organization = useActiveOrganization();
+  const navRef = useRef<HTMLElement>(null);
   const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -948,11 +952,18 @@ function NavigationList() {
     return item ? [item] : [];
   });
 
+  useEffect(() => {
+    navRef.current
+      ?.querySelector('[data-active-nav="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [pathname, navigation.length]);
+
+
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        <nav aria-label="Primær navigation">
-          <SidebarMenu appearance="spaced">
+        <nav ref={navRef} aria-label="Primær navigation">
+          <SidebarMenu appearance="compact">
             {navigation.map((item) => {
               const Icon = navigationIcons[item.id];
               const active =
@@ -971,7 +982,9 @@ function NavigationList() {
                     render={
                       <Link
                         href={item.href}
+                        aria-label={item.label}
                         aria-current={active ? "page" : undefined}
+                        data-active-nav={active || undefined}
                         onClick={() => {
                           if (isMobile) setOpenMobile(false);
                         }}
@@ -1114,8 +1127,7 @@ function ProfileMenu({
       .join("")
       .slice(0, 2)
       .toUpperCase() || "P";
-  const accountPageActive =
-    pathname === "/profile" || pathname.startsWith("/administration");
+  const accountPageActive = pathname === "/profile";
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
@@ -1152,10 +1164,7 @@ function ProfileMenu({
         {!compact ? (
           <>
             <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate font-semibold">{displayName}</span>
-              <span className="truncate text-xs text-muted-foreground">
-                {email}
-              </span>
+              <span className="line-clamp-2 font-semibold wrap-break-word whitespace-normal">{displayName}</span>
             </div>
             <ChevronsUpDownIcon
               className="ml-auto group-data-[collapsible=icon]:hidden"
@@ -1651,32 +1660,15 @@ function OrganizationBoundary({
   return children;
 }
 
-function OrganizationTheme({ children }: { children: React.ReactNode }) {
-  const organization = useActiveOrganization();
-  const { isAuthenticated } = useConvexAuth();
-  const branding = useQuery(
-    api.organization.getBranding,
-    organization.data && isAuthenticated ? {} : "skip",
-  );
-
+function TabletSidebarDefault() {
+  const { setOpen } = useSidebar();
   useEffect(() => {
-    if (!branding?.theme) return;
-    const root = document.documentElement;
-    const variables = getOrganizationThemeCssVariables(branding.theme);
-    const previous = new Map<string, string>();
-    for (const [name, value] of Object.entries(variables)) {
-      previous.set(name, root.style.getPropertyValue(name));
-      root.style.setProperty(name, value);
-    }
-    return () => {
-      for (const [name, value] of previous) {
-        if (value) root.style.setProperty(name, value);
-        else root.style.removeProperty(name);
-      }
-    };
-  }, [branding?.theme]);
-
-  return children;
+    if (document.cookie.includes("sidebar_state=")) return;
+    if (window.innerWidth >= 768 && window.innerWidth < 1024) setOpen(false);
+    // Only on first mount: a stored choice always wins afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 export function AppShell({
@@ -1697,7 +1689,10 @@ export function AppShell({
     void authClient
       .signOut()
       .then((result) => {
-        if (!result.error) posthog.reset();
+        if (!result.error) {
+          posthog.reset();
+          clearLocalDrafts();
+        }
         if (cancelled) return;
         if (result.error) {
           setSigningOut(false);
@@ -1748,6 +1743,7 @@ export function AppShell({
   const showAdministrationHeader =
     pathname === "/administration" || pathname.startsWith("/administration/");
   const showPageHeader =
+    pathname === "/profile" ||
     pathname === "/date-labels" ||
     showOrderingHeader ||
     showCountHeader ||
@@ -1793,8 +1789,15 @@ export function AppShell({
                       } as CSSProperties
                     }
                   >
+                    <TabletSidebarDefault />
+                    <a
+                      href="#main-content"
+                      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+                    >
+                      Spring til indhold
+                    </a>
                     <Sidebar collapsible="icon">
-                      <SidebarHeader className="h-24 items-center justify-center">
+                      <SidebarHeader className="h-16 items-center justify-center md:h-18">
                         <OrganizationHome />
                       </SidebarHeader>
 
@@ -1808,14 +1811,17 @@ export function AppShell({
                       />
                     </Sidebar>
 
-                    <SidebarInset className="min-w-0">
+                    <SidebarInset id="main-content" tabIndex={-1} className="min-w-0">
                       <header
                         className={cn(
-                          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                          showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+                          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:h-auto md:min-h-18 md:py-2 md:border-b-0",
                         )}
                       >
-                        <SidebarTrigger size="icon-lg" />
+                        <SidebarTrigger size="icon-lg">
+                          <span aria-hidden="true" className="text-sm font-medium md:hidden">
+                            Menu
+                          </span>
+                        </SidebarTrigger>
                         {showPageHeader ? <AppPageHeaderTarget /> : null}
                         {showAdministrationBack ? (
                           <Button
@@ -1831,15 +1837,15 @@ export function AppShell({
                             nativeButton={false}
                           >
                             <ArrowLeftIcon data-icon="inline-start" />
-                            <span className="hidden sm:inline">
+                            <span className="hidden lg:inline">
                               {showIntegrationsBack
                                 ? "Tilbage til integrationer"
                                 : "Tilbage til administration"}
                             </span>
-                            <span className="sm:hidden">Tilbage</span>
+                            <span className="lg:hidden">Tilbage</span>
                           </Button>
                         ) : null}
-                        <div className="flex flex-1 justify-center md:hidden">
+                        <div className={cn("flex flex-1 justify-center md:hidden", showAdministrationBack && "max-md:invisible")}>
                           <OrganizationHome />
                         </div>
                         <div className="md:hidden">
@@ -1849,18 +1855,17 @@ export function AppShell({
                           />
                         </div>
                       </header>
+                      {showPageHeader ? <AppMobilePageHeaderTarget /> : null}
                       {/* Sticks below the sticky header, so offsets match its heights. */}
-                      <SupportBanner
-                        className={cn("top-16", showPageHeader && "md:top-24")}
-                      />
+                      <SupportBanner className="top-16 md:top-18" />
                       <TestOrganizationBanner />
 
                       <div
                         className={cn(
-                          "flex-1",
+                          "flex-1 pb-safe-bottom-bar",
                           showPageHeader
-                            ? "p-4"
-                            : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
+                            ? "px-4 pt-4"
+                            : "px-5 pt-8 sm:px-8 lg:px-12 lg:pt-11",
                         )}
                       >
                         <KioskDayPrompts />

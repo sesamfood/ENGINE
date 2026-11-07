@@ -5,6 +5,7 @@ import { ClipboardCheckIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { DatePicker } from "@/components/date-picker";
 import { useLocationAccess } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,7 +28,6 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FieldSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -219,7 +220,18 @@ export function OwnChecksOverview() {
     });
   }
 
-  if (loading) return <Skeleton className="h-160 w-full" />;
+  if (loading)
+    return (
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-7 w-24" />
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <FieldSkeleton key={index} />
+          ))}
+        </div>
+        <TableSkeleton />
+      </div>
+    );
   if (!locations?.length || !locationId)
     return (
       <Empty appearance="outlined" className="min-h-72">
@@ -256,24 +268,20 @@ export function OwnChecksOverview() {
         ) : null}
         <Field data-invalid={!rangeValid}>
           <FieldLabel htmlFor="own-overview-from">Fra dato</FieldLabel>
-          <Input
+          <DatePicker
             id="own-overview-from"
-            type="date"
-            className="h-11"
             aria-invalid={!rangeValid}
             value={fromDateKey}
-            onChange={(event) => updateRange({ from: event.target.value })}
+            onValueChange={(value) => updateRange({ from: value })}
           />
         </Field>
         <Field data-invalid={!rangeValid}>
           <FieldLabel htmlFor="own-overview-to">Til dato</FieldLabel>
-          <Input
+          <DatePicker
             id="own-overview-to"
-            type="date"
-            className="h-11"
             aria-invalid={!rangeValid}
             value={toDateKey}
-            onChange={(event) => updateRange({ to: event.target.value })}
+            onValueChange={(value) => updateRange({ to: value })}
           />
         </Field>
         <Field>

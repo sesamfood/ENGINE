@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
@@ -366,7 +367,7 @@ export function KioskDayTaskSettings() {
   );
   const linkablePages = useQuery(api.kioskDay.getLinkablePages, canManage ? {} : "skip");
 
-  if (!access) return <Skeleton className="h-80 w-full" />;
+  if (!access) return <FormCardSkeleton />;
 
   if (!canManage) {
     return (

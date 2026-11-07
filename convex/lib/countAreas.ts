@@ -53,7 +53,7 @@ export async function getCountAreaProductOrder(
     )
     .take(MAX_COUNT_AREA_PRODUCTS + 1);
   if (rows.length > MAX_COUNT_AREA_PRODUCTS) {
-    throw new ConvexError("Området har for mange Produkter");
+    throw new ConvexError("Området har for mange produkter");
   }
   return rows;
 }

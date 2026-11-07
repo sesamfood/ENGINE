@@ -192,5 +192,8 @@ export function useLiveMetrics(widgets: WidgetInstance[], scope: DashboardScope,
       },
     });
   }
-  return { byWidget };
+  return {
+    byWidget,
+    retry: () => setRefreshVersion((version) => version + 1),
+  };
 }

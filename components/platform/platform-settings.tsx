@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { PageTitle } from "@/components/app-page-header";
 import { BlocksIcon, LayersIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -74,9 +75,9 @@ export function PlatformSettingsHeader() {
           Indstillinger
         </Link>
       ) : null}
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+      <PageTitle>
         {section?.title ?? "Indstillinger"}
-      </h1>
+      </PageTitle>
     </div>
   );
 }

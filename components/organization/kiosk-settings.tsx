@@ -57,7 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { KioskPinSettings } from "./kiosk-pin-settings";
 import { SettingsSwitchField } from "./settings-switch-field";
@@ -286,7 +286,7 @@ export function KioskSettings() {
   }, [settings]);
 
   if (!access) {
-    return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
+    return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
   }
 
   if (!canManageSettings && !canManageAccounts) {
@@ -302,7 +302,7 @@ export function KioskSettings() {
     (canManageSettings && settings === undefined) ||
     (canManageAccounts && (accounts === undefined || locations === undefined))
   ) {
-    return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
+    return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
   }
 
   const availableAccounts = accounts ?? [];

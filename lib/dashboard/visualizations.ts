@@ -52,8 +52,42 @@ const DonutVisualization = dynamic<VisualizationProps>(
   { loading: visualizationLoading },
 );
 
-function withEmptyState(Visualization: ComponentType<VisualizationProps>) {
+/** Totals, ratings and breakdowns are valid data without any time points. */
+function hasNoData(result: VisualizationProps["result"], needsPoints: boolean) {
+  if (result.headlineTotal !== undefined || result.breakdown?.length) return false;
+  return needsPoints
+    ? result.series.every((series) => series.points.length === 0)
+    : result.series.length === 0;
+}
+
+function withEmptyState(
+  Visualization: ComponentType<VisualizationProps>,
+  { needsPoints = false }: { needsPoints?: boolean } = {},
+) {
   return function VisualizationWithEmptyState(props: VisualizationProps) {
+    if (
+      props.result.emptyMessage === undefined &&
+      hasNoData(props.result, needsPoints)
+    ) {
+      return createElement(
+        Empty,
+        {
+          role: "status",
+          tabIndex: 0,
+          className: "h-full min-h-0 justify-start overflow-y-auto p-0",
+        },
+        createElement(
+          EmptyDescription,
+          { className: "my-auto w-full shrink-0 wrap-anywhere" },
+          createElement("p", null, "Ingen data at vise"),
+          createElement(
+            "p",
+            { className: "text-xs" },
+            "Prøv en længere periode, eller kontrollér datakilden i Administration.",
+          ),
+        ),
+      );
+    }
     if (props.result.emptyMessage !== undefined) {
       return createElement(
         Empty,
@@ -97,9 +131,9 @@ export const visualizationRegistry: Record<
   ComponentType<VisualizationProps>
 > = {
   kpi: withEmptyState(KpiVisualization),
-  line: withEmptyState(LineVisualization),
-  bar: withEmptyState(BarVisualization),
-  area: withEmptyState(AreaVisualization),
+  line: withEmptyState(LineVisualization, { needsPoints: true }),
+  bar: withEmptyState(BarVisualization, { needsPoints: true }),
+  area: withEmptyState(AreaVisualization, { needsPoints: true }),
   donut: withEmptyState(DonutVisualization),
   gauge: withEmptyState(GaugeVisualization),
   list: withEmptyState(ListVisualization),

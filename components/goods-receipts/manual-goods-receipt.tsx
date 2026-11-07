@@ -6,6 +6,7 @@ import {
   fromDateTimeLocal,
 } from "@/lib/date";
 
+import { DateTimePicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 
 import { ReceiptProductLine, type ReceiptLine } from "./receipt-product-line";
@@ -61,6 +62,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { RegistrationSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -463,13 +465,12 @@ function ManualGoodsReceiptForm({
                   <FieldLabel htmlFor="manual-goods-receipt-received-at">
                     Modtaget
                   </FieldLabel>
-                  <Input
+                  <DateTimePicker
                     id="manual-goods-receipt-received-at"
-                    type="datetime-local"
                     value={receivedAtLocal}
                     aria-invalid={Boolean(errors.receivedAt)}
-                    onChange={(event) => {
-                      setReceivedAtLocal(event.target.value);
+                    onValueChange={(value) => {
+                      setReceivedAtLocal(value);
                       setErrors((current) => {
                         if (!current.receivedAt) return current;
                         const next = { ...current };
@@ -721,12 +722,9 @@ export function ManualGoodsReceipt({ orderId }: { orderId?: string }) {
 
   if (!access) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
-        <Skeleton className="h-80 w-full" />
-        <div className="flex flex-col gap-5">
-          <Skeleton className="h-36 w-full" />
-          <Skeleton className="h-96 w-full" />
-        </div>
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-12 w-56" />
+        <RegistrationSkeleton />
       </div>
     );
   }
@@ -768,12 +766,9 @@ export function ManualGoodsReceipt({ orderId }: { orderId?: string }) {
 
   if (options === undefined || products === undefined) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
-        <Skeleton className="h-80 w-full" />
-        <div className="flex flex-col gap-5">
-          <Skeleton className="h-36 w-full" />
-          <Skeleton className="h-96 w-full" />
-        </div>
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-12 w-56" />
+        <RegistrationSkeleton />
       </div>
     );
   }

@@ -64,7 +64,7 @@ export function CountExclusionList({
   }
   return (
     <Field data-disabled={disabled}>
-      <FieldLabel>Udeladte Produkter</FieldLabel>
+      <FieldLabel>Udeladte produkter</FieldLabel>
       <ProductCategoryCombobox
         categories={categories}
         products={productOptions}
@@ -76,7 +76,7 @@ export function CountExclusionList({
         ariaLabel="Produkter udeladt fra Count"
       />
       <FieldDescription>
-        Vælg en kategorilinje for at vælge eller fravælge alle Produkter i
+        Vælg en kategorilinje for at vælge eller fravælge alle produkter i
         kategorien.
       </FieldDescription>
     </Field>
@@ -119,12 +119,12 @@ export function OrganizationCountExclusions() {
           <CardTitle>Udelad fra Count</CardTitle>
           <HelpTooltip
             label="Udelad fra Count"
-            content="Valgte Produkter vises ikke i Count på nogen lokation. De kan stadig bruges i Transfer, Waste og andre funktioner. Lokationer kan udelade flere Produkter under Lokationer."
+            content="Valgte produkter vises ikke i Count på nogen lokation. De kan stadig bruges i Transfer, Waste og andre funktioner. Lokationer kan udelade flere produkter under Lokationer."
           />
         </div>
         <CardDescription>
           {excludedProductIds.size === 0
-            ? "Alle Produkter tælles."
+            ? "Alle produkter tælles."
             : `${excludedProductIds.size} Produkter tælles ikke på nogen lokation.`}
         </CardDescription>
       </CardHeader>
@@ -143,7 +143,7 @@ export function OrganizationCountExclusions() {
           onClick={() => void save()}
         >
           {saving ? <Spinner data-icon="inline-start" /> : null}
-          Gem udeladte Produkter
+          Gem udeladte produkter
         </Button>
       </CardFooter>
     </Card>

@@ -29,6 +29,7 @@ export function DashboardWidget({
   onYAxisChange,
   onGoalPercentChange,
   onEditCustomMetric,
+  onLiveRetry,
   onResize,
   onRemove,
 }: {
@@ -49,6 +50,7 @@ export function DashboardWidget({
   onYAxisChange?: (axis: YAxisValues) => void;
   onGoalPercentChange?: (goalPercent: number) => void;
   onEditCustomMetric?: () => void;
+  onLiveRetry?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
 }) {
@@ -75,12 +77,15 @@ export function DashboardWidget({
       onResize={onResize}
       onRemove={onRemove}
     >
-      {live ? <LiveMetricContent widget={widget} state={live} compact={compact} /> : error ? (
+      {live ? <LiveMetricContent widget={widget} state={live} compact={compact} onRetry={onLiveRetry} /> : error ? (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       ) : result == null ? (
-        <div className="flex h-full flex-col gap-3">
+        <div className="flex h-full flex-col gap-3" aria-busy="true">
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="min-h-24 flex-1" />
+          <p className="text-sm text-muted-foreground" role="status">
+            Indlæser data …
+          </p>
         </div>
       ) : (
         <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} goalPercent={widget.options?.goalPercent} comparisonLabel={comparisonPeriodText(result, widget.range ? { preset: widget.range } : range)} />

@@ -351,6 +351,18 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
     },
     hooks: {
       before: createAuthMiddleware(async (authCtx) => {
+        // A kiosk account is shared, so only its managers may change it.
+        if (
+          authCtx.path === "/update-user" ||
+          authCtx.path === "/change-password"
+        ) {
+          const session = await getSessionFromCtx(authCtx).catch(() => null);
+          if (session?.session.isKioskAccount) {
+            throw new APIError("FORBIDDEN", {
+              message: "Kiosk-konti kan ikke ændres her",
+            });
+          }
+        }
         // access.ts coordinates role writes across the app and Better Auth.
         if (
           authCtx.path === "/organization/create-role" ||

@@ -560,7 +560,7 @@ export const createProductFromCatalog = mutation({
   handler: async (ctx, args) => {
     const auth = await requireManager(ctx);
     if (!hasPermission(auth.role, auth.permissions, "catalog.manage")) {
-      throw new ConvexError("Du har ikke adgang til at oprette Produkter");
+      throw new ConvexError("Du har ikke adgang til at oprette produkter");
     }
     const { organizationId } = auth;
     if (await linkForNumber(ctx, organizationId, args.productNumber.trim())) {

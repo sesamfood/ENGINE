@@ -11,7 +11,7 @@ import { selectedLocationId } from "@/lib/location-preference";
 
 import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { EmployeeAvatar } from "@/components/employees/employee-avatar";
 
@@ -66,6 +66,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { BottomBarSkeleton, LocationHeaderSkeleton, ProductGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -183,28 +184,25 @@ function StaffFoodHeader({
   lockedName?: string | null;
 }) {
   return (
-    <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-end">
+    <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+        <PageTitle>
           Staff food
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Staff food
-        </h1>
+        </PageTitle>
       </div>
       <div
         className={cn(
           "grid gap-3",
-          employeeName ? "sm:grid-cols-2 md:w-136" : "md:w-80",
+          employeeName ? "sm:grid-cols-2 md:w-96 lg:w-136" : "md:w-80",
         )}
       >
         {employeeName ? (
           <Field>
-            <FieldLabel>Medarbejder</FieldLabel>
             <Button
               variant="outline"
               appearance="compact"
               className="h-11 w-full justify-start"
+              aria-label={`Skift medarbejder: ${employeeName}`}
               onClick={onEmployeeChange}
             >
               <UserRoundIcon data-icon="inline-start" />
@@ -213,7 +211,7 @@ function StaffFoodHeader({
           </Field>
         ) : null}
         <Field>
-          <FieldLabel htmlFor="staff-food-location">Lokation</FieldLabel>
+          <FieldLabel htmlFor="staff-food-location" className="sr-only">Lokation</FieldLabel>
           <LocationField
             id="staff-food-location"
             locations={locations}
@@ -229,6 +227,24 @@ function StaffFoodHeader({
         </Field>
       </div>
     </div>
+  );
+}
+
+function PickerSkeleton() {
+  return (
+    <Card className="mx-auto w-full max-w-3xl">
+      <CardHeader>
+        <Skeleton className="h-7 w-36" />
+      </CardHeader>
+      <CardContent appearance="relaxed" className="flex flex-col">
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-5 w-24" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -534,10 +550,11 @@ export function StaffFoodRegistration() {
 
   if (!locations) {
     return (
-      <div className="flex flex-col gap-6">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-96 w-full" />
-      </div>
+      <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
+        <LocationHeaderSkeleton title="Staff food" />
+        <PickerSkeleton />
+        <BottomBarSkeleton />
+      </section>
     );
   }
 
@@ -566,7 +583,7 @@ export function StaffFoodRegistration() {
           </EmptyHeader>
         </Empty>
       ) : picker === undefined ? (
-        <Skeleton className="h-96 w-full" />
+        <PickerSkeleton />
       ) : !picker.hasRules ? (
         <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>
@@ -591,7 +608,14 @@ export function StaffFoodRegistration() {
           ) : null}
         </Empty>
       ) : sessionId && state === undefined ? (
-        <Skeleton className="h-96 w-full" />
+        <ProductGridSkeleton>
+          <CardHeader appearance="product">
+            <Skeleton className="h-5 w-2/3" />
+          </CardHeader>
+          <CardFooter appearance="product" className="mt-auto">
+            <Skeleton className="h-12 w-full" />
+          </CardFooter>
+        </ProductGridSkeleton>
       ) : state ? (
         <>
           {!state.session.active ? (
@@ -625,7 +649,7 @@ export function StaffFoodRegistration() {
             <>
               <div className="flex min-w-0 flex-col gap-5">
                 <Tabs value={effectiveCategoryId} onValueChange={setCategoryId}>
-                  <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden">
+                  <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFade">
                     <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
                       Alle
                     </TabsTrigger>
@@ -709,7 +733,7 @@ export function StaffFoodRegistration() {
                                         />
                                       }
                                     />
-                                    <CardHeader appearance="dense">
+                                    <CardHeader appearance="product">
                                       <CardTitle appearance="truncate">
                                         {product.name}
                                       </CardTitle>

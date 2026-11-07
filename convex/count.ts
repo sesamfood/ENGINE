@@ -675,7 +675,7 @@ export const listChangedCountItems = query({
         countAreaId: item.countAreaId ?? null,
         countAreaName: countArea?.name ?? null,
         productId: item.productId,
-        productName: product?.name ?? "Slettet Produkt",
+        productName: product?.name ?? "Slettet produkt",
         unitName: unit ? unitNameFor(unit, item.quantity) : "fjernet enhed",
         quantity: item.quantity,
         defaultUnitId: active ? product.defaultUnitId : null,
@@ -832,7 +832,7 @@ export const setCountQuantity = mutation({
       (replacedItem.productId !== args.productId ||
         (replacedItem.countAreaId ?? null) !== args.countAreaId)
     ) {
-      throw new ConvexError("Mængden hører til et andet Produkt");
+      throw new ConvexError("Mængden hører til et andet produkt");
     }
 
     const itemCandidates = await ctx.db
@@ -1156,7 +1156,7 @@ export const submitCount = mutation({
       );
       if (quantity === null) {
         throw new ConvexError(
-          "Et Produkt har fået ændret sine enheder. Tjek Produktet, og prøv igen",
+          "Et produkt har fået ændret sine enheder. Tjek produktet, og prøv igen",
         );
       }
       totals.set(item.productId, (totals.get(item.productId) ?? 0) + quantity);

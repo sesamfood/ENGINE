@@ -42,7 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 
 import { Textarea } from "@/components/ui/textarea";
@@ -214,7 +214,7 @@ export function WasteSettings() {
   const [bccDraft, setBccDraft] = useState<string[] | null>(null);
   const [saving, setSaving] = useState<"waste" | "badDelivery" | null>(null);
 
-  if (!access) return <Skeleton className="h-72 max-w-3xl" />;
+  if (!access) return <FormCardSkeleton className="max-w-3xl" />;
   if (!canManage) {
     return (
       <Alert variant="destructive">
@@ -225,7 +225,7 @@ export function WasteSettings() {
       </Alert>
     );
   }
-  if (settings === undefined) return <Skeleton className="h-72 max-w-3xl" />;
+  if (settings === undefined) return <FormCardSkeleton className="max-w-3xl" />;
 
   const seconds = secondsDraft ?? String(settings.inactivitySeconds);
   const period = periodDraft ?? settings.popularityPeriod;

@@ -90,7 +90,7 @@ function OrderTransfer({
           <TriangleAlertIcon />
           <AlertTitle>Ikke med i transferen</AlertTitle>
           <AlertDescription>
-            Disse Produkter er ikke længere aktive:{" "}
+            Disse produkter er ikke længere aktive:{" "}
             {order.unavailableItems
               .map(
                 (item) =>
@@ -133,7 +133,7 @@ export function InternalOrders({
       else if (!result)
         toast.error("Der er allerede oprettet en transfer for bestillingen");
       else if (!result.items.length)
-        toast.error("Bestillingen har ingen Produkter, der kan sendes");
+        toast.error("Bestillingen har ingen produkter, der kan sendes");
       else setOrder(result);
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Bestillingen kunne ikke åbnes"));

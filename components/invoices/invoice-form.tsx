@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
+import { DateTimePicker } from "@/components/date-picker";
 import { useKiosk } from "@/components/app-shell";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
@@ -899,12 +900,10 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                     content="Angiv tidspunktet på kvitteringen. Salg før produktets seneste Count er allerede medregnet og trækkes ikke fra lageret igen."
                   />
                 </div>
-                <Input
+                <DateTimePicker
                   id="invoice-date"
-                  type="datetime-local"
                   value={soldAtLocal}
-                  onChange={(event) => setSoldAtLocal(event.target.value)}
-                  className="h-11"
+                  onValueChange={setSoldAtLocal}
                   aria-invalid={Boolean(errors.soldAt)}
                 />
                 <FieldError>{errors.soldAt}</FieldError>

@@ -91,7 +91,7 @@ export function OnlinePosStockSettings() {
             help={{
               label: "Lagersynkronisering fra OnlinePOS",
               content:
-                "Salg hentes hvert 10. minut. Produkter med opskrifter reducerer ingrediensernes lager; andre Produkter reducerer deres egen beholdning. Tilvalg og fravalg bruger de eksisterende koblinger. Refunderinger fører mængden tilbage på lageret, medmindre du vælger at registrere dem som Waste. Deaktivering stopper nye opdateringer og bevarer tidligere lagerændringer.",
+                "Salg hentes hvert 10. minut. Produkter med opskrifter reducerer ingrediensernes lager; andre produkter reducerer deres egen beholdning. Tilvalg og fravalg bruger de eksisterende koblinger. Refunderinger fører mængden tilbage på lageret, medmindre du vælger at registrere dem som Waste. Deaktivering stopper nye opdateringer og bevarer tidligere lagerændringer.",
             }}
           />
           {settings.enabled ? (
@@ -240,7 +240,7 @@ export function OnlinePosStockSettings() {
                 </FieldLabel>
                 <HelpTooltip
                   label="Synkronisér med salg siden seneste Count"
-                  content="Afstem lageret med salget siden hvert Produkts seneste Count på lokationen. Tidligere synkroniserede salg trækkes ikke fra igen. Produkter uden Count starter fra nu."
+                  content="Afstem lageret med salget siden hvert produkts seneste Count på lokationen. Tidligere synkroniserede salg trækkes ikke fra igen. Produkter uden Count starter fra nu."
                 />
               </div>
             </Field>

@@ -12,7 +12,8 @@ import {
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AppPageHeader } from "@/components/app-page-header";
+import { DatePicker } from "@/components/date-picker";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import {
@@ -58,7 +59,6 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -66,6 +66,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -414,7 +415,7 @@ function HistoryList({
   return (
     <div className="flex flex-col gap-5">
       {status === "LoadingFirstPage" ? (
-        <Skeleton className="h-64 w-full" />
+        <TableSkeleton />
       ) : results.length === 0 ? (
         <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
@@ -710,19 +711,16 @@ function History({ organizationId }: { organizationId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-(--spacing-safe-actions-compact)">
+    <div className="flex flex-col gap-6">
       <AppPageHeader>
-        <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+        <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
           <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-              Bestilling
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            <PageTitle>
               Bestillingshistorik
-            </h1>
+            </PageTitle>
           </div>
           <Field>
-            <FieldLabel htmlFor="ordering-history-location">Lokation</FieldLabel>
+            <FieldLabel htmlFor="ordering-history-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="ordering-history-location"
               locations={locations}
@@ -741,13 +739,11 @@ function History({ organizationId }: { organizationId: string }) {
           <FieldGroup className="grid sm:grid-cols-2">
             <Field data-invalid={Boolean(rangeError)}>
               <FieldLabel htmlFor="ordering-history-from">Fra dato</FieldLabel>
-              <Input
+              <DatePicker
                 id="ordering-history-from"
-                type="date"
-                className="h-11"
                 value={fromDate}
                 max={toDate || undefined}
-                onChange={(event) => setFromDate(event.target.value)}
+                onValueChange={setFromDate}
                 aria-invalid={Boolean(rangeError)}
                 aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
                 required
@@ -755,13 +751,11 @@ function History({ organizationId }: { organizationId: string }) {
             </Field>
             <Field data-invalid={Boolean(rangeError)}>
               <FieldLabel htmlFor="ordering-history-to">Til dato</FieldLabel>
-              <Input
+              <DatePicker
                 id="ordering-history-to"
-                type="date"
-                className="h-11"
                 value={toDate}
                 min={fromDate || undefined}
-                onChange={(event) => setToDate(event.target.value)}
+                onValueChange={setToDate}
                 aria-invalid={Boolean(rangeError)}
                 aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
                 required
@@ -844,7 +838,7 @@ function History({ organizationId }: { organizationId: string }) {
 export function OrderingHistory() {
   const { data: session } = authClient.useSession();
   const organizationId = useActiveOrganization().data?.id;
-  if (!organizationId) return <Skeleton className="h-96 w-full" />;
+  if (!organizationId) return <TableSkeleton />;
   return (
     <History
       key={`${organizationId}:${session?.user.id}`}

@@ -151,7 +151,7 @@ export const saveSupplier = mutation({
         product?.organizationId !== organizationId ||
         product.status !== "active"
       ) {
-        throw new ConvexError("Et Produkt blev ikke fundet. Opdatér siden.");
+        throw new ConvexError("Et produkt blev ikke fundet. Opdatér siden.");
       }
     }
     const current = await getInternalSupplier(

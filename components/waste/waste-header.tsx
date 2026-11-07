@@ -2,7 +2,7 @@
 
 import { selectedLocationId } from "@/lib/location-preference";
 
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import {
   useKiosk,
   useLocationAccess,
@@ -25,7 +25,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useActiveOrganization } from "@/lib/active-organization";
 
 type WasteContextValue = {
@@ -60,17 +60,14 @@ function Controls({
   lockedName?: string | null;
 }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+        <PageTitle>
           Waste
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Waste
-        </h1>
+        </PageTitle>
       </div>
       <Field>
-        <FieldLabel htmlFor="waste-location">Lokation</FieldLabel>
+        <FieldLabel htmlFor="waste-location" className="sr-only">Lokation</FieldLabel>
         <LocationField
           id="waste-location"
           locations={locations}
@@ -112,6 +109,10 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
       : "skip",
   );
   const [draftState, setDraftState] = useState({ dirty: false, busy: false });
+  const draftStateRef = useRef(draftState);
+  useEffect(() => {
+    draftStateRef.current = draftState;
+  }, [draftState]);
   const [pendingLocation, setPendingLocation] = useState<string | null>(null);
   const [resetToken, setResetToken] = useState(0);
 
@@ -132,6 +133,10 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
     const seconds = viewState?.settings.inactivitySeconds ?? 30;
     let timer = window.setTimeout(reset, seconds * 1000);
     function reset() {
+      if (draftStateRef.current.dirty || draftStateRef.current.busy) {
+        timer = window.setTimeout(reset, seconds * 1000);
+        return;
+      }
       router.replace("/waste", { scroll: false });
       setResetToken((value) => value + 1);
       window.scrollTo({ top: 0 });

@@ -70,6 +70,16 @@ export function formatMetricValue(
   }).format(value);
 }
 
+export function seriesSummary(result: MetricResult) {
+  return result.series
+    .map((series) => {
+      if (!series.points.length) return `${series.label}: ingen data i perioden`;
+      const values = series.points.map((point) => point.value);
+      return `${series.label}: i alt ${formatMetricValue(series.total, result)}, højeste ${formatMetricValue(Math.max(...values), result)}, laveste ${formatMetricValue(Math.min(...values), result)}`;
+    })
+    .join(". ");
+}
+
 export function chartModel(result: MetricResult) {
   const data = new Map<number, Record<string, number>>();
   const config: ChartConfig = {};
@@ -85,11 +95,24 @@ export function chartModel(result: MetricResult) {
       data.set(point.t, row);
     }
   });
+  const rows = [...data.values()].sort((left, right) => left.t - right.t);
+  // The current day is incomplete; plotting it reads as a collapse.
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const completeRows = rows.length > 1 && rows[rows.length - 1].t >= startOfToday ? rows.slice(0, -1) : rows;
   return {
     config,
-    data: [...data.values()].sort((left, right) => left.t - right.t),
+    data: completeRows,
     keys: result.series.map((_, index) => `series${index}`),
   };
+}
+
+function niceCeil(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return value;
+  const base = 10 ** Math.floor(Math.log10(value));
+  const fraction = value / base;
+  const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 2.5 ? 2.5 : fraction <= 5 ? 5 : 10;
+  return nice * base;
 }
 
 function valueDomain(values: number[], yAxisMin?: number, yAxisMax?: number) {
@@ -102,8 +125,8 @@ function valueDomain(values: number[], yAxisMin?: number, yAxisMax?: number) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const automatic = min === max
-    ? [min - Math.max(Math.abs(min) * 0.1, 1), max + Math.max(Math.abs(max) * 0.1, 1)] as const
-    : [min >= 0 ? Math.max(0, min - (max - min) * 0.1) : min - (max - min) * 0.1, max + (max - min) * 0.1] as const;
+    ? [min - Math.max(Math.abs(min) * 0.1, 1), niceCeil(max + Math.max(Math.abs(max) * 0.1, 1))] as const
+    : [min >= 0 ? Math.max(0, min - (max - min) * 0.1) : min - (max - min) * 0.1, niceCeil(max + (max - min) * 0.1)] as const;
   const lower = yAxisMin ?? 0;
   const upper = yAxisMax ?? automatic[1];
   return lower < upper ? ([lower, upper] as const) : automatic;
@@ -129,6 +152,27 @@ export function chartValueDomainFromValues(
   yAxisMax?: number,
 ) {
   return valueDomain(values, yAxisMin, yAxisMax);
+}
+
+export function chartValueTicks(domain: readonly [number, number]) {
+  const [lower, upper] = domain;
+  if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper <= lower) {
+    return [lower, upper];
+  }
+  const span = upper - lower;
+  const base = 10 ** Math.floor(Math.log10(span));
+  const candidates = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10].map(
+    (factor) => factor * base,
+  );
+  for (const step of candidates) {
+    const count = span / step;
+    if (Math.abs(count - Math.round(count)) > 1e-9) continue;
+    if (count < 2 || count > 6) continue;
+    return Array.from({ length: Math.round(count) + 1 }, (_, index) =>
+      Number((lower + index * step).toPrecision(12)),
+    );
+  }
+  return Array.from({ length: 5 }, (_, index) => lower + (span * index) / 4);
 }
 
 export function chartYAxisWidth(domain: readonly [number, number], result: MetricResult) {

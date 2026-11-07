@@ -7,13 +7,15 @@ import { selectedLocationId } from "@/lib/location-preference";
 import { useLastDefined } from "@/lib/use-last-defined";
 
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { useConvex, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ChevronRightIcon,
   DownloadIcon,
+  LayoutGridIcon,
   PackageOpenIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -24,6 +26,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { DraftRestoredNotice } from "@/components/draft-restored-notice";
 import { toast } from "sonner";
 import {
   useAccess,
@@ -47,6 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -58,7 +62,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -66,6 +70,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { OrderingChoiceSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
@@ -95,6 +100,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  clearOrderingDraft,
+  readOrderingDraft,
+  writeOrderingDraft,
+} from "@/lib/ordering-draft";
 import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
 import {
   DEFAULT_BUFFER_PERCENT,
@@ -122,7 +132,7 @@ export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
   const organizationId = useActiveOrganization().data?.id;
   // An open internal order being edited.
   const editOrderId = useSearchParams().get("order") as Id<"orders"> | null;
-  if (!organizationId) return <Skeleton className="h-96 w-full" />;
+  if (!organizationId) return <OrderingChoiceSkeleton />;
   return (
     <Planner
       key={`${organizationId}:${session?.user.id}:${editOrderId}`}
@@ -165,7 +175,7 @@ function Planner({
   const [asOf, setAsOf] = useState(currentMinute);
   const [search, setSearch] = useState("");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
-  // Internal orders can list a Produkt in several units.
+  // Internal orders can list a product in several units.
   const [unitLines, setUnitLines] = useState<
     Record<string, { unitId: Id<"units">; input: string }[]>
   >({});
@@ -184,6 +194,62 @@ function Planner({
   );
   const busy = exporting || placing;
   const submitting = useRef(false);
+  const restoredDraftFor = useRef<string | null>(null);
+  const draftAppliedFor = useRef<string | null>(null);
+  const [draftNoticeVisible, setDraftNoticeVisible] = useState(false);
+  const { data: session } = authClient.useSession();
+  // Kiosk accounts are shared, so a draft would reach the next person.
+  const draftUserId =
+    access && !access.kiosk?.isKioskAccount && !access.kiosk?.kioskModeEnabled
+      ? session?.user.id
+      : undefined;
+
+  // Restore an unfinished order draft after navigation remounted the planner.
+  useEffect(() => {
+    if (editing || !locationId || !draftUserId) return;
+    const key = `${organizationId}:${locationId}`;
+    if (restoredDraftFor.current === key) return;
+    const switchedLocation = restoredDraftFor.current !== null;
+    restoredDraftFor.current = key;
+    const draft = readOrderingDraft(organizationId, draftUserId, locationId);
+    if (!draft && !switchedLocation) {
+      draftAppliedFor.current = key;
+      return;
+    }
+    // Always replace the state, so one location's order never lands in another's draft.
+    window.setTimeout(() => {
+      setSupplierValue(draft?.supplierChoice ?? null);
+      setOverrides(draft?.overrides ?? {});
+      setUnitLines(
+        (draft?.unitLines ?? {}) as Record<string, { unitId: Id<"units">; input: string }[]>,
+      );
+      setCatalogInputs(draft?.catalogInputs ?? {});
+      setSendEmail(draft?.sendEmail ?? true);
+      setDraftNoticeVisible(Boolean(draft));
+      draftAppliedFor.current = key;
+    });
+  }, [draftUserId, editing, locationId, organizationId]);
+
+  useEffect(() => {
+    if (editing || !locationId || !draftUserId) return;
+    if (draftAppliedFor.current !== `${organizationId}:${locationId}`) return;
+    const empty =
+      !supplierChoice &&
+      !Object.keys(overrides).length &&
+      !Object.keys(unitLines).length &&
+      !Object.keys(catalogInputs).length;
+    if (empty) {
+      clearOrderingDraft(organizationId, draftUserId, locationId);
+      return;
+    }
+    writeOrderingDraft(organizationId, draftUserId, locationId, {
+      supplierChoice,
+      overrides,
+      unitLines,
+      catalogInputs,
+      sendEmail,
+    });
+  }, [catalogInputs, draftUserId, editing, locationId, organizationId, overrides, sendEmail, supplierChoice, unitLines]);
   const convex = useConvex();
   const placeOrder = useMutation(api.ordering.placeOrder);
   const updateOrder = useMutation(api.ordering.updateInternalOrder);
@@ -468,7 +534,7 @@ function Planner({
     const key = `${locationId}:${product.id}:${orderUnitId}`;
     const input = overrides[key] ?? String(suggested ?? 0);
     const parsed = parseOrderQuantity(input);
-    // Editing starts from the order, with other Produkter at 0.
+    // Editing starts from the order, with other products at 0.
     const editStart = editOrder
       ? (editLines.get(product.id) ?? [{ unitId: orderUnitId, input: "0" }])
       : undefined;
@@ -560,7 +626,7 @@ function Planner({
   }));
 
   const supplierItems = [
-    { value: NO_SUPPLIER, label: "Ingen leverandør" },
+    { value: NO_SUPPLIER, label: "Alle produkter" },
     ...(suppliers ?? []).map((item) => ({ value: item.id, label: item.name })),
     ...(internalSuppliers ?? []).map((item) => ({
       value: item.locationId,
@@ -576,19 +642,16 @@ function Planner({
     !choosingSupplier;
 
   const header = (
-    <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Bestilling
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          {editing ? "Redigér bestilling" : "Planlæg bestilling"}
-        </h1>
+        <PageTitle>
+          {editing ? "Redigér bestilling" : "Bestilling"}
+        </PageTitle>
       </div>
       {canPlan ? (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+        <div className="flex flex-col gap-4">
           {showSupplierField ? (
-            <Field className="sm:w-64">
+            <Field>
               <FieldLabel htmlFor="ordering-supplier">Leverandør</FieldLabel>
               <Select
                 items={supplierItems}
@@ -611,8 +674,8 @@ function Planner({
               </Select>
             </Field>
           ) : null}
-          <Field className="sm:w-72">
-            <FieldLabel htmlFor="ordering-location">Lokation</FieldLabel>
+          <Field>
+            <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="ordering-location"
               locations={locations}
@@ -636,7 +699,7 @@ function Planner({
           </Field>
         </div>
       ) : null}
-    </FieldGroup>
+    </div>
   );
 
   async function exportPlan() {
@@ -725,6 +788,7 @@ function Planner({
         catalogLines,
         ...(internalSupplier ? { comment } : {}),
       });
+      if (draftUserId) clearOrderingDraft(organizationId, draftUserId, locationId);
       if (!mounted.current) return;
       setOrderingLocation(organizationId, locationId);
       setConfirming(false);
@@ -914,9 +978,28 @@ function Planner({
     );
   }
 
+  function discardDraft() {
+    setSupplierValue(null);
+    setOverrides({});
+    setUnitLines({});
+    setCatalogInputs({});
+    setSendEmail(true);
+    setDraftNoticeVisible(false);
+  }
+
   return (
     <>
       <AppPageHeader>{header}</AppPageHeader>
+      {draftNoticeVisible &&
+      (supplierChoice ||
+        Object.keys(overrides).length > 0 ||
+        Object.keys(unitLines).length > 0 ||
+        Object.keys(catalogInputs).length > 0) ? (
+        <DraftRestoredNotice
+          description="Din ufærdige bestilling er hentet frem igen."
+          onDiscard={discardDraft}
+        />
+      ) : null}
       {!canPlan ? (
         <Alert variant="destructive">
           <AlertTitle>Ingen adgang</AlertTitle>
@@ -958,11 +1041,11 @@ function Planner({
       ) : settings === undefined ||
         suppliers === undefined ||
         internalSuppliers === undefined ? (
-        <Skeleton className="h-72 w-full" />
+        <OrderingChoiceSkeleton />
       ) : choosingSupplier ? (
         <section
           aria-labelledby="ordering-choose-supplier"
-          className="flex flex-col gap-4 pb-40"
+          className="mt-4 flex flex-col gap-4 pb-40"
         >
           <h2 id="ordering-choose-supplier" className="text-xl font-semibold">
             Hvem vil du bestille hos?
@@ -974,8 +1057,8 @@ function Planner({
                 label: item.name,
                 description:
                   item.catalog === "gssupply"
-                    ? "Koblede Produkter med priser fra GS Supply"
-                    : "Alle Produkter, der kan bestilles",
+                    ? "Koblede produkter med priser fra GS Supply"
+                    : "Alle produkter, der kan bestilles",
                 Icon: TruckIcon,
               })),
               ...(internalSuppliers ?? []).map((item) => ({
@@ -986,9 +1069,9 @@ function Planner({
               })),
               {
                 value: NO_SUPPLIER,
-                label: "Ingen leverandør",
-                description: "Alle Produkter, der kan bestilles",
-                Icon: TruckIcon,
+                label: "Alle produkter",
+                description: "Uden leverandørpriser",
+                Icon: LayoutGridIcon,
               },
             ].map((option) => (
               <Card
@@ -1013,6 +1096,9 @@ function Planner({
                     </span>
                   </CardTitle>
                   <CardDescription>{option.description}</CardDescription>
+                  <CardAction>
+                    <ChevronRightIcon aria-hidden="true" className="text-muted-foreground" />
+                  </CardAction>
                 </CardHeader>
               </Card>
             ))}
@@ -1035,7 +1121,7 @@ function Planner({
               <AlertTitle>GS Supply-kataloget kunne ikke hentes</AlertTitle>
               <AlertDescription>
                 <div className="flex flex-col items-start gap-3">
-                  Priser, lager og leveringstid vises ikke. Du kan stadig bestille de koblede Produkter.
+                  Priser, lager og leveringstid vises ikke. Du kan stadig bestille de koblede produkter.
                   <Button variant="outline" onClick={reloadCatalog}>
                     <RefreshCwIcon data-icon="inline-start" />
                     Prøv igen
@@ -1171,9 +1257,9 @@ function Planner({
                 <EmptyTitle>Ingen produkter at vise</EmptyTitle>
                 <EmptyDescription>
                   {catalogSupplier && !rows.length
-                    ? "Ingen Produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
+                    ? "Ingen produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
                     : internalSupplier && !rows.length
-                      ? `Ingen Produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Bestilling.`
+                      ? `Ingen produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Bestilling.`
                       : "Prøv en anden søgning, eller tilpas filtrene."}
                 </EmptyDescription>
               </EmptyHeader>
@@ -1475,7 +1561,7 @@ function CatalogItemsTable({
         </h2>
         <HelpTooltip
           label="andre varer"
-          content="Varer fra kataloget, der ikke er koblet til et Produkt. De bestilles i hele pakker uden forslag og påvirker ikke lageret."
+          content="Varer fra kataloget, der ikke er koblet til et produkt. De bestilles i hele pakker uden forslag og påvirker ikke lageret."
         />
       </div>
       <div className="overflow-hidden rounded-xl border">

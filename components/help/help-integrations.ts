@@ -20,7 +20,7 @@ const integrationOverview: HelpGuide = {
       steps: [
         "Åbn Administration → Integrationer, og aktivér integrationen med kontakten.",
         "Åbn integrationen, og indtast organisationens egne adgangsoplysninger.",
-        "Følg integrationens guide for at koble lokationer, Produkter eller konti.",
+        "Følg integrationens guide for at koble lokationer, produkter eller konti.",
       ],
       bullets: [
         "Guider til en integration vises her, når den er aktiveret.",
@@ -30,7 +30,7 @@ const integrationOverview: HelpGuide = {
       id: "foer-du-forbinder",
       title: "Før du forbinder",
       paragraphs: [
-        "Opret lokationer og Produkter først. Din rolle skal kunne administrere integrationer, og fælles opsætning kræver normalt adgang til alle lokationer.",
+        "Opret lokationer og produkter først. Din rolle skal kunne administrere integrationer, og fælles opsætning kræver normalt adgang til alle lokationer.",
       ],
     },
     {
@@ -45,7 +45,7 @@ const integrationOverview: HelpGuide = {
   ],
   relatedLinks: [
     { href: "/help/administration/lokationer", label: "Klargør lokationer" },
-    { href: "/help/administration/produkter", label: "Klargør Produkter" },
+    { href: "/help/administration/produkter", label: "Klargør produkter" },
   ],
 };
 

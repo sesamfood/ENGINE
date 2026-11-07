@@ -13,13 +13,13 @@ const cardVariants = cva("", {
         "gap-0 py-0 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none",
       countStatus: "transition-shadow has-[button:hover]:shadow-sm",
       choice:
-        "outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
+        "outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring",
       dragPreview:
         "border-primary/50 bg-card/95 shadow-xl ring-2 ring-primary/20",
       widget:
         "gap-2 border-border/70 pb-2 shadow-sm transition-[box-shadow,border-color] duration-150",
       visualization:
-        "outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
+        "outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring",
       dateLabel: "gap-3 pt-0",
       link: "transition-colors group-hover:bg-muted/50 group-active:bg-muted/50",
       help: "gap-4 py-5",
@@ -31,7 +31,7 @@ const cardVariants = cva("", {
       error: "border-destructive/40",
       danger: "ring-destructive/30",
       staffProduct: "gap-0 py-0 transition-[opacity,filter,box-shadow]",
-      menu: "transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+      menu: "transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring",
     },
     interaction: {
       product:
@@ -101,7 +101,9 @@ const cardHeaderAppearance = cva("", {
       padded: "py-4",
       inset: "pb-4",
       product: "py-3 lg:py-4",
+      productCompact: "pt-3 pb-1.5 lg:pt-4 lg:pb-2",
       hero: "gap-3 px-5 py-5 sm:px-8 sm:py-7",
+      heroCompact: "gap-2 px-5 py-3 sm:px-8 sm:py-7",
       spaced: "gap-3",
       relaxed: "gap-4",
       compact: "gap-2",
@@ -135,8 +137,10 @@ const cardTitleAppearance = cva("", {
     appearance: {
       auth: "text-2xl",
       truncate: "truncate",
+      productName: "line-clamp-2 leading-snug",
       hero: "text-3xl leading-tight tracking-tight sm:text-4xl",
-      widget: "truncate text-base",
+      widget: "line-clamp-2 text-base @max-xs/card-header:line-clamp-1",
+      widgetCompact: "truncate text-base",
       inline: "gap-2",
       compact: "gap-1",
       standard: "text-base",
@@ -157,7 +161,7 @@ function CardTitle({
     <div
       data-slot="card-title"
       className={cn(
-        "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
+        "font-heading text-base leading-snug font-semibold group-data-[size=sm]/card:text-sm",
         cardTitleAppearance({ appearance }),
         className,
       )}
@@ -230,18 +234,18 @@ const cardContentAppearance = cva("", {
       product: "gap-2 pb-3 lg:gap-3 lg:pb-4",
       hero: "px-5 pb-6 sm:px-8 sm:pb-8",
       stock: "gap-1 pb-3 lg:pb-4",
-      stacked: "gap-4",
-      relaxed: "gap-5",
+      stacked: "flex flex-col gap-4",
+      relaxed: "flex flex-col gap-5",
       compact: "gap-3",
       dense: "gap-2",
-      spacious: "gap-6",
+      spacious: "flex flex-col gap-6",
       report: "gap-3 text-sm",
       flush: "p-0",
       details: "gap-2 text-sm",
       text: "text-sm",
       tightText: "gap-1 text-sm",
       productGrid: "gap-2 pb-3 lg:pb-4",
-      summary: "gap-4 pt-4",
+      summary: "flex flex-col gap-4 pt-4",
       widget: "pb-0",
       editableWidget: "pb-9",
     },
@@ -274,7 +278,7 @@ const cardFooterAppearance = cva("", {
       compact: "gap-2",
       emphasized: "mt-auto font-medium",
       spaced: "gap-3",
-      product: "border-t-0 p-3 pt-0",
+      product: "border-t-0 bg-transparent px-(--card-spacing) pt-0 pb-3 lg:pb-4",
       flush: "p-0",
     },
   },

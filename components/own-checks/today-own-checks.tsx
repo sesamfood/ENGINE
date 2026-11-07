@@ -30,6 +30,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { CardSkeleton, FieldSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ownCheckControlTypeLabels } from "@/lib/own-checks";
 import { useOwnCheckNow } from "./use-own-check-now";
@@ -183,7 +184,23 @@ export function TodayOwnChecks({
     locations === undefined ||
     (locationId && (dateContext === undefined || result === undefined))
   )
-    return <Skeleton className="h-136 w-full" />;
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <Skeleton className="h-7 w-20" />
+            <Skeleton className="h-5 w-56" />
+          </div>
+          <FieldSkeleton className="sm:max-w-xs" />
+        </div>
+        <CardSkeleton>
+          <RowsSkeleton rows={2} />
+        </CardSkeleton>
+        <CardSkeleton>
+          <RowsSkeleton rows={4} />
+        </CardSkeleton>
+      </div>
+    );
   if (!locations.length || !locationId)
     return (
       <Empty appearance="outlined" className="min-h-72">

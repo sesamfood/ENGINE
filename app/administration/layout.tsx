@@ -7,7 +7,7 @@ export default function AdministrationLayout({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-8">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AdministrationHeader />
       <OrganizationAuthGate>{children}</OrganizationAuthGate>
     </section>

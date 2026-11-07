@@ -7,7 +7,7 @@ import { useAccess, usePermission } from "@/components/app-shell";
 import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldDescription, FieldGroup } from "@/components/ui/field";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { featureLabels, type FeatureId } from "@/lib/features";
@@ -29,7 +29,7 @@ function FeatureToggleControl({ feature }: { feature: FeatureId }) {
   const setEnabled = useMutation(api.features.setEnabled);
   const [saving, setSaving] = useState(false);
 
-  if (!access) return <Skeleton className="h-32 w-full max-w-3xl" />;
+  if (!access) return <FormCardSkeleton fields={1} className="max-w-3xl" />;
 
   const label = featureLabels[feature];
   const enabled = !access.disabledFeatures.includes(feature);

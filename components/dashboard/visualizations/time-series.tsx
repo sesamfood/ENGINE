@@ -22,9 +22,11 @@ import {
   chartDateTicks,
   chartModel,
   chartValueDomain,
+  chartValueTicks,
   chartYAxisWidth,
   formatMetricValue,
   isMixedCurrency,
+  seriesSummary,
   shortDate,
 } from "./utils";
 
@@ -75,17 +77,18 @@ function TimeSeriesAxes({
         tickFormatter={narrow ? (timestamp) => new Intl.DateTimeFormat("da-DK", { day: "numeric", month: "numeric" }).format(timestamp) : shortDate}
         tickLine={false}
         axisLine={false}
-        minTickGap={8}
-        tick={{ fontSize: narrow ? 10 : undefined }}
+        minTickGap={24}
+        tick={{ fontSize: 13 }}
       />
       <YAxis
         hide={compact}
         width={Math.min(chartYAxisWidth(domain, result), chartWidth * 0.4)}
         domain={domain}
+        ticks={chartValueTicks(domain)}
         tickFormatter={(value) => formatTick(Number(value))}
         tickLine={false}
         axisLine={false}
-        tick={{ fontSize: narrow ? 10 : undefined }}
+        tick={{ fontSize: 13 }}
       />
     </>
   );
@@ -109,6 +112,8 @@ export function TimeSeriesVisualization({
   const model = chartModel(result);
   const domain = chartValueDomain(model, yAxisMin, yAxisMax);
   return (
+    <>
+      <p className="sr-only">{seriesSummary(result)}</p>
     <ChartContainer
       config={model.config}
       className="h-full min-h-0 w-full aspect-auto"
@@ -181,5 +186,6 @@ export function TimeSeriesVisualization({
         )}
       </ComposedChart>
     </ChartContainer>
+    </>
   );
 }

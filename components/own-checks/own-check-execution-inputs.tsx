@@ -2,6 +2,7 @@
 
 import { Trash2Icon } from "lucide-react";
 import { useId } from "react";
+import { DateTimePicker } from "@/components/date-picker";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
 import { ProductLineGroup } from "@/components/product-line-group";
 import { Button } from "@/components/ui/button";
@@ -169,34 +170,30 @@ export function OwnCheckExecutionInputs({
       <FieldGroup className="@xl/field-group:flex-row">
         <Field data-invalid={Boolean(errors.startedAt)} data-disabled={disabled}>
           <FieldLabel htmlFor={`${id}-start`}>Starttid *</FieldLabel>
-          <Input
+          <DateTimePicker
             id={`${id}-start`}
-            type="datetime-local"
             value={value.startedAtLocal}
-            onChange={(event) =>
-              onChange({ ...value, startedAtLocal: event.target.value })
+            onValueChange={(startedAtLocal) =>
+              onChange({ ...value, startedAtLocal })
             }
             required
             disabled={disabled}
             aria-invalid={Boolean(errors.startedAt)}
-            className="h-11"
           />
           <FieldError>{errors.startedAt}</FieldError>
         </Field>
         <Field data-invalid={Boolean(errors.endedAt)} data-disabled={disabled}>
           <FieldLabel htmlFor={`${id}-end`}>Sluttid *</FieldLabel>
-          <Input
+          <DateTimePicker
             id={`${id}-end`}
-            type="datetime-local"
             value={value.endedAtLocal}
-            onChange={(event) =>
-              onChange({ ...value, endedAtLocal: event.target.value })
+            onValueChange={(endedAtLocal) =>
+              onChange({ ...value, endedAtLocal })
             }
             min={value.startedAtLocal || undefined}
             required
             disabled={disabled}
             aria-invalid={Boolean(errors.endedAt)}
-            className="h-11"
           />
           <FieldError>{errors.endedAt}</FieldError>
         </Field>

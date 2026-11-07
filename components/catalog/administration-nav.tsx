@@ -4,8 +4,18 @@ import { useIntegrations } from "@/integrations/use-integrations";
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { AppPageHeader } from "@/components/app-page-header";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  BookOpenIcon,
+  ContainerIcon,
+  LayoutGridIcon,
+  PackageIcon,
+  RulerIcon,
+  ShieldCheckIcon,
+  UsersIcon,
+} from "lucide-react";
+import { AppBottomBar } from "@/components/app-bottom-bar";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
+import { SectionNav, type SectionNavItem } from "@/components/section-nav";
 import { usePermission } from "@/components/app-shell";
 
 const administrationPath = "/administration";
@@ -24,12 +34,21 @@ const catalogSections: CatalogSection[] = [
   { value: "containers", label: "Beholdere" },
 ];
 
+const catalogIcons: Record<string, SectionNavItem["icon"]> = {
+  products: PackageIcon,
+  menus: BookOpenIcon,
+  categories: LayoutGridIcon,
+  units: RulerIcon,
+  containers: ContainerIcon,
+};
+
 const userSections = [
-  { value: "users", label: "Brugere", permission: "members.manage" },
+  { value: "users", label: "Brugere", permission: "members.manage", icon: UsersIcon },
   {
     value: "users/roles",
     label: "Roller og adgang",
     permission: "roles.manage",
+    icon: ShieldCheckIcon,
   },
 ];
 
@@ -90,7 +109,8 @@ export function AdministrationHeader() {
     ? catalogSection
     : "products";
   const title = inCatalog
-    ? "Produkter"
+    ? (visibleCatalogSections.find((item) => item.value === activeCatalogSection)
+        ?.label ?? "Produkter")
     : pathname === administrationPath
       ? "Administration"
       : (sectionTitles.find((item) =>
@@ -131,72 +151,47 @@ export function AdministrationHeader() {
 
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
-      {pathname === administrationPath ? null : (
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Administration
-        </p>
-      )}
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+      <PageTitle>
         {title}
-      </h1>
+      </PageTitle>
     </div>
   );
+
+  const nav: { label: string; items: SectionNavItem[] } | null = inCatalog
+    ? {
+        label: "Katalogsektioner",
+        items: visibleCatalogSections.map((item) => ({
+          href: `${administrationPath}/${item.value}`,
+          label: item.label,
+          icon: catalogIcons[item.value],
+          active: item.value === activeCatalogSection,
+        })),
+      }
+    : inUsers && visibleUserSections.length > 1
+      ? {
+          label: "Brugersektioner",
+          items: visibleUserSections.map((item) => ({
+            href: `${administrationPath}/${item.value}`,
+            label: item.label,
+            icon: item.icon,
+            active:
+              item.value ===
+              (pathname.startsWith(`${administrationPath}/users/roles`)
+                ? "users/roles"
+                : "users"),
+          })),
+        }
+      : null;
 
   return (
     <>
       <AppPageHeader>{header}</AppPageHeader>
-
-      {inCatalog ? (
-        <Tabs
-          value={activeCatalogSection}
-          onValueChange={(value) =>
-            router.push(`${administrationPath}/${value}`, { scroll: false })
-          }
-        >
-          <TabsList
-            aria-label="Katalogsektioner"
-            className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
-          >
-            {visibleCatalogSections.map((item) => (
-              <TabsTrigger
-                key={item.value}
-                value={item.value}
-                appearance="wide"
-                className="min-w-36"
-              >
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      ) : null}
-      {inUsers && visibleUserSections.length > 1 ? (
-        <Tabs
-          value={
-            pathname.startsWith(`${administrationPath}/users/roles`)
-              ? "users/roles"
-              : "users"
-          }
-          onValueChange={(value) =>
-            router.push(`${administrationPath}/${value}`, { scroll: false })
-          }
-        >
-          <TabsList
-            aria-label="Brugersektioner"
-            className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
-          >
-            {visibleUserSections.map((item) => (
-              <TabsTrigger
-                key={item.value}
-                value={item.value}
-                appearance="wide"
-                className="min-w-36"
-              >
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+      {nav ? (
+        <AppBottomBar>
+          <div className="mx-auto w-full max-w-(--container-page)">
+            <SectionNav label={nav.label} items={nav.items} />
+          </div>
+        </AppBottomBar>
       ) : null}
     </>
   );

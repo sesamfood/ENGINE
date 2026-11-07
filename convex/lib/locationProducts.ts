@@ -32,7 +32,7 @@ async function listRows(
     )
     .take(MAX_PRODUCTS + 1);
   if (rows.length > MAX_PRODUCTS) {
-    throw new ConvexError("Lokationen har for mange valgte Produkter");
+    throw new ConvexError("Lokationen har for mange valgte produkter");
   }
   return rows;
 }
@@ -99,7 +99,7 @@ export async function getLocationProductAccess(
       effective.add(ingredient.ingredientProductId);
       queue.push(ingredient.ingredientProductId);
       if (effective.size > MAX_PRODUCTS) {
-        throw new ConvexError("Lokationens Produktliste er for stor");
+        throw new ConvexError("Lokationens produktliste er for stor");
       }
     }
   }
@@ -222,7 +222,7 @@ export async function setLocationProducts(
         product.status !== "active",
     )
   ) {
-    throw new ConvexError("Et Produkt blev ikke fundet");
+    throw new ConvexError("Et produkt blev ikke fundet");
   }
 
   for (const change of changes) {
@@ -265,7 +265,7 @@ export async function setLocationProducts(
       );
       if (countItems.some((item) => !locationHasProduct(access, item.productId))) {
         throw new ConvexError(
-          "Et Produkt, der er talt i den åbne Count, kan ikke fjernes fra lokationen",
+          "Et produkt, der er talt i den åbne Count, kan ikke fjernes fra lokationen",
         );
       }
     }

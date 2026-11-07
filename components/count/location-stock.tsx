@@ -24,6 +24,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { ProductGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -106,16 +107,17 @@ export function LocationStock() {
 
   if (!locations || (locationId && !stock)) {
     return (
-      <div className={productGridClassName}>
-        {Array.from({ length: 8 }, (_, index) => (
-          <Card key={index} appearance="gallery">
-            <Skeleton appearance="square" className="aspect-video w-full lg:aspect-4/3" />
-            <CardHeader appearance="inset">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-8 w-1/2" />
-            </CardHeader>
-          </Card>
-        ))}
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-11 w-44 self-end" />
+        <ProductGridSkeleton>
+          <CardHeader appearance="product">
+            <Skeleton className="h-5 w-2/3" />
+          </CardHeader>
+          <CardContent appearance="stock" className="flex flex-col">
+            <Skeleton className="h-7 w-1/2" />
+            <Skeleton className="h-4 w-full" />
+          </CardContent>
+        </ProductGridSkeleton>
       </div>
     );
   }

@@ -57,6 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CardSkeleton, FieldSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -293,9 +294,23 @@ function initials(name: string) {
   );
 }
 
+function MembersSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <CardSkeleton>
+        <FieldSkeleton />
+      </CardSkeleton>
+      <CardSkeleton>
+        <FieldSkeleton />
+        <RowsSkeleton rows={3} />
+      </CardSkeleton>
+    </div>
+  );
+}
+
 export function MemberManagement() {
   const support = useSupportSession();
-  if (support === undefined) return <Skeleton className="h-96 w-full" />;
+  if (support === undefined) return <MembersSkeleton />;
   if (support) return <SupportUnavailable>Inviter Administratorer fra platformen. Øvrige Brugere administreres af organisationens egne Administratorer.</SupportUnavailable>;
   return <MemberManagementContent />;
 }
@@ -510,9 +525,7 @@ function MemberManagementContent() {
     }
   }
 
-  if (organizationPending) {
-    return <Skeleton className="h-80 w-full" />;
-  }
+  if (organizationPending) return <MembersSkeleton />;
 
   if (!organization || !allowed) {
     return (
@@ -525,7 +538,7 @@ function MemberManagementContent() {
     );
   }
 
-  if (roleRows === undefined) return <Skeleton className="h-80 w-full" />;
+  if (roleRows === undefined) return <MembersSkeleton />;
 
   const adminCount = members.filter((member) => member.role === "admin").length;
   const accessRows = memberLocationAccess?.access ?? [];

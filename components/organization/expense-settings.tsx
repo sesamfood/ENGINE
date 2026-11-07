@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
@@ -115,7 +115,7 @@ function readRecipients(to: string, cc: string, bcc: string) {
 export function ExpenseSettings() {
   const { data: session } = authClient.useSession();
   const organizationId = useActiveOrganization().data?.id;
-  if (!organizationId) return <Skeleton className="h-72 w-full max-w-3xl" />;
+  if (!organizationId) return <FormCardSkeleton className="max-w-3xl" />;
   return (
     <ExpenseSettingsControl
       key={`${organizationId}:${session?.user.id}`}
@@ -150,7 +150,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  if (!access) return <Skeleton className="h-72 w-full max-w-3xl" />;
+  if (!access) return <FormCardSkeleton className="max-w-3xl" />;
   if (access.kiosk?.kioskModeEnabled) return null;
   if (!canManage) {
     if (canToggle) return null;
@@ -175,7 +175,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
     );
   }
   if (settings === undefined || settings.organizationId !== organizationId) {
-    return <Skeleton className="h-72 w-full max-w-3xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
 
   const loadedSettings = settings;

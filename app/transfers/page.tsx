@@ -5,35 +5,59 @@ import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
+import { SectionNav } from "@/components/section-nav";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { BottomBarSkeleton, CardGridSkeleton, DateRangeSkeleton, ProductFormSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
-import { Badge } from "@/components/ui/badge";
+import { ArrowRightLeftIcon, HistoryIcon, ShoppingCartIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+
+const tabSkeletons = {
+  new: (
+    <>
+      <ProductFormSkeleton fields={4} />
+      <BottomBarSkeleton />
+    </>
+  ),
+  orders: (
+    <>
+      <CardGridSkeleton count={3} cardClassName="h-52" />
+      <BottomBarSkeleton />
+    </>
+  ),
+  history: (
+    <div className="flex flex-col gap-6">
+      <DateRangeSkeleton />
+      <Skeleton className="h-5 w-32" />
+      <RowsSkeleton />
+      <BottomBarSkeleton />
+    </div>
+  ),
+};
 
 const TransferForm = dynamic(
   () =>
     import("@/components/transfers/transfer-form").then(
       (module) => module.TransferForm,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.new },
 );
 const InternalOrders = dynamic(
   () =>
     import("@/components/transfers/internal-orders").then(
       (module) => module.InternalOrders,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.orders },
 );
 const TransferHistory = dynamic(
   () =>
     import("@/components/transfers/transfer-history").then(
       (module) => module.TransferHistory,
     ),
-  { loading: () => <Skeleton className="h-96 w-full" /> },
+  { loading: () => tabSkeletons.history },
 );
 
 function tabPath(tab: string) {
@@ -89,9 +113,7 @@ function TransfersContent() {
     router.replace(tabPath(selectedTab));
   }, [activeTab, router, selectedTab, showHistory, showNew]);
 
-  if (!access) {
-    return <Skeleton className="h-80 w-full" />;
-  }
+  if (!access) return tabSkeletons[activeTab];
 
   if (!showNew && !showHistory) {
     return (
@@ -104,84 +126,57 @@ function TransfersContent() {
     );
   }
 
+  const navItems = [
+    ...(showNew
+      ? [{ href: "/transfers", label: "Ny transfer", shortLabel: "Ny", icon: ArrowRightLeftIcon, active: selectedTab === "new" }]
+      : []),
+    ...(showOrders
+      ? [{ href: "/transfers/orders", label: "Transferbestillinger", shortLabel: "Bestillinger", badgeLabel: "åbne transferbestillinger", icon: ShoppingCartIcon, active: selectedTab === "orders", badge: openOrders?.length || undefined }]
+      : []),
+    ...(showHistory
+      ? [{ href: "/transfers/history", label: "Transferhistorik", shortLabel: "Historik", icon: HistoryIcon, active: selectedTab === "history" }]
+      : []),
+  ];
   const navigation = showSectionTabs ? (
-    <TabsList
-      variant="line"
-      aria-label="Transfersektioner"
-      className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
-    >
-      {showNew ? (
-        <TabsTrigger value="new" appearance="standard" className="min-w-36">
-          Ny transfer
-        </TabsTrigger>
-      ) : null}
-      {showOrders ? (
-        <TabsTrigger value="orders" appearance="standard" className="min-w-36">
-          Bestillinger
-          {openOrders?.length ? (
-            <Badge>{openOrders.length}</Badge>
-          ) : null}
-        </TabsTrigger>
-      ) : null}
-      {showHistory ? (
-        <TabsTrigger value="history" appearance="standard" className="min-w-36">
-          Transferhistorik
-        </TabsTrigger>
-      ) : null}
-    </TabsList>
+    <SectionNav label="Transfersektioner" items={navItems} />
   ) : null;
-
   return (
-    <Tabs
-      value={selectedTab}
-      onValueChange={(value) =>
-        router.push(tabPath(value), { scroll: false })
-      }
-    >
+    <>
       {showNew && selectedTab === "new" ? (
-        <TabsContent value="new">
-          <TransferForm navigation={navigation} />
-        </TabsContent>
+        <TransferForm navigation={navigation} />
       ) : null}
       {selectedTab === "orders" ? (
-        <TabsContent value="orders">
-          {openOrders ? (
-            <InternalOrders orders={openOrders} navigation={navigation} />
-          ) : (
-            <Skeleton className="h-96 w-full" />
-          )}
-        </TabsContent>
+        openOrders ? (
+          <InternalOrders orders={openOrders} navigation={navigation} />
+        ) : (
+          tabSkeletons.orders
+        )
       ) : null}
       {showHistory && selectedTab === "history" ? (
-        <TabsContent value="history">
+        <>
           <TransferHistory />
           {navigation ? (
             <AppBottomBar>
-              <div className="mx-auto w-full max-w-(--container-page)">
-                {navigation}
-              </div>
+              <div className="mx-auto w-full max-w-(--container-page)">{navigation}</div>
             </AppBottomBar>
           ) : null}
-        </TabsContent>
+        </>
       ) : null}
-    </Tabs>
+    </>
   );
 }
 
 export default function TransfersPage() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
-      <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+      <PageTitle>
         Transfer
-      </p>
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-        Transfer
-      </h1>
+      </PageTitle>
     </div>
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4 pb-(--spacing-safe-actions) sm:pb-(--spacing-safe-actions-compact)">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <TransfersContent />

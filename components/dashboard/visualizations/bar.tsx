@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/chart";
 import {
   chartValueDomainFromValues,
+  chartValueTicks,
   formatMetricValue,
   isMixedCurrency,
 } from "./utils";
@@ -36,7 +37,7 @@ function BreakdownAxis({ compact }: { compact: boolean }) {
           textAnchor="end"
           verticalAnchor="middle"
           // eslint-disable-next-line shadcn/no-inline-styles -- Recharts reads this style to measure and truncate tick text.
-          style={{ fontSize: 11 }}
+          style={{ fontSize: 12 }}
           className="fill-muted-foreground"
         >
           {String(payload.value)}
@@ -68,7 +69,7 @@ export function BarVisualization({
       <ChartContainer config={config} className="h-full min-h-0 w-full aspect-auto">
         <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: compact ? 0 : 8, right: compact ? 4 : 16 }}>
           <CartesianGrid horizontal={false} />
-          <XAxis type="number" hide={compact} domain={domain} tickFormatter={(value) => formatMetricValue(Number(value), result)} />
+          <XAxis type="number" hide={compact} domain={domain} ticks={chartValueTicks(domain)} tickFormatter={(value) => formatMetricValue(Number(value), result)} />
           <BreakdownAxis compact={compact} />
           <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
           <Bar dataKey="value" fill="var(--color-value)" radius={4} />

@@ -428,7 +428,7 @@ function ContainerDialog({
               {container ? `Redigér ${container.name}` : "Ny beholder"}
             </DialogTitle>
             <DialogDescription>
-              Vægten trækkes fra, når et Produkt vejes i beholderen ved Count.
+              Vægten trækkes fra, når et produkt vejes i beholderen ved Count.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>

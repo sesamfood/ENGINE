@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { addDays, dateKey } from "@/lib/date";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { DatePicker } from "@/components/date-picker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,12 +144,11 @@ export function OnlinePosSalesHistory() {
                   content="Henter salg fra datoen frem til den ældste dato, der allerede er hentet. Det sker en uge ad gangen og kan tage lang tid. Imens venter den løbende synkronisering af salg og lager. Fejler hentningen, kan du starte den igen og fortsætte, hvor den stoppede."
                 />
               </div>
-              <Input
+              <DatePicker
                 id="online-pos-history-from"
-                type="date"
                 required
                 value={from}
-                onChange={(event) => setFrom(event.target.value)}
+                onValueChange={setFrom}
                 disabled={disabled}
               />
               <Button type="submit" variant="outline" disabled={disabled}>

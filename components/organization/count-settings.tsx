@@ -10,6 +10,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Clock3Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -126,7 +128,7 @@ export function CountSettings() {
     draftSchedule ?? settings?.countSchedule ?? { type: "monthly", day: 0 };
 
   if (!access || (canManage && !settings)) {
-    return <Skeleton className="h-72 w-full max-w-2xl" />;
+    return <FormCardSkeleton className="max-w-3xl" />;
   }
 
   if (!canManage) {
@@ -335,15 +337,13 @@ export function CountSettings() {
                 <FieldLabel htmlFor="count-anchor-date">
                   Første Count-dato
                 </FieldLabel>
-                <Input
+                <DatePicker
                   id="count-anchor-date"
-                  type="date"
-                  className="h-11"
                   value={countSchedule.anchorDate}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setDraftSchedule({
                       ...countSchedule,
-                      anchorDate: event.target.value,
+                      anchorDate: value,
                     })
                   }
                 />

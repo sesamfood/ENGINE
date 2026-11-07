@@ -662,7 +662,7 @@ function ObservedItemMappings({
           Observerede Wolt-produkter
         </CardTitle>
         <CardDescription>
-          Vælg et lokalt Produkt for hver observeret Wolt-vare. Navneforslag skal gemmes manuelt. Globale koblinger bruges på tværs af lokationer.
+          Vælg et lokalt produkt for hver observeret Wolt-vare. Navneforslag skal gemmes manuelt. Globale koblinger bruges på tværs af lokationer.
         </CardDescription>
       </CardHeader>
       <CardContent appearance="relaxed" className="flex flex-col">
