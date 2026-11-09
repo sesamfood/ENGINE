@@ -1413,6 +1413,14 @@ export const listProducts = query({
     status: statusValidator,
     categoryId: v.optional(v.id("categories")),
     search: v.string(),
+    sort: v.optional(
+      v.union(
+        v.literal("name"),
+        v.literal("nameDesc"),
+        v.literal("created"),
+        v.literal("updated"),
+      ),
+    ),
   },
   returns: paginationResultValidator(catalogProductValidator),
   handler: async (ctx, args) => {
@@ -1440,12 +1448,29 @@ export const listProducts = query({
 
     const search = args.search.trim();
     if (search.length > 100) throw new ConvexError("Søgningen er for lang");
-    const candidates = await ctx.db
-      .query("products")
-      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-        q.eq("organizationId", organizationId).eq("status", args.status),
-      )
-      .paginate(catalogPaginationOptions(args.paginationOpts, 25));
+    const sort = args.sort ?? "name";
+    const products = ctx.db.query("products");
+    const ordered =
+      sort === "created"
+        ? products
+            .withIndex("by_organizationId_and_status", (q) =>
+              q.eq("organizationId", organizationId).eq("status", args.status),
+            )
+            .order("desc")
+        : sort === "updated"
+          ? products
+              .withIndex("by_organizationId_and_status_and_updatedAt", (q) =>
+                q.eq("organizationId", organizationId).eq("status", args.status),
+              )
+              .order("desc")
+          : products
+              .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+                q.eq("organizationId", organizationId).eq("status", args.status),
+              )
+              .order(sort === "nameDesc" ? "desc" : "asc");
+    const candidates = await ordered.paginate(
+      catalogPaginationOptions(args.paginationOpts, 25),
+    );
     const categorizedProducts = await Promise.all(
       candidates.page.map(async (product) => ({
         product,
