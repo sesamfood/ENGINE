@@ -21,8 +21,11 @@ export type ResolvedTarget = {
   /** Lower is better, so staying at or under the target counts as reached. */
   ceiling: boolean;
   description: string;
-  /** Weekly and monthly targets on daily charts show a running total against this pace. */
-  pace?: { period: "week" | "month"; amount: number };
+  /**
+   * Daily charts draw the target day by day. Weekly and monthly periods show running totals
+   * that restart each period instead.
+   */
+  chart?: { period: TargetPeriod; dailyTarget: (t: number) => number; caption: string };
 };
 
 export const targetVisualizations: readonly VisualizationId[] = ["kpi", "line", "bar", "area", "goal"];
@@ -76,6 +79,17 @@ export function rangeDays(range: DashboardRange, now: number) {
   }
 }
 
+/** Where a day falls within its target period. Weeks start on Monday. */
+export function periodPosition(t: number, period: TargetPeriod) {
+  // Noon keeps the calendar day stable when the browser and location time zones differ slightly.
+  const date = new Date(t + 12 * 60 * 60 * 1000);
+  const dayIndex = period === "week" ? (date.getDay() + 6) % 7 : period === "month" ? date.getDate() - 1 : 0;
+  const length = period === "week" ? 7
+    : period === "month" ? new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() : 1;
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - dayIndex);
+  return { id: start.toDateString(), dayIndex, length };
+}
+
 function bucketDays(result: MetricResult) {
   const points = result.series[0]?.points ?? [];
   if (points.length < 2) return 1;
@@ -124,23 +138,44 @@ export function resolveTarget({
       ? null
       : { total, perPoint: additive ? (total / days) * bucketDays(result) : total, ceiling, description };
 
+  const daily = additive && bucketDays(result) === 1;
   if (target.kind === "comparison") {
+    const factor = 1 + target.percent / 100;
+    const period = target.period ?? "week";
     const percent = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(target.percent);
-    return fromTotal(
-      previous === null ? null : previous * (1 + target.percent / 100),
+    const resolved = fromTotal(
+      previous === null ? null : previous * factor,
       `${percent} % i forhold til ${comparisonLabel} (${previous === null ? "—" : formatValue(previous)})`,
     );
+    if (!resolved || !daily || previous === null || result.series.length !== 1) return resolved;
+    // Without last year's days, the previous period's daily average is the best guide.
+    const previousPoints = result.series[0].previousPoints;
+    const byDay = previousPoints && new Map(previousPoints.map((point) => [point.t, point.value]));
+    const label = `${comparisonLabel} ${percent} %`;
+    return {
+      ...resolved,
+      chart: {
+        period,
+        dailyTarget: (t) => (byDay ? byDay.get(t) ?? 0 : previous / days) * factor,
+        caption: period === "day" ? `Mål: ${label}` : `Løbende total pr. ${period === "week" ? "uge" : "måned"} mod ${label}`,
+      },
+    };
   }
   if (target.kind === "budget") {
     return fromTotal(metricId ? budgetValue(metricId, budget, result) : null, "Budget for perioden");
   }
   if (!additive) return fromTotal(target.amount, `Fast mål: ${formatValue(target.amount)}`);
-  const resolved = fromTotal(
-    (target.amount / targetPeriodDays[target.period]) * days,
-    `${formatValue(target.amount)} ${targetPeriodPhrases[target.period]}`,
-  );
-  return resolved && target.period !== "day" && bucketDays(result) === 1
-    ? { ...resolved, pace: { period: target.period, amount: target.amount } }
+  const description = `${formatValue(target.amount)} ${targetPeriodPhrases[target.period]}`;
+  const resolved = fromTotal((target.amount / targetPeriodDays[target.period]) * days, description);
+  return resolved && daily && target.period !== "day"
+    ? {
+        ...resolved,
+        chart: {
+          period: target.period,
+          dailyTarget: (t) => target.amount / periodPosition(t, target.period).length,
+          caption: `Løbende total mod ${description}`,
+        },
+      }
     : resolved;
 }
 

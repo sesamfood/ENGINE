@@ -57,7 +57,7 @@ export const DEFAULT_GOAL_PERCENT = 10;
 export const targetPeriods = ["day", "week", "month"] as const;
 export type TargetPeriod = (typeof targetPeriods)[number];
 export type WidgetTarget =
-  | { kind: "comparison"; percent: number }
+  | { kind: "comparison"; percent: number; period?: TargetPeriod }
   | { kind: "manual"; amount: number; period: TargetPeriod }
   | { kind: "budget" };
 
@@ -153,6 +153,8 @@ export type MetricSeries = {
   points: { t: number; value: number }[];
   total: number;
   previousTotal: number | null;
+  /** Last year's daily values moved onto this year's dates, so daily targets can follow them. */
+  previousPoints?: { t: number; value: number }[];
 };
 
 export type MetricResult = {

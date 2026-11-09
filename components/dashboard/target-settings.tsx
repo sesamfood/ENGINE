@@ -53,14 +53,16 @@ export function TargetSettings({
   const [kind, setKind] = useState<TargetKind>(value?.kind ?? "none");
   const [percentDraft, setPercentDraft] = useState(formatDraft(value?.kind === "comparison" ? value.percent : DEFAULT_GOAL_PERCENT));
   const [amountDraft, setAmountDraft] = useState(value?.kind === "manual" ? formatDraft(value.amount) : "");
-  const [period, setPeriod] = useState<TargetPeriod>(value?.kind === "manual" ? value.period : "week");
+  const [period, setPeriod] = useState<TargetPeriod>(
+    (value?.kind === "manual" || value?.kind === "comparison" ? value.period : undefined) ?? "week",
+  );
   const usesPeriod = targetUsesPeriod(metric);
   const unit = metric.kind === "builtin" ? metricRegistry[metric.id].unit : undefined;
   const kindOptions = [
     ...(required ? [] : [{ value: "none", label: "Intet mål" }]),
     { value: "comparison", label: "Procent af sidste år" },
     { value: "manual", label: "Fast mål" },
-    ...(supportsBudgetTarget({ metric }) ? [{ value: "budget", label: "Budget" }] : []),
+    ...(supportsBudgetTarget({ metric }) ? [{ value: "budget", label: "Følg budget" }] : []),
   ];
   const periodOptions = targetPeriods.map((item) => ({ value: item, label: targetPeriodLabels[item] }));
 
@@ -69,13 +71,27 @@ export function TargetSettings({
     if (next.kind === "budget") return { kind: "budget" };
     if (next.kind === "comparison") {
       const percent = parseNumber(next.percentDraft);
-      return Number.isFinite(percent) && percent > -100 ? { kind: "comparison", percent } : null;
+      return Number.isFinite(percent) && percent > -100
+        ? { kind: "comparison", percent, ...(usesPeriod ? { period: next.period } : {}) }
+        : null;
     }
     const amount = parseNumber(next.amountDraft);
     return Number.isFinite(amount) && amount >= 0 ? { kind: "manual", amount, period: usesPeriod ? next.period : "day" } : null;
   }
 
   const state = { kind, percentDraft, amountDraft, period };
+  const periodSelect = usesPeriod ? (
+    <Select items={periodOptions} value={period} onValueChange={(next) => update({ period: next as TargetPeriod }, true)}>
+      <SelectTrigger className="h-11 w-28" aria-label="Periode for målet">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {periodOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  ) : null;
   const invalid = build(state) === null;
 
   function update(patch: Partial<typeof state>, commit: boolean) {
@@ -96,7 +112,7 @@ export function TargetSettings({
           <FieldLabel htmlFor={`${id}-kind`}>Mål</FieldLabel>
           <HelpTooltip
             label="målet"
-            content="Procent af sidste år sammenligner med de samme ugedage sidste år. Fast mål er et beløb eller antal pr. dag, uge eller måned, som omregnes til widgettens periode. Budget bruger månedsbudgettet fordelt på dagene i perioden. For målinger, hvor lavere er bedre, er målet et loft."
+            content="Procent af sidste år følger de samme ugedage sidste år dag for dag. Med uge eller måned vises diagrammet som løbende total for hver periode. Fast mål er et beløb eller antal pr. dag, uge eller måned, som omregnes til widgettens periode. Følg budget bruger månedsbudgettet fordelt på dagene i perioden. For målinger, hvor lavere er bedre, er målet et loft."
           />
         </div>
         <Select items={kindOptions} value={kind} onValueChange={(next) => update({ kind: next as TargetKind }, true)}>
@@ -113,20 +129,23 @@ export function TargetSettings({
       {kind === "comparison" ? (
         <Field data-invalid={invalid || undefined}>
           <FieldLabel htmlFor={`${id}-percent`}>Ændring</FieldLabel>
-          <InputGroup className="h-11">
-            <InputGroupInput
-              id={`${id}-percent`}
-              type="text"
-              inputMode="decimal"
-              value={percentDraft}
-              aria-invalid={invalid}
-              onChange={(event) => update({ percentDraft: event.target.value }, false)}
-              onBlur={() => update({}, true)}
-            />
-            <InputGroupAddon align="inline-end">
-              <InputGroupText>%</InputGroupText>
-            </InputGroupAddon>
-          </InputGroup>
+          <div className="flex gap-2">
+            <InputGroup className="h-11 min-w-0 flex-1">
+              <InputGroupInput
+                id={`${id}-percent`}
+                type="text"
+                inputMode="decimal"
+                value={percentDraft}
+                aria-invalid={invalid}
+                onChange={(event) => update({ percentDraft: event.target.value }, false)}
+                onBlur={() => update({}, true)}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>%</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+            {periodSelect}
+          </div>
           {invalid ? <FieldError>Angiv en procent større end -100.</FieldError> : null}
         </Field>
       ) : null}
@@ -150,18 +169,7 @@ export function TargetSettings({
                 </InputGroupAddon>
               ) : null}
             </InputGroup>
-            {usesPeriod ? (
-              <Select items={periodOptions} value={period} onValueChange={(next) => update({ period: next as TargetPeriod }, true)}>
-                <SelectTrigger className="h-11 w-28" aria-label="Periode for målet">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {periodOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            ) : null}
+            {periodSelect}
           </div>
           {invalid ? <FieldError>Angiv et mål på 0 eller mere.</FieldError> : null}
         </Field>

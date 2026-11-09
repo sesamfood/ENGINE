@@ -29,7 +29,7 @@ import {
   chartYAxisWidth,
   formatMetricValue,
   isMixedCurrency,
-  paceChartModel,
+  targetChartModel,
   seriesSummary,
   shortDate,
 } from "./utils";
@@ -117,17 +117,18 @@ export function TimeSeriesVisualization({
   }
   // A single target line only makes sense for one series.
   const singleTarget = target && result.series.length === 1 ? target : undefined;
-  const pace = singleTarget?.pace;
-  const model = pace ? paceChartModel(chartModel(result), pace) : chartModel(result);
-  const targetValue = singleTarget && !pace ? singleTarget.perPoint : undefined;
-  const extraValues = pace
-    ? model.data.map((row) => row.paceTarget)
+  const targetChart = singleTarget?.chart;
+  const baseModel = chartModel(result);
+  const model = targetChart ? targetChartModel(baseModel, targetChart) : { ...baseModel, running: false };
+  const targetValue = singleTarget && !targetChart ? singleTarget.perPoint : undefined;
+  const extraValues = targetChart
+    ? model.data.map((row) => row.target)
     : targetValue === undefined ? [] : [targetValue];
   const domain = chartValueDomain(model, yAxisMin, yAxisMax, extraValues);
   const chart = (
     <ChartContainer
       config={model.config}
-      className={cn("min-h-0 w-full aspect-auto", pace && !compact ? "flex-1" : "h-full")}
+      className={cn("min-h-0 w-full aspect-auto", targetChart && !compact ? "flex-1" : "h-full")}
     >
       <ComposedChart
         accessibilityLayer
@@ -195,12 +196,14 @@ export function TimeSeriesVisualization({
             />
           ),
         )}
-        {pace ? (
+        {targetChart ? (
           <>
-            <Line dataKey="daily" stroke="none" dot={false} activeDot={false} legendType="none" isAnimationActive={false} />
+            {model.running ? (
+              <Line dataKey="daily" stroke="none" dot={false} activeDot={false} legendType="none" isAnimationActive={false} />
+            ) : null}
             <Line
-              dataKey="paceTarget"
-              type="linear"
+              dataKey="target"
+              type={model.running ? "linear" : "monotone"}
               stroke="var(--foreground)"
               strokeDasharray="6 4"
               strokeWidth={1.5}
@@ -229,9 +232,9 @@ export function TimeSeriesVisualization({
   return (
     <>
       <p className="sr-only">{seriesSummary(result)}</p>
-      {pace && !compact ? (
+      {targetChart && !compact ? (
         <div className="flex h-full min-h-0 flex-col gap-1">
-          <p className="shrink-0 truncate text-xs text-muted-foreground">Løbende total mod {singleTarget.description}</p>
+          <p className="shrink-0 truncate text-xs text-muted-foreground" title={targetChart.caption}>{targetChart.caption}</p>
           {chart}
         </div>
       ) : chart}

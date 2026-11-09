@@ -141,7 +141,11 @@ export const customMetricSpecValidator = v.union(
 );
 
 export const widgetTargetValidator = v.union(
-  v.object({ kind: v.literal("comparison"), percent: v.number() }),
+  v.object({
+    kind: v.literal("comparison"),
+    percent: v.number(),
+    period: v.optional(v.union(v.literal("day"), v.literal("week"), v.literal("month"))),
+  }),
   v.object({
     kind: v.literal("manual"),
     amount: v.number(),
@@ -208,6 +212,7 @@ export const metricSeriesValidator = v.object({
   points: v.array(metricPointValidator),
   total: v.number(),
   previousTotal: v.union(v.number(), v.null()),
+  previousPoints: v.optional(v.array(metricPointValidator)),
 });
 
 export const metricResultValidator = v.object({
