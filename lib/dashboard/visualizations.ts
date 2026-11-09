@@ -8,6 +8,7 @@ import { TableVisualization } from "@/components/dashboard/visualizations/table"
 import { Empty, EmptyDescription } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import type { ResolvedTarget } from "./target";
 import type { MetricResult, VisualizationId } from "./types";
 
 export type VisualizationProps = {
@@ -16,8 +17,7 @@ export type VisualizationProps = {
   tooltipLabel?: string;
   yAxisMin?: number;
   yAxisMax?: number;
-  goalPercent?: number;
-  comparisonLabel?: string;
+  target?: ResolvedTarget | null;
 };
 
 const visualizationLoading = () =>

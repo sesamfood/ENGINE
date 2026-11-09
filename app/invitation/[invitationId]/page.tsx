@@ -16,11 +16,11 @@ export default async function InvitationPage({
     invitationId,
   });
 
-  if (linkStatus === "unavailable") {
+  if (linkStatus.status === "unavailable") {
     redirect("/login");
   }
 
-  if (linkStatus === "expired") {
+  if (linkStatus.status === "expired") {
     return (
       <AuthCard
         title="Invitationen er udløbet"
@@ -36,9 +36,17 @@ export default async function InvitationPage({
   return (
     <AuthCard
       title="Invitation"
-      description="Log ind med den e-mail, invitationen blev sendt til, for at fortsætte."
+      description={
+        linkStatus.hasAccount
+          ? `Log ind med ${linkStatus.email} for at acceptere invitationen.`
+          : `Opret en konto med ${linkStatus.email} for at acceptere invitationen.`
+      }
     >
-      <InvitationCard invitationId={invitationId} />
+      <InvitationCard
+        invitationId={invitationId}
+        email={linkStatus.email}
+        hasAccount={linkStatus.hasAccount}
+      />
     </AuthCard>
   );
 }

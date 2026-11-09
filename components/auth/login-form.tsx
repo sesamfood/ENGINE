@@ -40,14 +40,17 @@ export function LoginForm({
   verified,
   reset,
   deleted,
+  email,
 }: {
   redirectTo: string;
   verified: boolean;
   reset: boolean;
   deleted: boolean;
+  /** Locks the form to this e-mail, e.g. for an invitation. */
+  email?: string;
 }) {
   const router = useRouter();
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(email ?? "");
   const [password, setPassword] = useState("");
   const [error, formAction, pending] = useActionState(submit, undefined);
 
@@ -123,7 +126,9 @@ export function LoginForm({
       ) : null}
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="identifier">E-mail eller brugernavn</FieldLabel>
+          <FieldLabel htmlFor="identifier">
+            {email ? "E-mail" : "E-mail eller brugernavn"}
+          </FieldLabel>
           <Input
             id="identifier"
             name="identifier"
@@ -131,6 +136,7 @@ export function LoginForm({
             autoComplete="username"
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
+            readOnly={Boolean(email)}
             required
             aria-invalid={credentialsInvalid || undefined}
             aria-describedby={showError ? "login-error" : undefined}
@@ -160,15 +166,17 @@ export function LoginForm({
       >
         Glemt adgangskode?
       </Link>
-      <p className="text-center text-sm text-muted-foreground">
-        Har du ikke en konto?{" "}
-        <Link
-          href={`/signup?redirect=${encodeURIComponent(redirectTo)}`}
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          Opret konto
-        </Link>
-      </p>
+      {email ? null : (
+        <p className="text-center text-sm text-muted-foreground">
+          Har du ikke en konto?{" "}
+          <Link
+            href={`/signup?redirect=${encodeURIComponent(redirectTo)}`}
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Opret konto
+          </Link>
+        </p>
+      )}
     </form>
   );
 }

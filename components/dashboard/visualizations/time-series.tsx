@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceLine,
   XAxis,
   YAxis,
   useChartWidth,
@@ -17,6 +18,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import type { ResolvedTarget } from "@/lib/dashboard/target";
 import { DEFAULT_CURRENCY, type MetricResult } from "@/lib/dashboard/types";
 import {
   chartDateTicks,
@@ -26,6 +28,7 @@ import {
   chartYAxisWidth,
   formatMetricValue,
   isMixedCurrency,
+  targetChartModel,
   seriesSummary,
   shortDate,
 } from "./utils";
@@ -36,6 +39,7 @@ export type TimeSeriesProps = {
   tooltipLabel?: string;
   yAxisMin?: number;
   yAxisMax?: number;
+  target?: ResolvedTarget | null;
 };
 
 function TimeSeriesAxes({
@@ -101,6 +105,7 @@ export function TimeSeriesVisualization({
   tooltipLabel,
   yAxisMin,
   yAxisMax,
+  target,
 }: TimeSeriesProps & { variant: "line" | "area" | "bar" }) {
   if (isMixedCurrency(result)) {
     return (
@@ -109,8 +114,16 @@ export function TimeSeriesVisualization({
       </div>
     );
   }
-  const model = chartModel(result);
-  const domain = chartValueDomain(model, yAxisMin, yAxisMax);
+  // A single target line only makes sense for one series.
+  const singleTarget = target && result.series.length === 1 ? target : undefined;
+  const targetChart = singleTarget?.chart;
+  const baseModel = chartModel(result);
+  const model = targetChart ? targetChartModel(baseModel, targetChart) : { ...baseModel, running: false };
+  const targetValue = singleTarget && !targetChart ? singleTarget.perPoint : undefined;
+  const extraValues = targetChart
+    ? model.data.map((row) => row.target)
+    : targetValue === undefined ? [] : [targetValue];
+  const domain = chartValueDomain(model, yAxisMin, yAxisMax, extraValues);
   return (
     <>
       <p className="sr-only">{seriesSummary(result)}</p>
@@ -184,6 +197,30 @@ export function TimeSeriesVisualization({
             />
           ),
         )}
+        {targetChart ? (
+          <>
+            {model.running ? (
+              <Line dataKey="daily" stroke="none" dot={false} activeDot={false} legendType="none" isAnimationActive={false} />
+            ) : null}
+            <Line
+              dataKey="target"
+              type={model.running ? "linear" : "monotone"}
+              stroke="var(--foreground)"
+              strokeDasharray="6 4"
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </>
+        ) : null}
+        {targetValue !== undefined ? (
+          <ReferenceLine
+            y={targetValue}
+            stroke="var(--foreground)"
+            strokeDasharray="6 4"
+            strokeWidth={1.5}
+          />
+        ) : null}
       </ComposedChart>
     </ChartContainer>
     </>

@@ -1,35 +1,30 @@
 import type { CSSProperties } from "react";
 import { Empty, EmptyDescription } from "@/components/ui/empty";
 import { Progress } from "@/components/ui/progress";
-import { DEFAULT_GOAL_PERCENT, type MetricResult } from "@/lib/dashboard/types";
-import { formatMetricValue, previousTotal, total } from "./utils";
-
-const percentFormat = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1, signDisplay: "exceptZero" });
+import { targetReached, type ResolvedTarget } from "@/lib/dashboard/target";
+import type { MetricResult } from "@/lib/dashboard/types";
+import { formatMetricValue, total } from "./utils";
 
 export function GoalVisualization({
   result,
   compact = false,
-  goalPercent = DEFAULT_GOAL_PERCENT,
-  comparisonLabel = "den foregående periode",
+  target,
 }: {
   result: MetricResult;
   compact?: boolean;
-  goalPercent?: number;
-  comparisonLabel?: string;
+  target?: ResolvedTarget | null;
 }) {
   const current = total(result);
-  const baseline = previousTotal(result);
-  const target = baseline === null ? null : baseline * (1 + goalPercent / 100);
-  if (current === null || target === null || target <= 0) {
+  if (current === null || !target || target.total <= 0) {
     return (
       <Empty appearance="flush" className="h-full">
-        <EmptyDescription>Der er ingen sammenligningsdata at beregne målet ud fra.</EmptyDescription>
+        <EmptyDescription>Der er ingen data at beregne målet ud fra.</EmptyDescription>
       </Empty>
     );
   }
 
-  const progress = (current / target) * 100;
-  const reached = progress >= 100;
+  const progress = (current / target.total) * 100;
+  const reached = targetReached(current, target);
   const value = formatMetricValue(current, result);
   const fontSize = `clamp(1rem, ${160 / Math.max(value.length, 1)}cqw, ${compact ? 2 : 3}rem)`;
   return (
@@ -41,7 +36,9 @@ export function GoalVisualization({
         >
           {value}
         </span>
-        <span className="text-sm text-muted-foreground tabular-nums">af {formatMetricValue(target, result)}</span>
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {target.ceiling ? "maks. " : "af "}{formatMetricValue(target.total, result)}
+        </span>
       </p>
       <Progress
         value={Math.max(0, Math.min(100, progress))}
@@ -51,11 +48,10 @@ export function GoalVisualization({
         tone={reached ? "success" : "default"}
       />
       <p className="text-sm font-medium tabular-nums">
-        {new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format(progress)} % af målet{reached ? " · Nået" : ""}
+        {new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format(progress)} % af målet
+        {reached ? (target.ceiling ? " · Under målet" : " · Nået") : target.ceiling ? " · Over målet" : ""}
       </p>
-      <p className="text-xs text-muted-foreground" title={`${formatMetricValue(baseline, result)} ${comparisonLabel}`}>
-        {percentFormat.format(goalPercent)} % i forhold til {comparisonLabel}{compact ? "" : ` (${formatMetricValue(baseline, result)})`}
-      </p>
+      {compact ? null : <p className="text-xs text-muted-foreground">{target.description}</p>}
     </div>
   );
 }

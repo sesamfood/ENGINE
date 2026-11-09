@@ -34,7 +34,14 @@ function signupError(error: { code?: string; message?: string }): SignupError {
   return { message: "Kontoen kunne ikke oprettes. Kontrollér oplysningerne og prøv igen.", field: "password" };
 }
 
-export function SignupForm({ redirectTo }: { redirectTo: string }) {
+export function SignupForm({
+  redirectTo,
+  email: lockedEmail,
+}: {
+  redirectTo: string;
+  /** Locks the form to this e-mail, e.g. for an invitation. */
+  email?: string;
+}) {
   const router = useRouter();
   const [error, setError] = useState<SignupError>();
   const [pending, setPending] = useState(false);
@@ -104,6 +111,8 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
             name="email"
             type="email"
             autoComplete="email"
+            defaultValue={lockedEmail}
+            readOnly={Boolean(lockedEmail)}
             required
             aria-invalid={error?.field === "email" || undefined}
             aria-describedby={error?.field === "email" ? "signup-error" : undefined}
@@ -128,15 +137,17 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
         {pending ? <Spinner data-icon="inline-start" /> : null}
         Opret konto
       </Button>
-      <p className="text-center text-sm text-muted-foreground">
-        Har du allerede en konto?{" "}
-        <Link
-          href={`/login?redirect=${encodeURIComponent(redirectTo)}`}
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          Log ind
-        </Link>
-      </p>
+      {lockedEmail ? null : (
+        <p className="text-center text-sm text-muted-foreground">
+          Har du allerede en konto?{" "}
+          <Link
+            href={`/login?redirect=${encodeURIComponent(redirectTo)}`}
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Log ind
+          </Link>
+        </p>
+      )}
     </form>
   );
 }

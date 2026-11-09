@@ -52,7 +52,7 @@ async function selectedLocations(ctx: QueryCtx, auth: OrganizationAuth, location
   })));
 }
 
-async function latestBudget(ctx: QueryCtx, organizationId: string, locationId: Id<"locations">, month: string) {
+export async function latestBudget(ctx: QueryCtx, organizationId: string, locationId: Id<"locations">, month: string) {
   return ctx.db.query("monthlyKpiBudgets")
     .withIndex("by_organizationId_and_locationId_and_month_and_revision", (q) =>
       q.eq("organizationId", organizationId).eq("locationId", locationId).eq("month", month))
