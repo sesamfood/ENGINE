@@ -1111,6 +1111,20 @@ export default defineSchema({
       "ingredientProductId",
     ]),
 
+  // Standard amount for an addable ingredient; product additions without an amount use it.
+  ingredientAdditionDefaults: defineTable({
+    organizationId: v.string(),
+    ingredientProductId: v.id("products"),
+    quantity: v.number(),
+    unitId: v.id("units"),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_ingredientProductId", [
+      "organizationId",
+      "ingredientProductId",
+    ]),
+
   locations: defineTable({
     organizationId: v.string(),
     googlePlaceId: v.optional(v.string()),
