@@ -111,7 +111,7 @@ function FreshnessNotice({
   });
   return (
     <Popover>
-      <PopoverTrigger
+      <PopoverTrigger openOnHover
         render={
           <Button
             type="button"
@@ -162,7 +162,7 @@ function FreshnessNotice({
 function TruncatedNotice() {
   return (
     <Popover>
-      <PopoverTrigger
+      <PopoverTrigger openOnHover
         render={<button type="button" className="inline-flex min-h-11 shrink-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" aria-label="Begrænset data: se forklaring" />}
       >
         <Badge variant="secondary">Begrænset data</Badge>
@@ -183,7 +183,7 @@ function TruncatedNotice() {
 function WarningNotice({ warning }: { warning: NonNullable<MetricResult["warning"]> }) {
   return (
     <Popover>
-      <PopoverTrigger
+      <PopoverTrigger openOnHover
         render={<Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={warning.title} />}
       >
         <CircleAlertIcon className="text-warning" />
@@ -374,7 +374,7 @@ export function WidgetCard({
               <CardDescription appearance="inline" className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center overflow-hidden">
                 {change !== null ? (
                   <Popover>
-                    <PopoverTrigger render={<button type="button" aria-label={`Ændring: ${change >= 0 ? "steget" : "faldet"} ${new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} ${financial ? "procentpoint" : "procent"} sammenlignet med ${comparisonLabel}`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
+                    <PopoverTrigger openOnHover render={<button type="button" aria-label={`Ændring: ${change >= 0 ? "steget" : "faldet"} ${new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} ${financial ? "procentpoint" : "procent"} sammenlignet med ${comparisonLabel}`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
                       <Badge
                         variant="secondary"
                         appearance={
@@ -401,7 +401,7 @@ export function WidgetCard({
                 ) : null}
                 {chartTarget && current !== null && result ? (
                   <Popover>
-                    <PopoverTrigger render={<button type="button" aria-label={`Mål: ${Math.round((current / chartTarget.total) * 100)} % af målet`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
+                    <PopoverTrigger openOnHover render={<button type="button" aria-label={`Mål: ${Math.round((current / chartTarget.total) * 100)} % af målet`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
                       <Badge variant="secondary" appearance={targetReached(current, chartTarget) ? "favorable" : undefined} className="max-w-full">
                         <TargetIcon />
                         <span className="truncate tabular-nums">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format((current / chartTarget.total) * 100)} %</span>
