@@ -59,10 +59,10 @@ export async function isIntegrationEnabled(
 
 // Suspended organizations read as having every integration off, which stops jobs and callbacks.
 export function isIntegrationEntitled(
-  entitlements: { status: "active" | "suspended"; integrations: readonly IntegrationId[] } | null,
+  entitlements: { status: "active" | "suspended"; fullAccess?: boolean; integrations: readonly IntegrationId[] } | null,
   integration: IntegrationId,
 ) {
-  return !entitlements || (entitlements.status === "active" && entitlements.integrations.includes(integration));
+  return !entitlements || (entitlements.status === "active" && (entitlements.fullAccess === true || entitlements.integrations.includes(integration)));
 }
 
 export async function getUnavailableIntegrations(ctx: QueryCtx | MutationCtx, organizationId: string) {

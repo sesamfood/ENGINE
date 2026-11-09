@@ -247,7 +247,10 @@ export const create = mutation({
       status: "suspended",
       plan: sourceEntitlements?.plan,
       features: sourceEntitlements?.features ?? [...featureIds],
-      integrations: (sourceEntitlements?.integrations ?? integrationIds).filter(
+      integrations: (sourceEntitlements && !sourceEntitlements.fullAccess
+        ? sourceEntitlements.integrations
+        : integrationIds
+      ).filter(
         (integration) => integration !== "wolt",
       ),
       unavailableDisplay: sourceEntitlements?.unavailableDisplay,

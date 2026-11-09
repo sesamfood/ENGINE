@@ -26,7 +26,18 @@ export type FeatureId = Infer<typeof featureIdValidator>;
 
 // A missing row means the organization is active and entitled to everything.
 // An assigned plan and its purchased add-ons supply the features and integrations.
+// Full access grants every feature here and every integration in isIntegrationEntitled.
 export async function getEntitlements(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+) {
+  const entitlements = await getStoredEntitlements(ctx, organizationId);
+  return entitlements?.fullAccess
+    ? { ...entitlements, features: [...featureIds] }
+    : entitlements;
+}
+
+async function getStoredEntitlements(
   ctx: QueryCtx | MutationCtx,
   organizationId: string,
 ) {

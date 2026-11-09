@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -704,6 +705,7 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
   const [unavailableDisplay, setUnavailableDisplay] = useState<
     UnavailableDisplay | "default"
   >(organization.unavailableDisplay ?? "default");
+  const [fullAccess, setFullAccess] = useState(organization.fullAccess);
   const [saving, setSaving] = useState(false);
   const canEdit = role === "owner";
   const plan = plans?.find((item) => item.id === planId);
@@ -755,6 +757,7 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
         addOnIds: selectedAddOns.map((addOn) => addOn.id),
         unavailableDisplay:
           unavailableDisplay === "default" ? null : unavailableDisplay,
+        fullAccess,
       });
       toast.success("Adgangen er gemt");
     } catch (error) {
@@ -777,6 +780,21 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
         </CardHeader>
         <CardContent>
           <FieldGroup>
+            <Field orientation="horizontal" data-disabled={!canEdit || saving}>
+              <Switch
+                id="platform-full-access"
+                checked={fullAccess}
+                onCheckedChange={setFullAccess}
+                disabled={!canEdit || saving}
+              />
+              <FieldLabel htmlFor="platform-full-access" appearance="regular">
+                Fuld adgang
+              </FieldLabel>
+              <HelpTooltip
+                label="Fuld adgang"
+                content="Giver adgang til alle funktioner og integrationer, også nye, uanset plan."
+              />
+            </Field>
             <Field className="sm:max-w-sm">
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="platform-plan">Plan</FieldLabel>
@@ -793,6 +811,7 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
                 disabled={
                   !canEdit ||
                   saving ||
+                  fullAccess ||
                   plans === undefined ||
                   allAddOns === undefined
                 }
@@ -818,15 +837,19 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
                 addOns={planAddOns}
                 selected={addOnIds}
                 current={organization.addOnIds}
-                disabled={!canEdit || saving}
+                disabled={!canEdit || saving || fullAccess}
                 onChange={setAddOnIds}
               />
             ) : null}
             <AccessFields
               idPrefix="platform"
-              features={planAccess?.features ?? features}
-              integrations={planAccess?.integrations ?? integrations}
-              disabled={!canEdit || saving || plan !== undefined}
+              features={fullAccess ? featureIds : (planAccess?.features ?? features)}
+              integrations={
+                fullAccess
+                  ? integrationRegistry.map((entry) => entry.id)
+                  : (planAccess?.integrations ?? integrations)
+              }
+              disabled={!canEdit || saving || fullAccess || plan !== undefined}
               onFeaturesChange={setFeatures}
               onIntegrationsChange={setIntegrations}
               featureNote={(feature) =>
@@ -1126,7 +1149,7 @@ export function PlatformOrganizationDetail({
         </TabsContent>
         <TabsContent value="features">
           <EntitlementsTab
-            key={`${organization.id}:${organization.planId}:${organization.addOnIds.join()}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
+            key={`${organization.id}:${organization.fullAccess}:${organization.planId}:${organization.addOnIds.join()}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
             organization={organization}
           />
         </TabsContent>

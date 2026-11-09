@@ -205,6 +205,7 @@ export const get = query({
     planId: v.union(v.id("plans"), v.null()),
     addOnIds: v.array(v.id("addOns")),
     hasExplicitEntitlements: v.boolean(),
+    fullAccess: v.boolean(),
     unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
     defaultUnavailableDisplay: unavailableDisplayValidator,
     members: v.array(
@@ -354,6 +355,7 @@ export const get = query({
       planId: entitlements?.planId ?? null,
       addOnIds: entitlements?.addOnIds ?? [],
       hasExplicitEntitlements: entitlements !== null,
+      fullAccess: entitlements?.fullAccess ?? false,
       unavailableDisplay: entitlements?.unavailableDisplay ?? null,
       defaultUnavailableDisplay,
       members: members.map((member) => {
@@ -384,7 +386,10 @@ export const get = query({
         ),
       })),
       nonEntitledFeatures: nonEntitledFeatures(entitlements),
-      entitledIntegrations: entitlements?.integrations ?? [...integrationIds],
+      entitledIntegrations:
+        entitlements && !entitlements.fullAccess
+          ? entitlements.integrations
+          : [...integrationIds],
       organizationDisabledFeatures,
       platformAudit: platformAudit.map(toAuditRow),
       organizationAudit: organizationAudit.map(toAuditRow),

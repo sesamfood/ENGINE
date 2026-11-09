@@ -97,6 +97,8 @@ export default defineSchema({
     integrations: v.array(integrationIdValidator),
     // Missing means the platform default in platformSettings applies.
     unavailableDisplay: v.optional(unavailableDisplayValidator),
+    // Grants every feature and integration, including new ones, regardless of plan.
+    fullAccess: v.optional(v.boolean()),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
