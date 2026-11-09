@@ -33,7 +33,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { GsSupplyCatalogLinks } from "./gs-supply-catalog-links";
+import { SupplierCatalogLinks } from "@/components/supplier-catalog/catalog-links";
+import { supplierCatalogs } from "@/components/supplier-catalog/catalog";
 
 export function GsSupplyIntegration() {
   const settings = useQuery(api.integrations.gssupply.api.getSettings);
@@ -42,7 +43,7 @@ export function GsSupplyIntegration() {
     <div className="flex flex-col gap-5">
       <ConnectionCard settings={settings} />
       {settings.connection ? (
-        <GsSupplyCatalogLinks />
+        <SupplierCatalogLinks catalog={supplierCatalogs.gssupply} />
       ) : null}
     </div>
   );

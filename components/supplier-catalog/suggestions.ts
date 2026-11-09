@@ -7,7 +7,7 @@ const PACK_UNIT =
   /\b(kasse|karton|pakke|pk|colli|kolli|rulle|saek|spand|dunk|bakke|aeske|pose)/;
 const MAX_SUGGESTIONS = 3;
 
-/** Lower is better. GS names are long, so the Engine name is searched within them. */
+/** Lower is better. Catalog names are long, so the Engine name is searched within them. */
 function matchScore(catalogName: string, productName: string) {
   const direct = productNameSearchScore(catalogName, productName);
   if (direct !== null) return direct;

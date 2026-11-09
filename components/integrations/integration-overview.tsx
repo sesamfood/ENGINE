@@ -33,6 +33,7 @@ function ConnectionSummary({ integration }: { integration: IntegrationId }) {
   const economic = useQuery(api.economic.getSettings, integration === "economic" ? {} : "skip");
   const wolt = useQuery(api.wolt.getIntegrationOverview, integration === "wolt" ? {} : "skip");
   const gsSupply = useQuery(api.integrations.gssupply.api.getSettings, integration === "gssupply" ? {} : "skip");
+  const abCatering = useQuery(api.integrations.abcatering.api.getSettings, integration === "abcatering" ? {} : "skip");
   let label = "Henter forbindelsesstatus…";
   let attention = false;
   if (workfeed) {
@@ -54,9 +55,10 @@ function ConnectionSummary({ integration }: { integration: IntegrationId }) {
     attention = incomplete > 0 || wolt.locations.length === 0;
     label = incomplete ? `${incomplete} lokation${incomplete === 1 ? " kræver" : "er kræver"} handling` : wolt.locations.length ? `${wolt.locations.length} ${wolt.locations.length === 1 ? "forbundet lokation" : "forbundne lokationer"}` : "Ingen forbundne lokationer";
   }
-  if (gsSupply) {
-    attention = !gsSupply.connection?.supplierName;
-    label = !gsSupply.connection ? "Mangler forbindelse" : gsSupply.connection.supplierName ? `Bestillinger hos ${gsSupply.connection.supplierName}` : "Mangler leverandør";
+  for (const catalog of [gsSupply, abCatering]) {
+    if (!catalog) continue;
+    attention = !catalog.connection?.supplierName;
+    label = !catalog.connection ? "Mangler forbindelse" : catalog.connection.supplierName ? `Bestillinger hos ${catalog.connection.supplierName}` : "Mangler leverandør";
   }
   return <p className={attention ? "flex items-center gap-2 text-sm font-medium" : "text-sm text-muted-foreground"}>{attention ? <TriangleAlertIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" /> : null}{label}</p>;
 }

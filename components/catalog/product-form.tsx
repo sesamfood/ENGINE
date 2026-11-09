@@ -3,7 +3,8 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { OnlinePosMasterSelect } from "@/integrations/onlinepos/client";
-import { GsSupplyProductLinkField } from "@/integrations/gssupply/client";
+import { supplierCatalogs } from "@/components/supplier-catalog/catalog";
+import { CatalogProductLinkField } from "@/components/supplier-catalog/product-link-field";
 
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { ExpiryField } from "@/components/catalog/expiry-field";
@@ -1282,9 +1283,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 />
               ) : null}
 
-              {productId ? (
-                <GsSupplyProductLinkField productId={productId} productName={name} />
-              ) : null}
+              {productId
+                ? Object.values(supplierCatalogs).map((catalog) => (
+                    <CatalogProductLinkField
+                      key={catalog.id}
+                      catalog={catalog}
+                      productId={productId}
+                      productName={name}
+                    />
+                  ))
+                : null}
 
               <Field
                 className="max-w-xl"

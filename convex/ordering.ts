@@ -1,10 +1,11 @@
 import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/connections";
 import {
-  getGsSupplyLink,
-  getGsSupplySupplierId,
+  catalogProviders,
+  getCatalogLink,
+  getCatalogProvider,
   getProductUnitFactor,
   getProductUnitFactors,
-} from "./integrations/gssupply/lib/links";
+} from "./integrations/supplierCatalog";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -504,6 +505,7 @@ const historySummaryValidator = schema
     "itemCount",
     "supplierName",
     "email",
+    "supplierOrder",
     "fulfillingLocationId",
     "fulfillmentStatus",
   );
@@ -613,9 +615,10 @@ async function prepareOrder(
   if (args.supplierId && supplier?.organizationId !== organizationId) {
     throw new ConvexError("Leverandøren blev ikke fundet. Opdatér siden.");
   }
-  const catalogSupplier =
-    supplier !== null &&
-    supplier._id === (await getGsSupplySupplierId(ctx, organizationId));
+  const catalogProvider = supplier
+    ? await getCatalogProvider(ctx, organizationId, supplier._id)
+    : null;
+  const catalogSupplier = catalogProvider !== null;
   const rows: Infer<typeof orderRowValidator>[] = await Promise.all(
     args.lines.map(async (line) => {
       if (
@@ -651,8 +654,8 @@ async function prepareOrder(
         );
       }
       // Catalog suppliers use the linked unit, internal orders any unit, others the default unit.
-      const link = catalogSupplier
-        ? await getGsSupplyLink(ctx, organizationId, product._id)
+      const link = catalogProvider
+        ? await getCatalogLink(ctx, catalogProvider, organizationId, product._id)
         : null;
       const unitId = internalSupplier
         ? line.unitId
@@ -682,14 +685,15 @@ async function prepareOrder(
       };
     }),
   );
-  if (catalogLines.length && !catalogSupplier) {
+  if (catalogLines.length && !catalogProvider) {
     throw new ConvexError("Leverandøren har intet katalog. Opdatér planen.");
   }
   for (const line of catalogLines) {
     const productNumber = line.productNumber.trim();
     const productName = line.productName.trim().slice(0, 300);
     if (
-      !/^[\w.-]{1,50}$/.test(productNumber) ||
+      !catalogProvider ||
+      !catalogProviders[catalogProvider].productNumber.test(productNumber) ||
       !productName ||
       !Number.isInteger(line.quantity) ||
       line.quantity <= 0 ||
@@ -715,6 +719,7 @@ async function prepareOrder(
     supplier,
     supplierName: supplier?.name ?? internalSupplier?.location.name,
     fulfillingLocationId: internalSupplier?.location._id,
+    catalogProvider,
     rows,
   };
 }
@@ -749,6 +754,7 @@ function historySummary(order: Doc<"orders">) {
     itemCount: order.itemCount,
     supplierName: order.supplierName,
     email: order.email,
+    supplierOrder: order.supplierOrder,
     fulfillingLocationId: order.fulfillingLocationId,
     fulfillmentStatus: order.fulfillmentStatus,
   };
@@ -764,9 +770,17 @@ export const placeOrder = mutation({
   returns: v.id("orders"),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "ordering.place");
-    const { auth, supplier, supplierName, fulfillingLocationId, rows } =
-      await prepareOrder(ctx, args);
-    if (args.sendEmail && !supplier?.email) {
+    const {
+      auth,
+      supplier,
+      supplierName,
+      fulfillingLocationId,
+      catalogProvider,
+      rows,
+    } = await prepareOrder(ctx, args);
+    // AB Catering orders go to its API instead of by e-mail.
+    const sendsToApi = catalogProvider === "abcatering";
+    if (args.sendEmail && !sendsToApi && !supplier?.email) {
       throw new ConvexError("Leverandøren har ingen e-mailadresse");
     }
     if (!validForecastSettings(args.coverageDays, args.bufferPercent)) {
@@ -777,6 +791,10 @@ export const placeOrder = mutation({
     } catch {
       throw new ConvexError("Datoen er ugyldig");
     }
+    const email =
+      !sendsToApi && args.sendEmail && supplier?.email
+        ? { to: supplier.email, status: "pending" as const }
+        : undefined;
     const order = {
       organizationId: auth.organizationId,
       locationId: args.locationId,
@@ -793,9 +811,15 @@ export const placeOrder = mutation({
       ...(fulfillingLocationId
         ? { fulfillingLocationId, fulfillmentStatus: "open" as const }
         : {}),
-      ...(args.sendEmail && supplier?.email
-        ? { email: { to: supplier.email, status: "pending" as const } }
+      ...(sendsToApi
+        ? {
+            supplierOrder: {
+              provider: "abcatering" as const,
+              status: "pending" as const,
+            },
+          }
         : {}),
+      ...(email ? { email } : {}),
       // Only product lines can be received into stock. Internal orders are
       // received through their Transfer instead.
       ...(!fulfillingLocationId && rows.some((row) => row.productId)
@@ -817,8 +841,15 @@ export const placeOrder = mutation({
       locationId: args.locationId,
       summary: `Bestilling afgivet med ${rows.length} produkter${supplierName ? ` hos ${supplierName}` : ""}`,
     });
-    if (order.email) {
+    if (email) {
       await ctx.scheduler.runAfter(0, internal.orderEmails.send, { orderId });
+    }
+    if (sendsToApi) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.integrations.abcatering.orders.submit,
+        { orderId },
+      );
     }
     return orderId;
   },

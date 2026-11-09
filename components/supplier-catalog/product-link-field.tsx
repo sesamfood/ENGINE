@@ -4,18 +4,17 @@ import { useQuery } from "convex/react";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useIntegrations } from "@/integrations/use-integrations";
-import {
-  GsSupplyLinkEditor,
-  useGsSupplyCatalog,
-} from "./gs-supply-link-editor";
+import { useSupplierCatalog, type SupplierCatalog } from "./catalog";
+import { CatalogLinkEditor } from "./link-editor";
 
-export function GsSupplyProductLinkField({
+export function CatalogProductLinkField({
+  catalog,
   productId,
   productName,
 }: {
+  catalog: SupplierCatalog;
   productId: Id<"products">;
   productName: string;
 }) {
@@ -23,34 +22,34 @@ export function GsSupplyProductLinkField({
   const integrations = useIntegrations();
   const enabled =
     usePermission("integrations.manage") &&
-    integrations?.gssupply === true &&
+    integrations?.[catalog.id] === true &&
     access?.locationScope.all === true;
-  const settings = useQuery(
-    api.integrations.gssupply.api.getSettings,
-    enabled ? {} : "skip",
-  );
+  const settings = useQuery(catalog.api.getSettings, enabled ? {} : "skip");
   const connected = Boolean(settings?.connection);
   const data = useQuery(
-    api.integrations.gssupply.api.getProductLink,
+    catalog.api.getProductLink,
     enabled && connected ? { productId } : "skip",
   );
-  const { products, reload } = useGsSupplyCatalog(enabled && connected);
+  const { products, reload } = useSupplierCatalog(
+    enabled && connected ? catalog : null,
+  );
   if (!data) return null;
   return (
     <Field>
       <div className="flex items-center gap-2">
-        <FieldLabel>GS Supply-produkt</FieldLabel>
+        <FieldLabel>{catalog.name}-produkt</FieldLabel>
         <HelpTooltip
-          label="GS Supply-produkt"
-          content="Vælg også den enhed, én pakke fra GS Supply svarer til. Koblingen gemmes med det samme."
+          label={`${catalog.name}-produkt`}
+          content={`Vælg også den enhed, én pakke fra ${catalog.name} svarer til. Koblingen gemmes med det samme.`}
         />
       </div>
-      <GsSupplyLinkEditor
+      <CatalogLinkEditor
+        catalog={catalog}
         productId={productId}
         productName={productName}
         units={data.units}
         link={data.link}
-        catalog={products}
+        products={products}
         onRetry={reload}
       />
     </Field>

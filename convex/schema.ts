@@ -3,6 +3,7 @@ import { economicTables } from "./integrations/economic/schema";
 import { onlineposTables } from "./integrations/onlinepos/schema";
 import { workfeedTables } from "./integrations/workfeed/schema";
 import { gssupplyTables } from "./integrations/gssupply/schema";
+import { abcateringTables } from "./integrations/abcatering/schema";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
@@ -48,6 +49,7 @@ const integrationIdValidator = v.union(
   v.literal("economic"),
   v.literal("wolt"),
   v.literal("gssupply"),
+  v.literal("abcatering"),
 );
 
 export default defineSchema({
@@ -56,6 +58,7 @@ export default defineSchema({
   ...economicTables,
   ...woltTables,
   ...gssupplyTables,
+  ...abcateringTables,
   integrationSecrets: defineTable({
     organizationId: v.string(),
     key: v.string(),
@@ -1361,6 +1364,18 @@ export default defineSchema({
     email: v.optional(
       v.object({
         to: v.string(),
+        status: v.union(
+          v.literal("pending"),
+          v.literal("sent"),
+          v.literal("failed"),
+        ),
+        failureMessage: v.optional(v.string()),
+      }),
+    ),
+    // Orders sent directly to a supplier's API instead of by e-mail.
+    supplierOrder: v.optional(
+      v.object({
+        provider: v.literal("abcatering"),
         status: v.union(
           v.literal("pending"),
           v.literal("sent"),

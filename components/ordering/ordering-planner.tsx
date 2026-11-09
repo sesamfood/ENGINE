@@ -82,9 +82,10 @@ import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
 import { downloadOrderCsv } from "@/lib/ordering-csv";
 import {
-  useGsSupplyCatalog,
-  type GsSupplyProduct,
-} from "@/integrations/gssupply/client";
+  supplierCatalogs,
+  useSupplierCatalog,
+  type CatalogProduct,
+} from "@/components/supplier-catalog/catalog";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -227,13 +228,18 @@ function Planner({
     settings !== undefined &&
     settings.chooseSupplierFirst !== false &&
     (suppliers?.length ?? 0) + (internalSuppliers?.length ?? 0) > 0;
-  const catalogSupplier = supplier?.catalog === "gssupply";
+  const supplierCatalog = supplier?.catalog
+    ? supplierCatalogs[supplier.catalog]
+    : null;
+  const catalogSupplier = supplierCatalog !== null;
+  // AB Catering orders go to its API instead of by e-mail.
+  const sendsToApi = supplierCatalog?.id === "abcatering";
   const supplierLinks = useQuery(
-    api.integrations.gssupply.api.listOrderingLinks,
-    canPlan && locationId && catalogSupplier ? { locationId } : "skip",
+    (supplierCatalog ?? supplierCatalogs.gssupply).api.listOrderingLinks,
+    canPlan && locationId && supplierCatalog ? { locationId } : "skip",
   );
   const { products: catalog, reload: reloadCatalog } =
-    useGsSupplyCatalog(catalogSupplier);
+    useSupplierCatalog(supplierCatalog);
   const linksByProduct = useMemo(
     () =>
       new Map(
@@ -690,7 +696,7 @@ function Planner({
       return;
     }
     try {
-      const emailed = Boolean(supplier?.email && sendEmail);
+      const emailed = !sendsToApi && Boolean(supplier?.email && sendEmail);
       await placeOrder({
         locationId,
         supplierId: supplier?.id,
@@ -708,7 +714,9 @@ function Planner({
       toast.success(
         emailed
           ? `Bestillingen er gemt og sendes til ${supplier?.email}`
-          : internalSupplier
+          : sendsToApi
+            ? `Bestillingen er gemt og sendes til ${supplierCatalog?.name}`
+            : internalSupplier
             ? `Bestillingen er sendt til ${internalSupplier.name}`
             : "Bestillingen er gemt i bestillingshistorikken",
       );
@@ -950,8 +958,8 @@ function Planner({
                 value: item.id as string,
                 label: item.name,
                 description:
-                  item.catalog === "gssupply"
-                    ? "Koblede Produkter med priser fra GS Supply"
+                  item.catalog
+                    ? `Koblede Produkter med priser fra ${supplierCatalogs[item.catalog].name}`
                     : "Alle Produkter, der kan bestilles",
                 Icon: TruckIcon,
               })),
@@ -1009,7 +1017,7 @@ function Planner({
           ) : null}
           {catalogSupplier && catalog === null ? (
             <Alert variant="destructive">
-              <AlertTitle>GS Supply-kataloget kunne ikke hentes</AlertTitle>
+              <AlertTitle>{supplierCatalog?.name}-kataloget kunne ikke hentes</AlertTitle>
               <AlertDescription>
                 <div className="flex flex-col items-start gap-3">
                   Priser, lager og leveringstid vises ikke. Du kan stadig bestille de koblede Produkter.
@@ -1148,7 +1156,7 @@ function Planner({
                 <EmptyTitle>Ingen produkter at vise</EmptyTitle>
                 <EmptyDescription>
                   {catalogSupplier && !rows.length
-                    ? "Ingen Produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
+                    ? `Ingen Produkter er koblet til ${supplierCatalog?.name} endnu. Kobl dem under Administration → Integrationer → ${supplierCatalog?.name}.`
                     : internalSupplier && !rows.length
                       ? `Ingen Produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Bestilling.`
                       : "Prøv en anden søgning, eller tilpas filtrene."}
@@ -1233,6 +1241,7 @@ function Planner({
                       {catalogSupplier ? (
                         <TableCell className="whitespace-normal">
                           <CatalogItemDetails
+                            supplierName={supplierCatalog?.name ?? ""}
                             item={row.catalogItem}
                             catalogLoaded={Boolean(catalog)}
                             quantity={row.quantity}
@@ -1367,12 +1376,14 @@ function Planner({
                 <AlertDialogDescription>
                   {plannedCount} {plannedCount === 1 ? "Produkt" : "Produkter"}
                   {supplierName ? ` hos ${supplierName}` : ""}.
-                  {supplier && !supplier.email
-                    ? " Bestillingen sendes ikke automatisk til leverandøren."
-                    : ""}
+                  {sendsToApi
+                    ? ` Bestillingen sendes direkte til ${supplierCatalog?.name}.`
+                    : supplier && !supplier.email
+                      ? " Bestillingen sendes ikke automatisk til leverandøren."
+                      : ""}
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              {supplier?.email ? (
+              {supplier?.email && !sendsToApi ? (
                 <Field orientation="horizontal">
                   <Checkbox
                     id="ordering-send-email"
@@ -1421,7 +1432,7 @@ function CatalogItemsTable({
 }: {
   supplierName: string;
   rows: Array<
-    GsSupplyProduct & { input: string; quantity: number | null }
+    CatalogProduct & { input: string; quantity: number | null }
   >;
   disabled: boolean;
   onQuantityChange: (productNumber: string, value: string) => void;
@@ -1470,6 +1481,7 @@ function CatalogItemsTable({
                 </TableCell>
                 <TableCell className="whitespace-normal">
                   <CatalogItemDetails
+                    supplierName={supplierName}
                     item={row}
                     catalogLoaded
                     quantity={row.quantity}
@@ -1503,11 +1515,13 @@ function CatalogItemsTable({
 
 /** Price, pack size and supplier warnings for a catalog item. */
 function CatalogItemDetails({
+  supplierName,
   item,
   catalogLoaded,
   quantity,
 }: {
-  item: GsSupplyProduct | undefined;
+  supplierName: string;
+  item: CatalogProduct | undefined;
   catalogLoaded: boolean;
   quantity: number | null;
 }) {
@@ -1531,11 +1545,11 @@ function CatalogItemDetails({
           Mindst {numberFormatter.format(item.minOrder)} pakker
         </div>
       ) : null}
-      {ordered > item.availableQuantity ? (
+      {item.availableQuantity !== null && ordered > item.availableQuantity ? (
         <div className="text-xs font-medium text-destructive">
           {item.availableQuantity > 0
-            ? `Kun ${numberFormatter.format(item.availableQuantity)} på lager hos GS Supply`
-            : "Ikke på lager hos GS Supply"}
+            ? `Kun ${numberFormatter.format(item.availableQuantity)} på lager hos ${supplierName}`
+            : `Ikke på lager hos ${supplierName}`}
         </div>
       ) : null}
     </>

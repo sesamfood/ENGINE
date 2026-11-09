@@ -211,6 +211,18 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               </dd>
             </div>
           ) : null}
+          {order.supplierOrder ? (
+            <div>
+              <dt className="text-muted-foreground">Sendt til leverandør</dt>
+              <dd className={order.supplierOrder.status === "failed" ? "text-destructive" : undefined}>
+                {order.supplierOrder.status === "sent"
+                  ? `Modtaget af ${order.supplierName}`
+                  : order.supplierOrder.status === "pending"
+                    ? `Sendes til ${order.supplierName}`
+                    : `Kunne ikke sendes til ${order.supplierName}${order.supplierOrder.failureMessage ? `: ${order.supplierOrder.failureMessage}` : ""}`}
+              </dd>
+            </div>
+          ) : null}
         </dl>
         <div className="shrink-0 overflow-hidden rounded-lg border">
           <Table>
