@@ -139,7 +139,7 @@ type ProductOption = {
   categoryPath?: string;
   archived?: boolean;
   defaultUnitName?: string;
-  units: Array<{ id: Id<"units">; name: string }>;
+  units: Array<{ id: Id<"units">; name: string; factorToDefault?: number }>;
 };
 
 type OnlinePosProduct = {
@@ -771,7 +771,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           defaultUnitName: option.units.find(
             (unit) => unit.id === option.defaultUnitId,
           )?.name,
-          units: option.units.map((unit) => ({ id: unit.id, name: unit.name })),
+          units: option.units.map((unit) => ({
+            id: unit.id,
+            name: unit.name,
+            factorToDefault: unit.factorToDefault,
+          })),
         })) ?? [],
     [catalog, productId],
   );
@@ -875,6 +879,49 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     return hasWeightUnit
       ? text
       : `${text}. Tilføj en vægtenhed, så ikke fulde beholdere kan vejes ved Count.`;
+  }
+
+  // Ingredient amount in grams or ml, or null when its unit has no known size.
+  function ingredientMeasure(row: IngredientRow) {
+    const option = recipeProductOptions.find(
+      (item) => item.id === row.productId,
+    );
+    const unit = option?.units.find((item) => item.id === row.unitId);
+    const quantity = Number(row.quantity);
+    if (!option || !unit || !Number.isFinite(quantity)) return null;
+    const direct = knownMeasure(unit.name);
+    if (direct) return direct.type === "piece" ? null : quantity * direct.canonical;
+    const base = option.defaultUnitName
+      ? knownMeasure(option.defaultUnitName)
+      : null;
+    if (!base || base.type === "piece" || unit.factorToDefault === undefined) {
+      return null;
+    }
+    return quantity * unit.factorToDefault * base.canonical;
+  }
+
+  // Summed ingredients in the yield unit, for weight and liquid products.
+  function ingredientTotal(rows: IngredientRow[]) {
+    if (productType !== "dry" && productType !== "wet") return null;
+    const yieldMeasure = yieldUnitRow ? knownMeasure(unitName(yieldUnitRow)) : null;
+    if (!yieldMeasure || yieldMeasure.type === "piece") return null;
+    const total = rows.reduce(
+      (sum, row) => sum + (ingredientMeasure(row) ?? 0),
+      0,
+    );
+    return total > 0
+      ? String(Number((total / yieldMeasure.canonical).toFixed(3)))
+      : null;
+  }
+
+  // Keeps the yield at the ingredient total until the user types their own.
+  function updateIngredientRows(rows: IngredientRow[]) {
+    setIngredientRows(rows);
+    const untouched =
+      (yieldQuantity === "1" && yieldUnitRow?.isDefault) ||
+      yieldQuantity === ingredientTotal(ingredientRows);
+    const total = ingredientTotal(rows);
+    if (untouched && total) setYieldQuantity(total);
   }
 
   function changeProductType(type: ProductType) {
@@ -1879,8 +1926,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           disabled={catalog === undefined}
                           errors={errors}
                           onChange={(patch) =>
-                            setIngredientRows((current) =>
-                              current.map((item) =>
+                            updateIngredientRows(
+                              ingredientRows.map((item) =>
                                 item.key === row.key
                                   ? { ...item, ...patch }
                                   : item,
@@ -1888,8 +1935,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                             )
                           }
                           onRemove={() =>
-                            setIngredientRows((current) =>
-                              current.filter((item) => item.key !== row.key),
+                            updateIngredientRows(
+                              ingredientRows.filter(
+                                (item) => item.key !== row.key,
+                              ),
                             )
                           }
                           productLabel="Ingrediensprodukt"
