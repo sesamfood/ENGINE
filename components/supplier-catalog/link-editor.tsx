@@ -1,9 +1,8 @@
 "use client";
 
-import { useAction, useMutation } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import { useMutation } from "convex/react";
 import { RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   CreatableCombobox,
@@ -20,76 +19,38 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { normalizeProductSearch } from "@/lib/product-search";
-import { suggestCatalogItems, suggestUnitId } from "./gs-supply-suggestions";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import {
+  catalogProductLabel,
+  type CatalogProduct,
+  type SupplierCatalog,
+} from "./catalog";
+import { suggestCatalogItems, suggestUnitId } from "./suggestions";
 
-export type GsSupplyProduct = FunctionReturnType<
-  typeof api.integrations.gssupply.api.fetchCatalog
->[number];
 type Link = { productNumber: string; productName: string; unitId: Id<"units"> };
 type Unit = { id: Id<"units">; name: string; factorToDefault: number };
 
-/** Fetches the live catalog. `undefined` while loading, `null` after an error. */
-export function useGsSupplyCatalog(enabled = true) {
-  const fetchCatalog = useAction(api.integrations.gssupply.api.fetchCatalog);
-  const [products, setProducts] = useState<GsSupplyProduct[] | null>();
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-    fetchCatalog({})
-      .then((result) => {
-        if (active) setProducts(result);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setProducts(null);
-        toast.error(
-          getUserErrorMessage(
-            error,
-            "GS Supply-kataloget kunne ikke hentes. Prøv igen.",
-          ),
-        );
-      });
-    return () => {
-      active = false;
-    };
-  }, [enabled, fetchCatalog, attempt]);
-  const reload = useCallback(() => {
-    setProducts(undefined);
-    setAttempt((value) => value + 1);
-  }, []);
-  return { products: enabled ? products : undefined, reload };
-}
-
-export function gsSupplyProductLabel(product: {
-  productNumber: string;
-  name: string;
-}) {
-  return `${product.productNumber} · ${product.name}`;
-}
-
-export function GsSupplyLinkEditor({
+export function CatalogLinkEditor({
+  catalog: supplierCatalog,
   productId,
   productName,
   units,
   link,
-  catalog,
+  products: catalog,
   onRetry,
 }: {
+  catalog: SupplierCatalog;
   productId: Id<"products">;
   productName: string;
   units: Unit[];
   link: Link | null;
-  catalog: GsSupplyProduct[] | null | undefined;
+  products: CatalogProduct[] | null | undefined;
   onRetry: () => void;
 }) {
-  const setProductLink = useMutation(
-    api.integrations.gssupply.api.setProductLink,
-  );
+  const name = supplierCatalog.name;
+  const setProductLink = useMutation(supplierCatalog.api.setProductLink);
   const [saving, setSaving] = useState(false);
   // A chosen catalog product waits here until a unit is chosen.
   const [pending, setPending] = useState<{
@@ -100,7 +61,7 @@ export function GsSupplyLinkEditor({
     () =>
       (catalog ?? []).map((product) => ({
         value: product.productNumber,
-        label: gsSupplyProductLabel(product),
+        label: catalogProductLabel(product),
         searchName: product.name,
         searchText: `${product.productNumber} ${product.category}`,
       })),
@@ -113,13 +74,13 @@ export function GsSupplyLinkEditor({
       await setProductLink({ productId, link: next });
       setPending(null);
       toast.success(
-        next ? "GS Supply-koblingen er gemt" : "GS Supply-koblingen er fjernet",
+        next ? `${name}-koblingen er gemt` : `${name}-koblingen er fjernet`,
       );
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "GS Supply-koblingen kunne ikke gemmes. Prøv igen.",
+          `${name}-koblingen kunne ikke gemmes. Prøv igen.`,
         ),
       );
     } finally {
@@ -137,7 +98,7 @@ export function GsSupplyLinkEditor({
         onClick={onRetry}
       >
         <RefreshCwIcon data-icon="inline-start" />
-        Prøv at hente GS Supply-kataloget igen
+        Prøv at hente {name}-kataloget igen
       </Button>
     );
   }
@@ -152,7 +113,7 @@ export function GsSupplyLinkEditor({
       ? [
           {
             value: link.productNumber,
-            label: `${gsSupplyProductLabel({ productNumber: link.productNumber, name: link.productName })} (ikke i kataloget)`,
+            label: `${catalogProductLabel({ productNumber: link.productNumber, name: link.productName })} (ikke i kataloget)`,
             disabled: true,
           },
           ...options,
@@ -209,18 +170,18 @@ export function GsSupplyLinkEditor({
           }
           suggestionOptions={suggestions.map((product) => ({
             value: product.productNumber,
-            label: gsSupplyProductLabel(product),
+            label: catalogProductLabel(product),
           }))}
           value={selected?.productNumber ?? null}
           onValueChange={chooseProduct}
-          placeholder="Søg efter GS Supply-produkt"
-          ariaLabel={`GS Supply-produkt for ${productName}`}
+          placeholder={`Søg efter ${name}-produkt`}
+          ariaLabel={`${name}-produkt for ${productName}`}
           disabled={saving}
         />
         {stale ? (
           <FieldDescription>
-            Produktet findes ikke længere i GS Supply-kataloget. Vælg et nyt,
-            eller fjern koblingen.
+            Produktet findes ikke længere i {name}-kataloget. Vælg et nyt, eller
+            fjern koblingen.
           </FieldDescription>
         ) : null}
       </div>
@@ -240,7 +201,7 @@ export function GsSupplyLinkEditor({
         >
           <SelectTrigger
             className="h-11 w-full"
-            aria-label={`Enhed for én GS Supply-pakke af ${productName}`}
+            aria-label={`Enhed for én ${name}-pakke af ${productName}`}
             aria-invalid={pending !== null}
           >
             <SelectValue placeholder="Vælg enhed" />

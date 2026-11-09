@@ -20,6 +20,7 @@ export const setEntitlements = mutation({
     addOnIds: v.array(v.id("addOns")),
     // null follows the platform default.
     unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
+    fullAccess: v.boolean(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -48,6 +49,7 @@ export const setEntitlements = mutation({
       addOnIds,
       plan: undefined,
       unavailableDisplay: args.unavailableDisplay ?? undefined,
+      fullAccess: args.fullAccess || undefined,
       updatedAt: Date.now(),
     };
     if (current) {
@@ -62,7 +64,9 @@ export const setEntitlements = mutation({
     await recordPlatformAudit(ctx, actor, {
       organizationId: args.organizationId,
       action: "entitlements.changed",
-      summary: plan
+      summary: args.fullAccess
+        ? "Adgang ændret: fuld adgang"
+        : plan
         ? `Adgang ændret: plan ${plan.name}${addOnIds.length ? ` med ${addOnIds.length} tilkøb` : ""}`
         : `Adgang ændret: ${data.features.length} funktioner og ${data.integrations.length} integrationer`,
     });

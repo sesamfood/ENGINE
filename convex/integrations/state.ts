@@ -3,6 +3,7 @@ import { legacyOnlinePosEnabled } from "./onlinepos/lifecycle";
 import { legacyEconomicEnabled } from "./economic/lifecycle";
 import { legacyWoltEnabled } from "./wolt/lifecycle";
 import { legacyGsSupplyEnabled } from "./gssupply/lifecycle";
+import { legacyAbCateringEnabled } from "./abcatering/lifecycle";
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "../_generated/api";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
@@ -14,21 +15,23 @@ export const integrationIdValidator = v.union(
   v.literal("economic"),
   v.literal("wolt"),
   v.literal("gssupply"),
+  v.literal("abcatering"),
 );
 
 export type IntegrationId = Infer<typeof integrationIdValidator>;
 
-export const integrationIds = ["workfeed", "onlinepos", "economic", "wolt", "gssupply"] as const satisfies readonly IntegrationId[];
+export const integrationIds = ["workfeed", "onlinepos", "economic", "wolt", "gssupply", "abcatering"] as const satisfies readonly IntegrationId[];
 
 export async function getIntegrationState(ctx: QueryCtx | MutationCtx, organizationId: string) {
-  const [workfeed, onlinepos, economic, wolt, gssupply] = await Promise.all([
+  const [workfeed, onlinepos, economic, wolt, gssupply, abcatering] = await Promise.all([
     isIntegrationEnabled(ctx, organizationId, "workfeed"),
     isIntegrationEnabled(ctx, organizationId, "onlinepos"),
     isIntegrationEnabled(ctx, organizationId, "economic"),
     isIntegrationEnabled(ctx, organizationId, "wolt"),
     isIntegrationEnabled(ctx, organizationId, "gssupply"),
+    isIntegrationEnabled(ctx, organizationId, "abcatering"),
   ]);
-  return { workfeed, onlinepos, economic, wolt, gssupply };
+  return { workfeed, onlinepos, economic, wolt, gssupply, abcatering };
 }
 
 export async function isIntegrationEnabled(
@@ -50,15 +53,16 @@ export async function isIntegrationEnabled(
     case "economic": return legacyEconomicEnabled(ctx, organizationId);
     case "wolt": return legacyWoltEnabled(ctx, organizationId);
     case "gssupply": return legacyGsSupplyEnabled();
+    case "abcatering": return legacyAbCateringEnabled();
   }
 }
 
 // Suspended organizations read as having every integration off, which stops jobs and callbacks.
 export function isIntegrationEntitled(
-  entitlements: { status: "active" | "suspended"; integrations: readonly IntegrationId[] } | null,
+  entitlements: { status: "active" | "suspended"; fullAccess?: boolean; integrations: readonly IntegrationId[] } | null,
   integration: IntegrationId,
 ) {
-  return !entitlements || (entitlements.status === "active" && entitlements.integrations.includes(integration));
+  return !entitlements || (entitlements.status === "active" && (entitlements.fullAccess === true || entitlements.integrations.includes(integration)));
 }
 
 export async function getUnavailableIntegrations(ctx: QueryCtx | MutationCtx, organizationId: string) {

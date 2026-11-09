@@ -3,7 +3,8 @@ export type IntegrationId =
   | "onlinepos"
   | "economic"
   | "wolt"
-  | "gssupply";
+  | "gssupply"
+  | "abcatering";
 
 export const integrationRegistry = [
   {
@@ -34,6 +35,12 @@ export const integrationRegistry = [
     id: "gssupply",
     name: "GS Supply",
     description: "Hent GS Supply-kataloget med priser og lager, og bestil koblede Produkter hos leverandøren.",
+    requiresAllLocations: true,
+  },
+  {
+    id: "abcatering",
+    name: "AB Catering",
+    description: "Hent jeres sortiment og priser fra AB Catering, og send bestillinger af koblede produkter direkte til AB Catering.",
     requiresAllLocations: true,
   },
 ] satisfies {

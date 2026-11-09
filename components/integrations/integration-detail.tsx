@@ -16,6 +16,7 @@ const settingsComponents = {
   economic: dynamic(() => import("@/integrations/economic/client").then((module) => module.EconomicIntegration)),
   wolt: dynamic(() => import("@/integrations/wolt/client").then((module) => module.WoltIntegration)),
   gssupply: dynamic(() => import("@/integrations/gssupply/client").then((module) => module.GsSupplyIntegration)),
+  abcatering: dynamic(() => import("@/integrations/abcatering/client").then((module) => module.AbCateringIntegration)),
 } satisfies Record<IntegrationId, ComponentType>;
 
 export function IntegrationDetail({ integration }: { integration: IntegrationId }) {

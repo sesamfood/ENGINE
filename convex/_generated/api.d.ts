@@ -42,6 +42,10 @@ import type * as goodsReceipts from "../goodsReceipts.js";
 import type * as googlePlaces from "../googlePlaces.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
+import type * as integrations_abcatering_api from "../integrations/abcatering/api.js";
+import type * as integrations_abcatering_lib_api from "../integrations/abcatering/lib/api.js";
+import type * as integrations_abcatering_lifecycle from "../integrations/abcatering/lifecycle.js";
+import type * as integrations_abcatering_orders from "../integrations/abcatering/orders.js";
 import type * as integrations_credentials from "../integrations/credentials.js";
 import type * as integrations_economic_api from "../integrations/economic/api.js";
 import type * as integrations_economic_expenses from "../integrations/economic/expenses.js";
@@ -54,7 +58,6 @@ import type * as integrations_economic_lifecycle from "../integrations/economic/
 import type * as integrations_economic_reports from "../integrations/economic/reports.js";
 import type * as integrations_gssupply_api from "../integrations/gssupply/api.js";
 import type * as integrations_gssupply_lib_api from "../integrations/gssupply/lib/api.js";
-import type * as integrations_gssupply_lib_links from "../integrations/gssupply/lib/links.js";
 import type * as integrations_gssupply_lifecycle from "../integrations/gssupply/lifecycle.js";
 import type * as integrations_onlinepos_api from "../integrations/onlinepos/api.js";
 import type * as integrations_onlinepos_channels from "../integrations/onlinepos/channels.js";
@@ -68,6 +71,8 @@ import type * as integrations_onlinepos_menus from "../integrations/onlinepos/me
 import type * as integrations_onlinepos_stock from "../integrations/onlinepos/stock.js";
 import type * as integrations_onlinepos_sync from "../integrations/onlinepos/sync.js";
 import type * as integrations_state from "../integrations/state.js";
+import type * as integrations_supplierCatalog from "../integrations/supplierCatalog.js";
+import type * as integrations_supplierCatalogApi from "../integrations/supplierCatalogApi.js";
 import type * as integrations_wolt_api from "../integrations/wolt/api.js";
 import type * as integrations_wolt_credentials from "../integrations/wolt/credentials.js";
 import type * as integrations_wolt_crons from "../integrations/wolt/crons.js";
@@ -250,6 +255,10 @@ declare const fullApi: ApiFromModules<{
   googlePlaces: typeof googlePlaces;
   http: typeof http;
   integrations: typeof integrations;
+  "integrations/abcatering/api": typeof integrations_abcatering_api;
+  "integrations/abcatering/lib/api": typeof integrations_abcatering_lib_api;
+  "integrations/abcatering/lifecycle": typeof integrations_abcatering_lifecycle;
+  "integrations/abcatering/orders": typeof integrations_abcatering_orders;
   "integrations/credentials": typeof integrations_credentials;
   "integrations/economic/api": typeof integrations_economic_api;
   "integrations/economic/expenses": typeof integrations_economic_expenses;
@@ -262,7 +271,6 @@ declare const fullApi: ApiFromModules<{
   "integrations/economic/reports": typeof integrations_economic_reports;
   "integrations/gssupply/api": typeof integrations_gssupply_api;
   "integrations/gssupply/lib/api": typeof integrations_gssupply_lib_api;
-  "integrations/gssupply/lib/links": typeof integrations_gssupply_lib_links;
   "integrations/gssupply/lifecycle": typeof integrations_gssupply_lifecycle;
   "integrations/onlinepos/api": typeof integrations_onlinepos_api;
   "integrations/onlinepos/channels": typeof integrations_onlinepos_channels;
@@ -276,6 +284,8 @@ declare const fullApi: ApiFromModules<{
   "integrations/onlinepos/stock": typeof integrations_onlinepos_stock;
   "integrations/onlinepos/sync": typeof integrations_onlinepos_sync;
   "integrations/state": typeof integrations_state;
+  "integrations/supplierCatalog": typeof integrations_supplierCatalog;
+  "integrations/supplierCatalogApi": typeof integrations_supplierCatalogApi;
   "integrations/wolt/api": typeof integrations_wolt_api;
   "integrations/wolt/credentials": typeof integrations_wolt_credentials;
   "integrations/wolt/crons": typeof integrations_wolt_crons;

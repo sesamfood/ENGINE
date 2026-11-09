@@ -1,24 +1,9 @@
-import { ConvexError, v, type Infer } from "convex/values";
+import { ConvexError } from "convex/values";
+import type { CatalogItem } from "../../supplierCatalog";
 
 const MAX_PRODUCTS = 5000;
 const REQUEST_TIMEOUT_MS = 15_000;
 const ALLOWED_HOSTS = new Set(["www.gs-supply.dk", "gs-supply.dk"]);
-
-export const gsSupplyCatalogProductValidator = v.object({
-  productNumber: v.string(),
-  name: v.string(),
-  category: v.string(),
-  unitAmount: v.number(),
-  minOrder: v.number(),
-  price: v.number(),
-  pictureUrl: v.union(v.string(), v.null()),
-  availableQuantity: v.number(),
-  leadTimeDays: v.number(),
-});
-
-export type GsSupplyCatalogProduct = Infer<
-  typeof gsSupplyCatalogProductValidator
->;
 
 export function parseCatalogUrl(value: string) {
   let url: URL;
@@ -57,7 +42,7 @@ function number(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function parseProduct(value: unknown): GsSupplyCatalogProduct | null {
+function parseProduct(value: unknown): CatalogItem | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const productNumber = text(row.productNumber);
@@ -116,7 +101,7 @@ export async function fetchGsSupplyCatalog(url: URL) {
       `GS Supply-kataloget har mere end ${MAX_PRODUCTS} produkter`,
     );
   }
-  const products = new Map<string, GsSupplyCatalogProduct>();
+  const products = new Map<string, CatalogItem>();
   for (const row of data.productsData) {
     const product = parseProduct(row);
     if (product && !products.has(product.productNumber)) {

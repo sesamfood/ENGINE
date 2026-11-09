@@ -14,9 +14,13 @@ import {
 } from "./lib/orderForecastSettings";
 import { normalizeMasterDataName } from "./lib/masterData";
 import {
-  getGsSupplyConnection,
-  getGsSupplySupplierId,
-} from "./integrations/gssupply/lib/links";
+  catalogProviderIds,
+  catalogProviders,
+  catalogProviderValidator,
+  getCatalogConnection,
+  getCatalogSupplierId,
+  sendsAbCateringOrders,
+} from "./integrations/supplierCatalog";
 
 const MAX_SUPPLIERS = 100;
 const MAX_EMAIL_LENGTH = 254;
@@ -37,9 +41,11 @@ const supplierValidator = v.object({
   id: v.id("suppliers"),
   name: v.string(),
   email: v.union(v.string(), v.null()),
-  catalog: v.union(v.literal("gssupply"), v.null()),
+  catalog: v.union(catalogProviderValidator, v.null()),
   // Created and controlled by an integration, so it can't be deleted here.
   managed: v.boolean(),
+  // Orders go to the supplier's API instead of by e-mail.
+  sendsToApi: v.boolean(),
   ...forecastSettingsFields,
 });
 
@@ -56,23 +62,46 @@ export const list = query({
       throw new ConvexError("Du har ikke adgang");
     }
     await requireKioskDestination(ctx, auth, ["ordering.new", "ordering.history"]);
-    const [suppliers, gsSupplySupplierId, connection] = await Promise.all([
+    const [suppliers, providers, sendsToAbCatering] = await Promise.all([
       ctx.db
         .query("suppliers")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
           q.eq("organizationId", auth.organizationId),
         )
         .take(MAX_SUPPLIERS),
-      getGsSupplySupplierId(ctx, auth.organizationId),
-      getGsSupplyConnection(ctx, auth.organizationId),
+      Promise.all(
+        catalogProviderIds.map(async (provider) => ({
+          provider,
+          supplierId: await getCatalogSupplierId(
+            ctx,
+            provider,
+            auth.organizationId,
+          ),
+          connection: await getCatalogConnection(
+            ctx,
+            provider,
+            auth.organizationId,
+          ),
+        })),
+      ),
+      sendsAbCateringOrders(ctx, auth.organizationId),
     ]);
     return suppliers.map((supplier) => ({
       id: supplier._id,
       name: supplier.name,
       email: supplier.email ?? null,
       catalog:
-        supplier._id === gsSupplySupplierId ? ("gssupply" as const) : null,
-      managed: supplier._id === connection?.supplierId,
+        providers.find((row) => row.supplierId === supplier._id)?.provider ??
+        null,
+      managed: providers.some(
+        (row) => row.connection?.supplierId === supplier._id,
+      ),
+      sendsToApi: providers.some(
+        (row) =>
+          row.provider === "abcatering" &&
+          row.supplierId === supplier._id &&
+          sendsToAbCatering,
+      ),
       ...forecastSettings(supplier),
     }));
   },
@@ -174,11 +203,17 @@ export const remove = mutation({
     if (!supplier || supplier.organizationId !== auth.organizationId) {
       throw new ConvexError("Leverandøren blev ikke fundet");
     }
-    const connection = await getGsSupplyConnection(ctx, auth.organizationId);
-    if (connection?.supplierId === supplier._id) {
-      throw new ConvexError(
-        "Leverandøren styres af GS Supply-integrationen og kan ikke slettes",
+    for (const provider of catalogProviderIds) {
+      const connection = await getCatalogConnection(
+        ctx,
+        provider,
+        auth.organizationId,
       );
+      if (connection?.supplierId === supplier._id) {
+        throw new ConvexError(
+          `Leverandøren styres af ${catalogProviders[provider].name}-integrationen og kan ikke slettes`,
+        );
+      }
     }
     // Orders keep the supplier name, so history stays readable.
     await ctx.db.delete("suppliers", supplier._id);

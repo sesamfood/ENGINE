@@ -1,6 +1,6 @@
 "use client";
 
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   CircleAlertIcon,
@@ -80,14 +80,15 @@ import {
   suggestNewUnits,
   suggestProducts,
   suggestUnitId,
-} from "./gs-supply-suggestions";
+} from "./suggestions";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { compressImage, productImageOptions } from "@/lib/compress-image";
 import { uploadToStorage } from "@/lib/upload-to-storage";
-import { useGsSupplyCatalog } from "./gs-supply-link-editor";
+import { useSupplierCatalog, type SupplierCatalog } from "./catalog";
+import { CatalogPicture } from "./catalog-picture";
 
 type EngineProduct = FunctionReturnType<
-  typeof api.integrations.gssupply.api.listLinks
+  SupplierCatalog["api"]["listLinks"]
 >["products"][number];
 type CatalogRow = {
   productNumber: string;
@@ -106,11 +107,16 @@ const priceFormatter = new Intl.NumberFormat("da-DK", {
 const numberFormatter = new Intl.NumberFormat("da-DK");
 const NEW_UNIT = "new-unit";
 
-/** One row per GS Supply catalog item; each item is linked to an Engine product. */
-export function GsSupplyCatalogLinks() {
-  const options = useQuery(api.integrations.gssupply.api.listLinks);
+/** One row per catalog item; each item is linked to an Engine product. */
+export function SupplierCatalogLinks({
+  catalog: supplierCatalog,
+}: {
+  catalog: SupplierCatalog;
+}) {
+  const supplierName = supplierCatalog.name;
+  const options = useQuery(supplierCatalog.api.listLinks);
   const canAddUnit = usePermission("catalog.manage");
-  const { products: catalog, reload } = useGsSupplyCatalog();
+  const { products: catalog, reload } = useSupplierCatalog(supplierCatalog);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -191,8 +197,8 @@ export function GsSupplyCatalogLinks() {
       <CardHeader className="flex flex-col sm:grid">
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
-          Vælg det produkt, hvert GS Supply-produkt svarer til, og den enhed én
-          pakke fra GS Supply svarer til.
+          Vælg det produkt, hvert {supplierName}-produkt svarer til, og den
+          enhed én pakke fra {supplierName} svarer til.
         </CardDescription>
         <CardAction>
           <Button variant="outline" size="sm" onClick={reload}>
@@ -205,10 +211,9 @@ export function GsSupplyCatalogLinks() {
         {catalog === null ? (
           <Alert variant="destructive">
             <CircleAlertIcon />
-            <AlertTitle>GS Supply-kataloget kunne ikke hentes</AlertTitle>
+            <AlertTitle>{supplierName}-kataloget kunne ikke hentes</AlertTitle>
             <AlertDescription>
-              Kontrollér linket til katalog-API&apos;et, og vælg Opdatér
-              katalog.
+              Kontrollér forbindelsen, og vælg Opdatér katalog.
             </AlertDescription>
           </Alert>
         ) : null}
@@ -228,7 +233,7 @@ export function GsSupplyCatalogLinks() {
             onValueChange={(values) => {
               if (values[0]) setFilter(values[0]);
             }}
-            aria-label="Status for GS Supply-produktkoblinger"
+            aria-label={`Status for ${supplierName}-produktkoblinger`}
           >
             <ToggleGroupItem value="all" className="min-h-11">
               Alle
@@ -242,8 +247,8 @@ export function GsSupplyCatalogLinks() {
               <SearchIcon />
             </InputGroupAddon>
             <InputGroupInput
-              placeholder="Søg GS Supply-produkter"
-              aria-label="Søg GS Supply-produkter"
+              placeholder={`Søg ${supplierName}-produkter`}
+              aria-label={`Søg ${supplierName}-produkter`}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -252,7 +257,7 @@ export function GsSupplyCatalogLinks() {
         {filtered.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>Ingen GS Supply-produkter at vise</EmptyTitle>
+              <EmptyTitle>Ingen {supplierName}-produkter at vise</EmptyTitle>
               <EmptyDescription>
                 Prøv en anden søgning, eller vis alle produktkoblinger.
               </EmptyDescription>
@@ -262,7 +267,7 @@ export function GsSupplyCatalogLinks() {
           <Table>
             <TableHeader className="hidden sm:table-header-group">
               <TableRow>
-                <TableHead>GS Supply-produkt</TableHead>
+                <TableHead>{supplierName}-produkt</TableHead>
                 <TableHead className="w-1/2">Produkt og enhed</TableHead>
               </TableRow>
             </TableHeader>
@@ -276,7 +281,8 @@ export function GsSupplyCatalogLinks() {
                     <CatalogItem row={row} />
                   </TableCell>
                   <TableCell>
-                    <CatalogLinkEditor
+                    <CatalogItemLinkEditor
+                      catalog={supplierCatalog}
                       row={row}
                       linked={linkedByNumber.get(row.productNumber) ?? null}
                       products={options.products}
@@ -298,12 +304,7 @@ export function GsSupplyCatalogLinks() {
 function CatalogItem({ row }: { row: CatalogRow }) {
   return (
     <div className="flex items-center gap-3">
-      <Avatar className="size-12">
-        <AvatarImage src={row.pictureUrl ?? undefined} alt="" />
-        <AvatarFallback>
-          <PackageOpenIcon className="size-5" />
-        </AvatarFallback>
-      </Avatar>
+      <CatalogPicture src={row.pictureUrl} className="size-12" />
       <div className="min-w-0">
         <div className="font-medium">{row.name}</div>
         <div className="text-sm text-muted-foreground">
@@ -316,7 +317,8 @@ function CatalogItem({ row }: { row: CatalogRow }) {
   );
 }
 
-function CatalogLinkEditor({
+function CatalogItemLinkEditor({
+  catalog,
   row,
   linked,
   products,
@@ -324,6 +326,7 @@ function CatalogLinkEditor({
   canAddUnit,
   linkUnitCounts,
 }: {
+  catalog: SupplierCatalog;
   row: CatalogRow;
   linked: EngineProduct | null;
   products: EngineProduct[];
@@ -331,9 +334,7 @@ function CatalogLinkEditor({
   canAddUnit: boolean;
   linkUnitCounts: ReadonlyMap<string, number>;
 }) {
-  const setCatalogLink = useMutation(
-    api.integrations.gssupply.api.setCatalogLink,
-  );
+  const setCatalogLink = useMutation(catalog.api.setCatalogLink);
   const [saving, setSaving] = useState(false);
   // A chosen product waits here until its unit is chosen.
   const [pendingId, setPendingId] = useState<Id<"products"> | null>(null);
@@ -369,14 +370,14 @@ function CatalogLinkEditor({
       setPendingId(null);
       toast.success(
         target
-          ? "GS Supply-koblingen er gemt"
-          : "GS Supply-koblingen er fjernet",
+          ? `${catalog.name}-koblingen er gemt`
+          : `${catalog.name}-koblingen er fjernet`,
       );
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "GS Supply-koblingen kunne ikke gemmes. Prøv igen.",
+          `${catalog.name}-koblingen kunne ikke gemmes. Prøv igen.`,
         ),
       );
     } finally {
@@ -441,7 +442,7 @@ function CatalogLinkEditor({
           value={selected?.id ?? null}
           onValueChange={chooseProduct}
           placeholder="Søg efter produkt"
-          ariaLabel={`Produkt for GS Supply-varenummer ${row.productNumber}`}
+          ariaLabel={`Produkt for ${catalog.name}-varenummer ${row.productNumber}`}
           disabled={saving}
         />
         {canAddUnit && !linked && !pendingId && row.inCatalog ? (
@@ -499,6 +500,7 @@ function CatalogLinkEditor({
       </div>
       {creatingProduct ? (
         <CreateProductDialog
+          catalog={catalog}
           row={row}
           linkUnitCounts={linkUnitCounts}
           onClose={() => setCreatingProduct(false)}
@@ -506,6 +508,7 @@ function CatalogLinkEditor({
       ) : null}
       {selected && addingUnit ? (
         <AddUnitDialog
+          supplierName={catalog.name}
           product={selected}
           unitAmount={row.unitAmount}
           linkUnitCounts={linkUnitCounts}
@@ -521,12 +524,14 @@ function CatalogLinkEditor({
 }
 
 function AddUnitDialog({
+  supplierName,
   product,
   unitAmount,
   linkUnitCounts,
   onClose,
   onAdded,
 }: {
+  supplierName: string;
   product: EngineProduct;
   unitAmount: number | null;
   linkUnitCounts: ReadonlyMap<string, number>;
@@ -608,8 +613,8 @@ function AddUnitDialog({
           <DialogHeader>
             <DialogTitle>Tilføj enhed til {product.name}</DialogTitle>
             <DialogDescription>
-              Enheden tilføjes til produktet og bruges som én pakke fra GS
-              Supply.
+              Enheden tilføjes til produktet og bruges som én pakke fra{" "}
+              {supplierName}.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -646,8 +651,8 @@ function AddUnitDialog({
               />
               {unitAmount && unitAmount > 1 ? (
                 <FieldDescription>
-                  GS Supply angiver {numberFormatter.format(unitAmount)} pr.
-                  pakke.
+                  {supplierName} angiver {numberFormatter.format(unitAmount)}{" "}
+                  pr. pakke.
                 </FieldDescription>
               ) : null}
             </Field>
@@ -678,7 +683,7 @@ function AddUnitDialog({
   );
 }
 
-/** GS names end with the pack contents, e.g. "(540 stk.)", which don't belong in a product name. */
+/** Catalog names end with the pack contents, e.g. "(540 stk.)", which don't belong in a product name. */
 function productNameFromCatalog(name: string) {
   return name
     .replace(/\s*\([^()]*\)\s*$/, "")
@@ -687,22 +692,21 @@ function productNameFromCatalog(name: string) {
 }
 
 function CreateProductDialog({
+  catalog,
   row,
   linkUnitCounts,
   onClose,
 }: {
+  catalog: SupplierCatalog;
   row: CatalogRow;
   linkUnitCounts: ReadonlyMap<string, number>;
   onClose: () => void;
 }) {
+  const convex = useConvex();
   const categories = useQuery(api.catalog.listCategoryOptions);
   const units = useQuery(api.catalog.listUnits);
-  const createProduct = useMutation(
-    api.integrations.gssupply.api.createProductFromCatalog,
-  );
-  const fetchCatalogImage = useAction(
-    api.integrations.gssupply.api.fetchCatalogImage,
-  );
+  const createProduct = useMutation(catalog.api.createProductFromCatalog);
+  const pictureUrl = row.pictureUrl;
   const generateUploadUrl = useMutation(
     api.catalog.generateProductImageUploadUrl,
   );
@@ -782,9 +786,13 @@ function CreateProductDialog({
 
   // Compressed in the browser, like images added on the product form.
   async function addCatalogImage(productId: Id<"products">, url: string) {
-    const { bytes, contentType } = await fetchCatalogImage({ url });
+    const { bytes, contentType } = await convex.action(catalog.api.fetchCatalogImage, {
+      url,
+    });
     const image = await compressImage(
-      new File([bytes], `gs-supply-${row.productNumber}`, { type: contentType }),
+      new File([bytes], `${catalog.id}-${row.productNumber}`, {
+        type: contentType,
+      }),
       productImageOptions,
     );
     const storageId = await uploadToStorage({
@@ -813,18 +821,18 @@ function CreateProductDialog({
               }
             : null,
       });
-      if (row.pictureUrl) {
+      if (pictureUrl) {
         try {
-          await addCatalogImage(productId, row.pictureUrl);
+          await addCatalogImage(productId, pictureUrl);
         } catch {
           toast.warning(
-            `${name.trim()} er oprettet, men billedet fra GS Supply kunne ikke tilføjes`,
+            `${name.trim()} er oprettet, men billedet fra ${catalog.name} kunne ikke tilføjes`,
           );
           onClose();
           return;
         }
       }
-      toast.success(`${name.trim()} er oprettet og koblet til GS Supply`);
+      toast.success(`${name.trim()} er oprettet og koblet til ${catalog.name}`);
       onClose();
     } catch (caught) {
       setError(
@@ -854,11 +862,11 @@ function CreateProductDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Opret produkt fra GS Supply</DialogTitle>
+            <DialogTitle>Opret produkt fra {catalog.name}</DialogTitle>
             <div className="flex items-center gap-3">
-              {row.pictureUrl ? (
+              {pictureUrl ? (
                 <Avatar className="size-14 shrink-0">
-                  <AvatarImage src={row.pictureUrl} alt="" />
+                  <AvatarImage src={pictureUrl} alt="" />
                   <AvatarFallback>
                     <PackageOpenIcon className="size-5" />
                   </AvatarFallback>
@@ -866,7 +874,7 @@ function CreateProductDialog({
               ) : null}
               <DialogDescription>
                 {row.productNumber} · {row.name}
-                {row.pictureUrl ? ". Billedet bruges på produktet." : ""}
+                {pictureUrl ? ". Billedet bruges på produktet." : ""}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -943,7 +951,7 @@ function CreateProductDialog({
                       onChange={(event) => setFactor(event.target.value)}
                     />
                     <FieldDescription>
-                      GS Supply angiver{" "}
+                      {catalog.name} angiver{" "}
                       {numberFormatter.format(row.unitAmount ?? 0)} pr. pakke.
                     </FieldDescription>
                   </Field>
