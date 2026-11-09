@@ -404,7 +404,7 @@ export function ModifierManager() {
                   className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
                   onClick={() => toggle(product.id)}
                 />
-                <div className="absolute left-3 top-3 z-20 rounded-md bg-background/90 p-1 shadow-sm">
+                <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-md bg-background/90 p-1 shadow-sm">
                   <Checkbox
                     checked={isSelected}
                     tabIndex={-1}
