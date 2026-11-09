@@ -14,6 +14,8 @@ export const abcateringTables = {
     encryptedAccessToken: v.optional(v.string()),
     accessTokenExpiresAt: v.optional(v.number()),
     supplierId: v.optional(v.id("suppliers")),
+    // false keeps orders in the app instead of sending them to AB; missing means send.
+    sendOrders: v.optional(v.boolean()),
     connectedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),

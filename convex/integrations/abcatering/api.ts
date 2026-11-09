@@ -60,6 +60,7 @@ export const getSettings = query({
         customerName: v.string(),
         department: v.string(),
         supplierName: v.union(v.string(), v.null()),
+        sendOrders: v.boolean(),
         connectedAt: v.number(),
       }),
       v.null(),
@@ -83,6 +84,7 @@ export const getSettings = query({
             customerName: connection.customerName,
             department: connection.department,
             supplierName: supplier?.name ?? null,
+            sendOrders: connection.sendOrders !== false,
             connectedAt: connection.connectedAt,
           }
         : null,
@@ -225,6 +227,33 @@ export const disconnect = mutation({
       entityTable: "abCateringConnections",
       entityId: connection._id,
       summary: "AB Catering er afbrudt",
+    });
+    return null;
+  },
+});
+
+export const setSendOrders = mutation({
+  args: { sendOrders: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx, "abcatering");
+    const connection = await getCatalogConnection(
+      ctx,
+      "abcatering",
+      auth.organizationId,
+    );
+    if (!connection) throw new ConvexError("AB Catering er ikke forbundet");
+    await ctx.db.patch("abCateringConnections", connection._id, {
+      sendOrders: args.sendOrders,
+      updatedAt: Date.now(),
+    });
+    await recordAudit(ctx, auth, {
+      action: "abcatering.sendOrdersChanged",
+      entityTable: "abCateringConnections",
+      entityId: connection._id,
+      summary: args.sendOrders
+        ? "Bestillinger sendes til AB Catering"
+        : "Bestillinger sendes ikke til AB Catering",
     });
     return null;
   },

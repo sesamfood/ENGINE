@@ -19,6 +19,7 @@ import {
   catalogProviderValidator,
   getCatalogConnection,
   getCatalogSupplierId,
+  sendsAbCateringOrders,
 } from "./integrations/supplierCatalog";
 
 const MAX_SUPPLIERS = 100;
@@ -43,6 +44,8 @@ const supplierValidator = v.object({
   catalog: v.union(catalogProviderValidator, v.null()),
   // Created and controlled by an integration, so it can't be deleted here.
   managed: v.boolean(),
+  // Orders go to the supplier's API instead of by e-mail.
+  sendsToApi: v.boolean(),
   ...forecastSettingsFields,
 });
 
@@ -59,7 +62,7 @@ export const list = query({
       throw new ConvexError("Du har ikke adgang");
     }
     await requireKioskDestination(ctx, auth, ["ordering.new", "ordering.history"]);
-    const [suppliers, providers] = await Promise.all([
+    const [suppliers, providers, sendsToAbCatering] = await Promise.all([
       ctx.db
         .query("suppliers")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -81,6 +84,7 @@ export const list = query({
           ),
         })),
       ),
+      sendsAbCateringOrders(ctx, auth.organizationId),
     ]);
     return suppliers.map((supplier) => ({
       id: supplier._id,
@@ -91,6 +95,12 @@ export const list = query({
         null,
       managed: providers.some(
         (row) => row.connection?.supplierId === supplier._id,
+      ),
+      sendsToApi: providers.some(
+        (row) =>
+          row.provider === "abcatering" &&
+          row.supplierId === supplier._id &&
+          sendsToAbCatering,
       ),
       ...forecastSettings(supplier),
     }));

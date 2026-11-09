@@ -311,8 +311,7 @@ function Planner({
     ? supplierCatalogs[supplier.catalog]
     : null;
   const catalogSupplier = supplierCatalog !== null;
-  // AB Catering orders go to its API instead of by e-mail.
-  const sendsToApi = supplierCatalog?.id === "abcatering";
+  const sendsToApi = supplier?.sendsToApi ?? false;
   const supplierLinks = useQuery(
     (supplierCatalog ?? supplierCatalogs.gssupply).api.listOrderingLinks,
     canPlan && locationId && supplierCatalog ? { locationId } : "skip",

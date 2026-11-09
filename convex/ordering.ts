@@ -5,6 +5,7 @@ import {
   getCatalogProvider,
   getProductUnitFactor,
   getProductUnitFactors,
+  sendsAbCateringOrders,
 } from "./integrations/supplierCatalog";
 import {
   paginationOptsValidator,
@@ -842,8 +843,10 @@ export const placeOrder = mutation({
       catalogProvider,
       rows,
     } = await prepareOrder(ctx, args);
-    // AB Catering orders go to its API instead of by e-mail.
-    const sendsToApi = catalogProvider === "abcatering";
+    // AB Catering orders go to its API instead of by e-mail, unless turned off.
+    const sendsToApi =
+      catalogProvider === "abcatering" &&
+      (await sendsAbCateringOrders(ctx, auth.organizationId));
     if (args.sendEmail && !sendsToApi && !supplier?.email) {
       throw new ConvexError("Leverandøren har ingen e-mailadresse");
     }

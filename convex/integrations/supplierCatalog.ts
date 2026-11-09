@@ -146,6 +146,15 @@ export async function listCatalogLinks(
     .take(MAX_LINKS);
 }
 
+/** AB Catering orders go to its API unless the organization turned it off. */
+export async function sendsAbCateringOrders(
+  ctx: QueryCtx,
+  organizationId: string,
+) {
+  const connection = await getCatalogConnection(ctx, "abcatering", organizationId);
+  return connection?.sendOrders !== false;
+}
+
 /** Removes every provider's link to a deleted Produkt. */
 export async function deleteCatalogLinks(
   ctx: MutationCtx,
