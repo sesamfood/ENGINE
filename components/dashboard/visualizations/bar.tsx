@@ -53,6 +53,7 @@ export function BarVisualization({
   tooltipLabel,
   yAxisMin,
   yAxisMax,
+  target,
 }: TimeSeriesProps) {
   if (isMixedCurrency(result)) {
     return (
@@ -85,6 +86,7 @@ export function BarVisualization({
       tooltipLabel={tooltipLabel}
       yAxisMin={yAxisMin}
       yAxisMax={yAxisMax}
+      target={target}
     />
   );
 }

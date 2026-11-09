@@ -20,6 +20,10 @@ import {
   type MetricSource,
 } from "../lib/dashboard/registry";
 import { canBatchCustomMetric, dashboardDatasets } from "../lib/dashboard/datasets";
+import { supportsBudgetTarget, supportsTarget } from "../lib/dashboard/target";
+import { kpiMonthEnd } from "../lib/dashboard/monthly-kpi";
+import { addDays, dateKey } from "../lib/date";
+import { latestBudget } from "./monthlyKpi";
 import { dashboardColumns, layoutDashboardWidgets, widgetSizeSpans } from "../lib/dashboard/layout";
 import {
   DEFAULT_COMPARISON_PERIOD,
@@ -302,6 +306,19 @@ async function validateWidgets(
     }
     if (yAxisMin !== undefined && yAxisMax !== undefined && yAxisMin >= yAxisMax) {
       throw new ConvexError("Y-aksens minimum skal være mindre end maksimum");
+    }
+    const target = widget.options?.target;
+    if (target) {
+      if (!supportsTarget(widget)) throw new ConvexError("Widgetten understøtter ikke et mål");
+      if (target.kind === "comparison" && !(Number.isFinite(target.percent) && target.percent > -100)) {
+        throw new ConvexError("Angiv en procent større end -100");
+      }
+      if (target.kind === "manual" && !(Number.isFinite(target.amount) && target.amount >= 0)) {
+        throw new ConvexError("Angiv et mål på 0 eller mere");
+      }
+      if (target.kind === "budget" && !supportsBudgetTarget(widget)) {
+        throw new ConvexError("Målingen har intet budget");
+      }
     }
   }
 }
@@ -1362,6 +1379,55 @@ export const getMetric = query({
       ),
       params.scopeTruncated,
     );
+  },
+});
+
+export const getBudgetTarget = query({
+  args: { scope: scopeValidator, range: rangeValidator, now: v.number() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      sales: v.union(v.number(), v.null()),
+      transactions: v.union(v.number(), v.null()),
+      currency: v.union(v.string(), v.null()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardViewer(ctx);
+    if (auth.granularity !== "detail" || !hasPermission(auth.role, auth.permissions, "dashboard.viewFinancials")) {
+      return null;
+    }
+    const human = requireHumanPrincipal(auth);
+    const params = await resolveMetricParams(ctx, auth.organizationId, args.scope, args.range, args.now, auth.locationScope, {
+      granularity: auth.granularity,
+      anonymousSeed: human.sessionId,
+      salesDetailAllowed: canViewDetailedSales(auth),
+    });
+    if (params.scopeTruncated || params.locations.length === 0) return null;
+    // Monthly budgets are spread evenly over the days of their month.
+    const daysByMonth = new Map<string, number>();
+    const last = addDays(dateKey(params.to, params.timeZone), -1);
+    for (let day = dateKey(params.from, params.timeZone); day <= last; day = addDays(day, 1)) {
+      daysByMonth.set(day.slice(0, 7), (daysByMonth.get(day.slice(0, 7)) ?? 0) + 1);
+    }
+    const shares = await Promise.all(params.locations.flatMap((location) =>
+      [...daysByMonth].map(async ([month, days]) => {
+        const budget = await latestBudget(ctx, auth.organizationId, location.id, month);
+        const share = days / Number(kpiMonthEnd(month).slice(8));
+        return {
+          sales: budget?.sales != null && budget.currency === location.currency ? (budget.sales / 100) * share : null,
+          transactions: budget?.transactions != null ? budget.transactions * share : null,
+        };
+      })));
+    const sum = (values: (number | null)[]) =>
+      values.some((value) => value === null) ? null : values.reduce<number>((total, value) => total + (value ?? 0), 0);
+    const currencies = new Set(params.locations.map((location) => location.currency));
+    const currency = currencies.size === 1 ? [...currencies][0] : null;
+    return {
+      sales: currency === null ? null : sum(shares.map((share) => share.sales)),
+      transactions: sum(shares.map((share) => share.transactions)),
+      currency,
+    };
   },
 });
 

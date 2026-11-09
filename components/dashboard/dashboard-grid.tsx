@@ -34,7 +34,8 @@ import {
   widgetsOverlappingPosition,
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
-import type { ComparisonPeriod, CustomMetricSpec, DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { ComparisonPeriod, CustomMetricSpec, DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, WidgetTarget, VisualizationId } from "@/lib/dashboard/types";
+import { supportsTarget, widgetTarget } from "@/lib/dashboard/target";
 import { DashboardWidget } from "./dashboard-widget";
 import { useLiveMetrics, type LiveMetricState } from "./use-live-metrics";
 import { useFinancialMetrics } from "./use-financial-metrics";
@@ -285,6 +286,9 @@ function DraggableWidget({
   metricLabel,
   tooltipLabel,
   range,
+  scope,
+  now,
+  budgetAllowed,
   editable,
   visualizations,
   onChange,
@@ -301,6 +305,9 @@ function DraggableWidget({
   metricLabel?: string;
   tooltipLabel?: string;
   range: DashboardRange;
+  scope: DashboardScope;
+  now: number;
+  budgetAllowed: boolean;
   editable: boolean;
   visualizations?: readonly VisualizationId[];
   onChange: (widget: WidgetInstance) => void;
@@ -314,6 +321,12 @@ function DraggableWidget({
   const dragProps = editable
     ? { ...draggable.attributes, ...draggable.listeners }
     : {};
+  const budget = useQuery(
+    api.dashboard.getBudgetTarget,
+    budgetAllowed && widgetTarget(widget)?.kind === "budget"
+      ? { scope, range: widget.range ? { preset: widget.range } : range, now }
+      : "skip",
+  );
 
   return (
     <div
@@ -349,9 +362,17 @@ function DraggableWidget({
         metricLabel={metricLabel}
         tooltipLabel={tooltipLabel}
         range={range}
+        now={now}
+        budget={budget}
         editable={editable}
         resizing={widget.size !== sourceSize}
-        onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
+        onVisualizationChange={(visualization: VisualizationId) => {
+          const next = { ...widget, visualization };
+          if (!next.options?.target || supportsTarget(next)) return onChange(next);
+          const options = { ...next.options };
+          delete options.target;
+          onChange({ ...next, options: Object.keys(options).length ? options : undefined });
+        }}
         visualizations={visualizations}
         onRangeChange={(range: WidgetRangePreset | undefined) => onChange({ ...widget, range })}
         onComparisonChange={(comparison: ComparisonPeriod | undefined) => onChange({ ...widget, comparison })}
@@ -367,10 +388,13 @@ function DraggableWidget({
           else options.yAxisMax = axis.max;
           onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
         }}
-        onGoalPercentChange={(goalPercent: number) => onChange({
-          ...widget,
-          options: { ...widget.options, goalPercent },
-        })}
+        onTargetChange={(target: WidgetTarget | undefined) => {
+          const options = { ...widget.options };
+          delete options.goalPercent;
+          if (target) options.target = target;
+          else delete options.target;
+          onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
+        }}
         onEditCustomMetric={onEditCustomMetric}
         onLiveRetry={onLiveRetry}
         onResize={onResize}
@@ -576,6 +600,9 @@ export function DashboardGrid({
               metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
               tooltipLabel={comparisonTooltipLabel(scope, metricResults.get(widget.key))}
               range={range}
+              scope={scope}
+              now={now}
+              budgetAllowed={!publicAccess}
               editable={editable}
               visualizations={customVisualizations}
               onEditCustomMetric={widget.metric.kind === "custom" && customMetricsById.has(String(widget.metric.id))

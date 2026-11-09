@@ -1,4 +1,5 @@
 import type { ChartConfig } from "@/components/ui/chart";
+import { periodPosition, type ResolvedTarget } from "@/lib/dashboard/target";
 import {
   DEFAULT_CURRENCY,
   type DashboardRange,
@@ -107,11 +108,48 @@ export function chartModel(result: MetricResult) {
   };
 }
 
+/**
+ * Adds the target to each day of one daily series. Weekly and monthly targets turn both the
+ * series and the target into running totals that restart each period.
+ */
+export function targetChartModel(
+  model: ReturnType<typeof chartModel>,
+  chart: NonNullable<ResolvedTarget["chart"]>,
+) {
+  const [key] = model.keys;
+  const running = chart.period !== "day";
+  let periodId = "";
+  let actualTotal = 0;
+  let targetTotal = 0;
+  const data = model.data.map((row) => {
+    const { id } = periodPosition(row.t, chart.period);
+    if (id !== periodId) {
+      periodId = id;
+      actualTotal = 0;
+      targetTotal = 0;
+    }
+    const value = row[key] ?? 0;
+    const target = chart.dailyTarget(row.t);
+    actualTotal += value;
+    // A period cut off by the range start only counts the days shown, for both lines.
+    targetTotal += target;
+    return running
+      ? { ...row, daily: value, [key]: actualTotal, target: targetTotal }
+      : { ...row, target };
+  });
+  const config: ChartConfig = {
+    ...model.config,
+    ...(running ? { [key]: { ...model.config[key], label: "Løbende total" }, daily: { label: "Dag", color: "transparent" } } : {}),
+    target: { label: "Mål", color: "var(--foreground)" },
+  };
+  return { config, data, keys: model.keys, running };
+}
+
 function niceCeil(value: number) {
   if (!Number.isFinite(value) || value <= 0) return value;
   const base = 10 ** Math.floor(Math.log10(value));
   const fraction = value / base;
-  const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 2.5 ? 2.5 : fraction <= 5 ? 5 : 10;
+  const nice = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((step) => fraction <= step) ?? 10;
   return nice * base;
 }
 
@@ -136,6 +174,7 @@ export function chartValueDomain(
   model: ReturnType<typeof chartModel>,
   yAxisMin?: number,
   yAxisMax?: number,
+  extraValues: number[] = [],
 ) {
   const values = model.data.flatMap((row) =>
     model.keys.flatMap((key) => {
@@ -143,7 +182,7 @@ export function chartValueDomain(
       return typeof value === "number" && Number.isFinite(value) ? [value] : [];
     }),
   );
-  return valueDomain(values, yAxisMin, yAxisMax);
+  return valueDomain([...values, ...extraValues], yAxisMin, yAxisMax);
 }
 
 export function chartValueDomainFromValues(
