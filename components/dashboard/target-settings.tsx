@@ -90,7 +90,7 @@ export function TargetSettings({
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="flex flex-col gap-3">
       <Field>
         <div className="flex items-center gap-1">
           <FieldLabel htmlFor={`${id}-kind`}>Mål</FieldLabel>
@@ -167,7 +167,7 @@ export function TargetSettings({
         </Field>
       ) : null}
       {kind === "budget" ? (
-        <FieldDescription className="self-end">Kræver adgang til månedsrapporten og et budget for alle valgte lokationer.</FieldDescription>
+        <FieldDescription>Kræver adgang til månedsrapporten og et budget for alle valgte lokationer.</FieldDescription>
       ) : null}
     </div>
   );
