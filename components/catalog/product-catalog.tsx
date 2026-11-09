@@ -472,14 +472,8 @@ export function ProductCatalog() {
   const [catalogView, setCatalogView] = useState<"grid" | "list">("grid");
   useEffect(() => {
     const stored = window.localStorage.getItem("catalog-view");
-    const initial =
-      stored === "list" || stored === "grid"
-        ? stored
-        : window.matchMedia("(min-width: 768px)").matches
-          ? "list"
-          : null;
-    if (initial) {
-      const timer = window.setTimeout(() => setCatalogView(initial), 0);
+    if (stored === "list") {
+      const timer = window.setTimeout(() => setCatalogView(stored), 0);
       return () => window.clearTimeout(timer);
     }
   }, []);
