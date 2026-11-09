@@ -2,17 +2,14 @@
 
 import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { useSidebar } from "@/components/ui/sidebar";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SectionNav } from "@/components/section-nav";
 import { useKiosk, usePermission } from "@/components/app-shell";
 
 export function OwnChecksNavigation() {
   const pathname = usePathname();
   const router = useRouter();
-  const sidebar = useSidebar();
-  const tabsRef = useRef<HTMLDivElement>(null);
   const kiosk = useKiosk();
   const kioskMode = Boolean(kiosk?.kioskModeEnabled);
   const canToday = usePermission("ownChecks.perform");
@@ -27,7 +24,9 @@ export function OwnChecksNavigation() {
   const showDocumentation = kioskMode
     ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.documentation"))
     : canDocumentation;
-  const showGuidance = !kioskMode && (canToday || canOverview || canDocumentation);
+  const showGuidance = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.guidance"))
+    : canToday || canOverview || canDocumentation;
   const sectionCount =
     Number(showToday) + Number(showOverview) + Number(showDocumentation) + Number(showGuidance);
   const value = pathname.startsWith("/own-checks/guidance") && showGuidance
@@ -57,23 +56,19 @@ export function OwnChecksNavigation() {
     router.replace(href, { scroll: false });
   }, [pathname, router, value]);
 
-  useEffect(() => {
-    tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [value, sidebar.isMobile]);
-
   if (sectionCount <= 1) return null;
+
+  const items = [
+    ...(showToday ? [{ href: "/own-checks", label: "I dag", icon: ClipboardCheckIcon, active: value === "today" }] : []),
+    ...(showOverview ? [{ href: "/own-checks/overview", label: "Oversigt", icon: ListChecksIcon, active: value === "overview" }] : []),
+    ...(showDocumentation ? [{ href: "/own-checks/documentation", label: "Dokumentation", icon: FileCheck2Icon, active: value === "documentation" }] : []),
+    ...(showGuidance ? [{ href: "/own-checks/guidance", label: "Vejledning", icon: BookOpenIcon, active: value === "guidance" }] : []),
+  ];
 
   return (
     <AppBottomBar>
       <div className="mx-auto w-full max-w-(--container-page)">
-        <Tabs value={value} className="min-w-0" onValueChange={(next) => router.push(next === "today" ? "/own-checks" : next === "overview" ? "/own-checks/overview" : next === "guidance" ? "/own-checks/guidance" : "/own-checks/documentation", { scroll: false })}>
-          <TabsList ref={tabsRef} variant="line" aria-label="Egenkontrolsektioner" className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden">
-            {showToday ? <TabsTrigger value="today" appearance="standard" className="min-w-28"><ClipboardCheckIcon data-icon="inline-start" />I dag</TabsTrigger> : null}
-            {showOverview ? <TabsTrigger value="overview" appearance="standard" className="min-w-28"><ListChecksIcon data-icon="inline-start" />Oversigt</TabsTrigger> : null}
-            {showDocumentation ? <TabsTrigger value="documentation" appearance="standard" className="min-w-36"><FileCheck2Icon data-icon="inline-start" />Dokumentation</TabsTrigger> : null}
-            {showGuidance ? <TabsTrigger value="guidance" appearance="standard" className="min-w-28"><BookOpenIcon data-icon="inline-start" />Vejledning</TabsTrigger> : null}
-          </TabsList>
-        </Tabs>
+        <SectionNav label="Egenkontrolsektioner" items={items} />
       </div>
     </AppBottomBar>
   );

@@ -1,9 +1,9 @@
 "use client";
 
 import { AppBottomBar } from "@/components/app-bottom-bar";
+import { SectionNav } from "@/components/section-nav";
 
 import { useKiosk, usePermission } from "@/components/app-shell";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChartNoAxesColumnIcon, PackageXIcon, Trash2Icon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -65,47 +65,23 @@ export function WasteNavigation() {
 
   if (!showSectionTabs && value !== "badDelivery") return null;
 
+  const items = [
+    ...(showRegister
+      ? [{ href: "/waste", label: "Registrér", icon: Trash2Icon, active: value === "register" }]
+      : []),
+    ...(showBadDelivery
+      ? [{ href: "/waste/bad-delivery", label: "Dårlig levering", icon: PackageXIcon, active: value === "badDelivery" }]
+      : []),
+    ...(canReport
+      ? [{ href: "/waste/report", label: "Rapport", icon: ChartNoAxesColumnIcon, active: value === "report" }]
+      : []),
+  ];
+
   return (
     <AppBottomBar>
-      <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+      <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse gap-2 sm:flex-row sm:items-center">
         {showSectionTabs ? (
-          <Tabs
-            value={value}
-            onValueChange={(next) => {
-              const href =
-                next === "report"
-                  ? "/waste/report"
-                  : next === "badDelivery"
-                    ? "/waste/bad-delivery"
-                    : "/waste";
-              router.push(href, { scroll: false });
-            }}
-          >
-            <TabsList
-              variant="line"
-              aria-label="Waste-sektioner"
-              className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
-            >
-              {showRegister ? (
-                <TabsTrigger value="register" appearance="standard" className="min-w-28">
-                  <Trash2Icon data-icon="inline-start" />
-                  Registrér
-                </TabsTrigger>
-              ) : null}
-              {showBadDelivery ? (
-                <TabsTrigger value="badDelivery" appearance="standard" className="min-w-28">
-                  <PackageXIcon data-icon="inline-start" />
-                  Dårlig levering
-                </TabsTrigger>
-              ) : null}
-              {canReport ? (
-                <TabsTrigger value="report" appearance="standard" className="min-w-28">
-                  <ChartNoAxesColumnIcon data-icon="inline-start" />
-                  Rapport
-                </TabsTrigger>
-              ) : null}
-            </TabsList>
-          </Tabs>
+          <SectionNav label="Waste-sektioner" items={items} />
         ) : null}
         {value === "badDelivery" ? (
           <div

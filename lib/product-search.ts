@@ -1,3 +1,5 @@
+import type { ProductType } from "./unit-system";
+
 export function normalizeProductSearch(value: string) {
   return value
     .normalize("NFD")
@@ -124,11 +126,24 @@ export function productNameSearchScore(name: string, search: string) {
   return Math.min(score, 19);
 }
 
+// Searchable like a category, so "væske" lists all wet products.
+const productTypeTerms: Record<ProductType, string> = {
+  dry: "standard tørvare tørvarer dry",
+  wet: "væske væsker wet",
+  piece: "styk stk piece",
+};
+
 export function productSearchScore(
   name: string,
   categoryPath: string,
   search: string,
+  productType?: ProductType | null,
 ) {
+  if (productType) {
+    categoryPath = [categoryPath, productTypeTerms[productType]]
+      .filter(Boolean)
+      .join(" · ");
+  }
   const nameScore = productNameSearchScore(name, search);
   const categoryMatch = productNameSearchScore(categoryPath, search);
   const categoryScore = categoryMatch === null ? null : 20 + categoryMatch;
@@ -147,13 +162,17 @@ export function productSearchScore(
 export function searchProducts<T>(
   products: readonly T[],
   search: string,
-  fields: (product: T) => { name: string; categoryPath?: string },
+  fields: (product: T) => {
+    name: string;
+    categoryPath?: string;
+    productType?: ProductType | null;
+  },
 ) {
   if (!normalizeProductSearch(search)) return [...products];
   return products
     .flatMap((product) => {
-      const { name, categoryPath = "" } = fields(product);
-      const score = productSearchScore(name, categoryPath, search);
+      const { name, categoryPath = "", productType } = fields(product);
+      const score = productSearchScore(name, categoryPath, search, productType);
       return score === null ? [] : [{ product, name, score }];
     })
     .sort(

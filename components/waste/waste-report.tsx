@@ -20,6 +20,7 @@ import {
 import { DownloadIcon, FileChartColumnIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +51,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -60,7 +60,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton, RowsSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -270,7 +270,13 @@ export function WasteReport() {
   const summaryLoading =
     reportSummary?.state !== "ready" && activeStatus !== "Exhausted";
 
-  if (!locations) return <Skeleton className="h-96" />;
+  if (!locations)
+    return (
+      <div className="flex flex-col gap-6">
+        <FormCardSkeleton />
+        <TableSkeleton />
+      </div>
+    );
   if (!canReport) {
     return (
       <Alert variant="destructive">
@@ -405,20 +411,18 @@ export function WasteReport() {
         <CardContent appearance="summary" className="grid sm:grid-cols-3">
           <Field>
             <FieldLabel htmlFor="waste-from">Fra</FieldLabel>
-            <Input
+            <DatePicker
               id="waste-from"
-              type="date"
               value={resolvedFrom}
-              onChange={(event) => setFrom(event.target.value)}
+              onValueChange={setFrom}
             />
           </Field>
           <Field>
             <FieldLabel htmlFor="waste-to">Til</FieldLabel>
-            <Input
+            <DatePicker
               id="waste-to"
-              type="date"
               value={resolvedTo}
-              onChange={(event) => setTo(event.target.value)}
+              onValueChange={setTo}
             />
           </Field>
           <Field>
@@ -491,7 +495,7 @@ export function WasteReport() {
               </EmptyHeader>
             </Empty>
           ) : summaryLoading ? (
-            <Skeleton className="h-40" />
+            <RowsSkeleton rows={3} rowClassName="h-10" />
           ) : summary.length ? (
             <Table>
               <TableHeader>
@@ -543,7 +547,7 @@ export function WasteReport() {
         </CardHeader>
         <CardContent>
           {status === "LoadingFirstPage" ? (
-            <Skeleton className="h-56" />
+            <RowsSkeleton rows={4} rowClassName="h-10" />
           ) : results.length ? (
             <>
               <Table>

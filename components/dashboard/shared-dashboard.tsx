@@ -1,6 +1,7 @@
 "use client";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { PageTitle } from "@/components/app-page-header";
 import { useEffect, useRef, useState } from "react";
 import { LockKeyholeIcon } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
@@ -168,7 +169,7 @@ function SharedDashboardContent({ token }: { token: string }) {
       <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-6">
         <header className="flex flex-col gap-2">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary">Delt dashboard</p>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{meta.name}</h1>
+          <PageTitle>{meta.name}</PageTitle>
           <p className="text-sm text-muted-foreground">Tilgængeligt til {new Intl.DateTimeFormat("da-DK", { dateStyle: "long", timeStyle: "short" }).format(meta.expiresAt)}</p>
         </header>
         <DashboardGrid widgets={config.widgets} scope={config.scope} range={config.range} now={now} publicAccess={{ token, accessKey }} />

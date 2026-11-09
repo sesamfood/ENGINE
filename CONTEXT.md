@@ -8,6 +8,10 @@ This context describes the shared catalog and the movement of products between l
 An organization-owned catalog item that can be counted or moved between locations in one or more units.
 _Avoid_: Item, article, stock item
 
+**Container** (`Beholder`):
+An organization-owned tub, bucket, or crate with a known empty weight. A Product unit can be a Container. A Count adds a not full Container by its gross weight minus the Container's weight.
+_Avoid_: Packaging, tare item
+
 **Transfer**:
 A recorded movement of product quantities from one location to another at a stated time, with one responsible user.
 _Avoid_: Shipment, delivery

@@ -1,5 +1,5 @@
 import { ConvexError, v, type Infer } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { env, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
   requireLocationAccess,
   requireOrganization,
@@ -140,8 +140,12 @@ export const saveTasks = mutation({
   },
 });
 
+function simulationAllowed(requested: boolean | undefined) {
+  return requested === true && env.KIOSK_DAY_SIMULATION === "1";
+}
+
 export const getState = query({
-  args: { now: v.number() },
+  args: { now: v.number(), simulateEndOfDay: v.optional(v.boolean()) },
   returns: v.object({
     phase: v.union(phaseValidator, v.null()),
     tasks: v.array(kioskDayTaskValidator),
@@ -154,7 +158,13 @@ export const getState = query({
       throw new ConvexError("Tidspunktet er ugyldigt");
     }
     const { auth, locationId } = await requireKioskLocation(ctx);
-    return await kioskDayState(ctx, auth.organizationId, locationId, args.now);
+    return await kioskDayState(
+      ctx,
+      auth.organizationId,
+      locationId,
+      args.now,
+      simulationAllowed(args.simulateEndOfDay),
+    );
   },
 });
 
@@ -239,12 +249,19 @@ export const complete = mutation({
       v.object({ employeeId: v.id("employees") }),
       v.object({ name: v.string() }),
     ),
+    simulateEndOfDay: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { auth, locationId } = await requireKioskLocation(ctx);
     if (auth.readOnly || !auth.userId) throw new ConvexError("Du har ikke adgang");
-    const state = await kioskDayState(ctx, auth.organizationId, locationId, Date.now());
+    const state = await kioskDayState(
+      ctx,
+      auth.organizationId,
+      locationId,
+      Date.now(),
+      simulationAllowed(args.simulateEndOfDay),
+    );
     if (state.phase !== args.phase) {
       throw new ConvexError(
         args.phase === "endOfDay"

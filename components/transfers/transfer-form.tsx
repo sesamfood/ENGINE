@@ -2,13 +2,15 @@
 
 import { toDateTimeLocal, fromDateTimeLocal } from "@/lib/date";
 
+import { DateTimePicker } from "@/components/date-picker";
 import { ProductUnitLine } from "@/components/product-unit-line";
 
 import { ProductLineGroup } from "@/components/product-line-group";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { useKiosk } from "@/components/app-shell";
+import { useAccess, useKiosk, useLocationAccess } from "@/components/app-shell";
+import { DraftRestoredNotice } from "@/components/draft-restored-notice";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import {
   CreatableCombobox,
@@ -25,6 +27,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Card,
   CardAction,
@@ -45,11 +52,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
+import { useActiveOrganization } from "@/lib/active-organization";
+import {
+  clearTransferDraft,
+  readTransferDraft,
+  setTransferLocation,
+  useTransferLocation,
+  writeTransferDraft,
+} from "@/lib/transfer-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
 import posthog from "posthog-js";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 type LocationOption = {
@@ -80,6 +95,8 @@ type TransferLine = {
   units: Array<{ id: Id<"units">; name: string }>;
   unitsLoaded: boolean;
   quantity: number;
+  // Set when the line comes from an internal order.
+  orderedUnitName?: string;
 };
 
 export type EditableTransfer = {
@@ -118,8 +135,16 @@ export type TransferOrder = {
     unitName: string;
     quantity: number;
     maxTemperatureCelsius: number | null;
+    units: Array<{ id: Id<"units">; name: string }>;
   }>;
 };
+
+function hasMissingUnit(line: TransferLine) {
+  return (
+    line.orderedUnitName !== undefined &&
+    !line.units.some((unit) => unit.id === line.unitId)
+  );
+}
 
 type ProductTemperatureState = {
   value: string;
@@ -228,6 +253,15 @@ export function TransferForm({
   const locations = useQuery(api.locations.listAllLocationOptions) as
     LocationOption[] | undefined;
   const kiosk = useKiosk();
+  const access = useAccess();
+  const organization = useActiveOrganization();
+  const organizationId = organization.data?.id;
+  const storedFromLocationId = useTransferLocation(organizationId);
+  const { locations: accessibleLocations, isLocked, lockedId } = useLocationAccess();
+  const prefilledFromLocation = useRef(false);
+  const draftRestored = useRef(false);
+  const transferredAtEdited = useRef(false);
+  const [draftNoticeVisible, setDraftNoticeVisible] = useState(false);
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const productSearchOptions = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
@@ -249,7 +283,9 @@ export function TransferForm({
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
     transfer?.responsibleUserId ?? null,
   );
+  const [responsibleCleared, setResponsibleCleared] = useState(false);
   const [comment, setComment] = useState(transfer?.comment ?? "");
+  const [optionalOpen, setOptionalOpen] = useState(Boolean(transfer));
   const [transferredAtLocal, setTransferredAtLocal] = useState(() =>
     toDateTimeLocal(transfer?.transferredAt ?? Date.now()),
   );
@@ -264,9 +300,13 @@ export function TransferForm({
       productName: item.productName,
       imageUrl: null,
       unitId: item.unitId,
-      units: [{ id: item.unitId, name: item.unitName }],
+      units:
+        "units" in item
+          ? item.units
+          : [{ id: item.unitId, name: item.unitName }],
       unitsLoaded: false,
       quantity: item.quantity,
+      ...("units" in item ? { orderedUnitName: item.unitName } : {}),
     })),
   );
   const [productToAdd, setProductToAdd] = useState<string | null>(null);
@@ -282,7 +322,104 @@ export function TransferForm({
   } | null>(null);
   const [isTemperatureDialogOpen, setIsTemperatureDialogOpen] = useState(false);
   const sessionUserId = session?.user.id;
+  // Kiosk accounts are shared, so a draft would reach the next person.
+  const draftUserId =
+    access && !access.kiosk?.isKioskAccount && !access.kiosk?.kioskModeEnabled
+      ? sessionUserId
+      : undefined;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
+
+  // Restore an unfinished draft after section navigation remounted the form.
+  useEffect(() => {
+    if (transfer || order || draftRestored.current) return;
+    if (!organizationId || !draftUserId || !locations) return;
+    draftRestored.current = true;
+    const draft = readTransferDraft(organizationId, draftUserId);
+    if (!draft) return;
+    const locationIds = new Set(locations.map((location) => location.id));
+    const from = draft.fromLocationId && locationIds.has(draft.fromLocationId as Id<"locations">) ? draft.fromLocationId : null;
+    const to = draft.toLocationId && locationIds.has(draft.toLocationId as Id<"locations">) ? draft.toLocationId : null;
+    window.setTimeout(() => {
+      setDraftNoticeVisible(true);
+      if (from) {
+        prefilledFromLocation.current = true;
+        setFromLocationId(from);
+      }
+      if (to) setToLocationId(to);
+      if (draft.responsibleUserId) setResponsibleUserId(draft.responsibleUserId);
+      if (draft.comment) {
+        setComment(draft.comment);
+        setOptionalOpen(true);
+      }
+      if (draft.transferredAtLocal) {
+        transferredAtEdited.current = true;
+        setTransferredAtLocal(draft.transferredAtLocal);
+        setOptionalOpen(true);
+      }
+      if (draft.temperatures && Object.keys(draft.temperatures).length) {
+        setTemperatureStates((current) => ({ ...current, ...draft.temperatures }));
+      }
+      if (draft.lines.length) {
+        setLines(
+          draft.lines.map((line) => ({
+            key: line.key,
+            productId: line.productId as Id<"products">,
+            productName: line.productName,
+            imageUrl: null,
+            unitId: line.unitId as Id<"units">,
+            units: line.units as Array<{ id: Id<"units">; name: string }>,
+            unitsLoaded: false,
+            quantity: line.quantity,
+          })),
+        );
+      }
+    });
+  }, [draftUserId, locations, order, organizationId, transfer]);
+
+  useEffect(() => {
+    if (transfer || order || !organizationId || !draftUserId) return;
+    if (!draftRestored.current) return;
+    if (!lines.length && !toLocationId && !comment) {
+      clearTransferDraft(organizationId, draftUserId);
+      return;
+    }
+    writeTransferDraft(organizationId, draftUserId, {
+      fromLocationId,
+      toLocationId,
+      responsibleUserId,
+      comment,
+      // The default is "now", which goes stale in a draft.
+      transferredAtLocal: transferredAtEdited.current ? transferredAtLocal : undefined,
+      temperatures: temperatureStates,
+      lines: lines.map((line) => ({
+        key: line.key,
+        productId: line.productId,
+        productName: line.productName,
+        unitId: line.unitId,
+        units: line.units,
+        quantity: line.quantity,
+      })),
+    });
+  }, [comment, draftUserId, fromLocationId, lines, order, organizationId, responsibleUserId, temperatureStates, toLocationId, transfer, transferredAtLocal]);
+
+  useEffect(() => {
+    if (transfer || order || prefilledFromLocation.current) return;
+    if (!access || fromLocationId) return;
+    const candidate = isLocked
+      ? lockedId
+      : accessibleLocations.find((location) => location.id === storedFromLocationId)?.id;
+    if (candidate && candidate !== toLocationId) {
+      prefilledFromLocation.current = true;
+      const timeout = window.setTimeout(() => setFromLocationId(candidate));
+      return () => window.clearTimeout(timeout);
+    }
+  }, [access, accessibleLocations, fromLocationId, isLocked, lockedId, order, storedFromLocationId, toLocationId, transfer]);
+
+  useEffect(() => {
+    if (!transfer && !order && organizationId && fromLocationId) {
+      setTransferLocation(organizationId, fromLocationId);
+    }
+  }, [fromLocationId, order, organizationId, transfer]);
 
   useEffect(() => {
     if (!transfer && !order && kiosk?.isKioskAccount && kiosk.locationId) {
@@ -296,11 +433,12 @@ export function TransferForm({
   const members = (responsibleUsers ?? []) as MemberOption[];
   const membersLoading = responsibleUsers === undefined;
   const membersError = undefined;
-  const effectiveResponsibleUserId =
-    responsibleUserId ??
-    (sessionUserId && members.some((member) => member.id === sessionUserId)
-      ? sessionUserId
-      : null);
+  const effectiveResponsibleUserId = responsibleCleared
+    ? null
+    : (responsibleUserId ??
+      (sessionUserId && members.some((member) => member.id === sessionUserId)
+        ? sessionUserId
+        : null));
 
   const displayLines = lines;
   const lineGroups = Array.from(
@@ -342,12 +480,17 @@ export function TransferForm({
   }));
 
   const lineCount = lines.length;
-  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   function resetForm() {
-    setFromLocationId(kiosk?.isKioskAccount ? kiosk.locationId : null);
+    if (organizationId && draftUserId) {
+      clearTransferDraft(organizationId, draftUserId);
+    }
+    transferredAtEdited.current = false;
+    setDraftNoticeVisible(false);
+    setFromLocationId((current) => kiosk?.isKioskAccount ? kiosk.locationId : current);
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
+    setResponsibleCleared(false);
     setComment("");
     setTransferredAtLocal(() => toDateTimeLocal(Date.now()));
     setLines([]);
@@ -558,6 +701,9 @@ export function TransferForm({
     if (lines.some((line) => line.quantity <= 0)) {
       nextErrors.items = "Mængden skal være større end nul";
     }
+    if (lines.some(hasMissingUnit)) {
+      nextErrors.items = "Vælg en enhed for de markerede produkter";
+    }
 
     const temperatures: ProductTemperatureInput[] = [];
     const deviations: TemperatureDeviationConfirmation[] = [];
@@ -605,6 +751,19 @@ export function TransferForm({
         "Tilføj en kommentar, når temperaturen overstiger maksimum";
     }
     setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      window.setTimeout(() => {
+        if (nextErrors.comment) {
+          document.getElementById(`${inputIdPrefix}-comment`)?.focus();
+        } else if (nextErrors.transferredAt) {
+          document.getElementById(`${inputIdPrefix}-at`)?.focus();
+        } else {
+          document
+            .querySelector<HTMLElement>('[data-invalid="true"] [aria-invalid="true"], [data-invalid="true"] button')
+            ?.focus();
+        }
+      });
+    }
     return Object.keys(nextErrors).length === 0
       ? { temperatures, deviations }
       : null;
@@ -715,8 +874,29 @@ export function TransferForm({
     await submit(confirmation.validated, confirmation.deviations);
   }
 
+  const missingParts = transfer
+    ? []
+    : [
+        !fromLocationId && !toLocationId
+          ? "vælg fra- og til-lokation"
+          : !fromLocationId
+            ? "vælg fra-lokation"
+            : !toLocationId
+              ? "vælg til-lokation"
+              : null,
+        lines.length === 0 ? "tilføj et produkt" : null,
+      ].filter(Boolean);
+  const missingText = missingParts.join(" og ");
+  const missingForSave = missingText
+    ? `${missingText.charAt(0).toUpperCase()}${missingText.slice(1)} for at gemme`
+    : null;
   const actions = (
-    <div className="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
+    <div className="flex flex-col-reverse gap-2 xl:ml-auto xl:flex-row xl:items-center">
+      {missingForSave ? (
+        <p className="text-xs text-muted-foreground max-xl:order-first max-xl:text-center xl:whitespace-nowrap">
+          {missingForSave}
+        </p>
+      ) : null}
       {onCancel ? (
         <Button
           type="button"
@@ -735,7 +915,13 @@ export function TransferForm({
         size="lg"
         appearance="wide"
         className="min-h-11"
-        disabled={isSaving || locations === undefined}
+        disabled={
+          isSaving ||
+          locations === undefined ||
+          !fromLocationId ||
+          !toLocationId ||
+          lines.length === 0
+        }
         onClick={save}
       >
         {isSaving ? (
@@ -750,15 +936,21 @@ export function TransferForm({
 
   return (
     <div className="flex flex-col gap-6">
+      {draftNoticeVisible ? (
+        <DraftRestoredNotice
+          description="Din ufærdige transfer er hentet frem igen."
+          onDiscard={resetForm}
+        />
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)">
         <Card>
           <CardHeader>
-            <CardTitle>Detaljer</CardTitle>
+            <CardTitle role="heading" aria-level={2}>Detaljer</CardTitle>
           </CardHeader>
           <CardContent>
             <FieldGroup>
               <Field data-invalid={Boolean(errors.fromLocation)}>
-                <FieldLabel>Fra lokation</FieldLabel>
+                <FieldLabel>Fra lokation <span aria-hidden="true">*</span></FieldLabel>
                 <CreatableCombobox
                   options={fromLocationOptions}
                   value={fromLocationId}
@@ -772,14 +964,16 @@ export function TransferForm({
                     });
                   }}
                   placeholder="Søg efter lokation"
-                  ariaLabel="Fra lokation"
+                  ariaLabel="Fra lokation (påkrævet)" ariaRequired={true}
+                  ariaInvalid={Boolean(errors.fromLocation)}
+                  ariaDescribedBy={errors.fromLocation ? `${inputIdPrefix}-from-error` : undefined}
                   disabled={locations === undefined || locationsLocked}
                 />
-                <FieldError>{errors.fromLocation}</FieldError>
+                <FieldError id={`${inputIdPrefix}-from-error`}>{errors.fromLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
-                <FieldLabel>Til lokation</FieldLabel>
+                <FieldLabel>Til lokation <span aria-hidden="true">*</span></FieldLabel>
                 <CreatableCombobox
                   options={toLocationOptions}
                   value={toLocationId}
@@ -793,19 +987,22 @@ export function TransferForm({
                     });
                   }}
                   placeholder="Søg efter lokation"
-                  ariaLabel="Til lokation"
+                  ariaLabel="Til lokation (påkrævet)" ariaRequired={true}
+                  ariaInvalid={Boolean(errors.toLocation)}
+                  ariaDescribedBy={errors.toLocation ? `${inputIdPrefix}-to-error` : undefined}
                   disabled={locations === undefined || locationsLocked}
                 />
-                <FieldError>{errors.toLocation}</FieldError>
+                <FieldError id={`${inputIdPrefix}-to-error`}>{errors.toLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.responsible)}>
-                <FieldLabel>Ansvarlig</FieldLabel>
+                <FieldLabel>Ansvarlig <span aria-hidden="true">*</span></FieldLabel>
                 <CreatableCombobox
                   options={memberOptions}
                   value={effectiveResponsibleUserId}
                   onValueChange={(value) => {
                     setResponsibleUserId(value);
+                    setResponsibleCleared(value === null);
                     setErrors((current) => {
                       const next = { ...current };
                       delete next.responsible;
@@ -813,12 +1010,35 @@ export function TransferForm({
                     });
                   }}
                   placeholder="Søg efter ansvarlig"
-                  ariaLabel="Ansvarlig"
+                  ariaLabel="Ansvarlig (påkrævet)" ariaRequired={true}
+                  ariaInvalid={Boolean(errors.responsible)}
+                  ariaDescribedBy={errors.responsible || membersError ? `${inputIdPrefix}-responsible-error` : undefined}
                   disabled={membersLoading}
                 />
-                <FieldError>{errors.responsible ?? membersError}</FieldError>
+                <FieldError id={`${inputIdPrefix}-responsible-error`}>{errors.responsible ?? membersError}</FieldError>
               </Field>
 
+            </FieldGroup>
+            <Collapsible
+              open={optionalOpen || Boolean(errors.comment || errors.transferredAt)}
+              onOpenChange={setOptionalOpen}
+            >
+              <CollapsibleTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    appearance="compact"
+                    className="mt-5 min-h-11 w-full justify-between"
+                  />
+                }
+              >
+                Kommentar og tidspunkt
+                <ChevronDownIcon data-icon="inline-end" className="transition-transform [[aria-expanded=true]_&]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="pt-5">
+                  <FieldGroup>
               <Field data-invalid={Boolean(errors.comment)}>
                 <FieldLabel htmlFor={`${inputIdPrefix}-comment`}>
                   Kommentar (valgfri)
@@ -830,37 +1050,40 @@ export function TransferForm({
                   placeholder="Kommentar"
                   rows={3}
                   aria-invalid={Boolean(errors.comment)}
+                  aria-describedby={errors.comment ? `${inputIdPrefix}-comment-error` : undefined}
                 />
-                <FieldError>{errors.comment}</FieldError>
+                <FieldError id={`${inputIdPrefix}-comment-error`}>{errors.comment}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.transferredAt)}>
                 <FieldLabel htmlFor={`${inputIdPrefix}-at`}>
                   Tidspunkt
                 </FieldLabel>
-                <Input
+                <DateTimePicker
                   id={`${inputIdPrefix}-at`}
-                  type="datetime-local"
                   value={transferredAtLocal}
-                  onChange={(event) =>
-                    setTransferredAtLocal(event.target.value)
-                  }
-                  className="h-11"
+                  onValueChange={(value) => {
+                    transferredAtEdited.current = true;
+                    setTransferredAtLocal(value);
+                  }}
                   aria-invalid={Boolean(errors.transferredAt)}
+                  aria-describedby={errors.transferredAt ? `${inputIdPrefix}-at-error` : undefined}
                 />
-                <FieldError>{errors.transferredAt}</FieldError>
+                <FieldError id={`${inputIdPrefix}-at-error`}>{errors.transferredAt}</FieldError>
               </Field>
-            </FieldGroup>
+                  </FieldGroup>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Produkter</CardTitle>
+            <CardTitle role="heading" aria-level={2}>Produkter</CardTitle>
             <CardAction>
               <p className="text-sm text-muted-foreground">
-                {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"}{" "}
-                · {totalQuantity} enheder i alt
+                {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"}
               </p>
             </CardAction>
           </CardHeader>
@@ -1021,15 +1244,20 @@ export function TransferForm({
                               unavailableUnitIds={usedUnitIds}
                               quantity={line.quantity}
                               integer
-                              onUnitChange={(unitId) =>
+                              onUnitChange={(unitId) => {
                                 setLines((current) =>
                                   current.map((item) =>
                                     item.key === line.key
                                       ? { ...item, unitId }
                                       : item,
                                   ),
-                                )
-                              }
+                                );
+                                setErrors((current) => {
+                                  const next = { ...current };
+                                  delete next.items;
+                                  return next;
+                                });
+                              }}
                               onQuantityChange={(value) => {
                                 const next = Number(value.replace(",", "."));
                                 if (!Number.isFinite(next)) return;
@@ -1048,6 +1276,11 @@ export function TransferForm({
                                 );
                               }}
                               onRemove={() => removeLine(line)}
+                              error={
+                                hasMissingUnit(line)
+                                  ? `Bestilt i ${line.orderedUnitName}, som produktet ikke længere har. Vælg en enhed, og tjek mængden.`
+                                  : undefined
+                              }
                             />
                           </li>
                         ))}
@@ -1132,7 +1365,7 @@ export function TransferForm({
         </div>
       ) : (
         <AppBottomBar>
-          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 xl:flex-row xl:items-center">
             {navigation ? (
               <div className="min-w-0" inert={isSaving}>
                 {navigation}

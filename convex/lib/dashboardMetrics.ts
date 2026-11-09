@@ -575,13 +575,21 @@ export async function computeWithComparison(
   ) {
     return { ...current, comparison: "previousPeriod" };
   }
-  const totals = new Map(lastYear.series.map((series) => [series.key, series.total]));
+  const lastYearByKey = new Map(lastYear.series.map((series) => [series.key, series]));
+  const unshift = (time: number) =>
+    zonedStart(addDays(dateKey(time, params.timeZone), 364), params.timeZone);
   return {
     ...current,
-    series: current.series.map((series) => ({
-      ...series,
-      previousTotal: series.previousTotal === null ? null : totals.get(series.key) ?? null,
-    })),
+    series: current.series.map((series) => {
+      const previous = lastYearByKey.get(series.key);
+      return {
+        ...series,
+        previousTotal: series.previousTotal === null ? null : previous?.total ?? null,
+        ...(previous && series.previousTotal !== null
+          ? { previousPoints: previous.points.map((point) => ({ t: unshift(point.t), value: point.value })) }
+          : {}),
+      };
+    }),
     ...(current.headlinePrevious !== undefined
       ? { headlinePrevious: lastYear.headlineTotal ?? null }
       : {}),

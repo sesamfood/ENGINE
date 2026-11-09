@@ -74,6 +74,8 @@ export function CreatableCombobox({
   disabled = false,
   ariaLabel,
   ariaInvalid = false,
+  ariaDescribedBy,
+  ariaRequired = false,
   productSearch = false,
 }: {
   options: ComboboxOption[];
@@ -87,6 +89,8 @@ export function CreatableCombobox({
   disabled?: boolean;
   ariaLabel: string;
   ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
+  ariaRequired?: boolean;
   productSearch?: boolean;
 }) {
   const selectedLabel =
@@ -209,6 +213,8 @@ export function CreatableCombobox({
         placeholder={placeholder}
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid || undefined}
+        aria-describedby={ariaDescribedBy}
+        aria-required={ariaRequired || undefined}
         className="h-11 w-full"
         showClear
         disabled={disabled}

@@ -2,7 +2,7 @@
 
 import { CheckCircle2Icon, ClipboardListIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { LocationField } from "@/components/location-field";
@@ -48,15 +48,12 @@ function CountHeaderControls({
   lockedName?: string | null;
 }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Count
-        </p>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          <PageTitle>
             Count
-          </h1>
+          </PageTitle>
           {periodLabel ? (
             <p className="text-lg capitalize text-muted-foreground">
               {periodLabel}
@@ -66,7 +63,7 @@ function CountHeaderControls({
       </div>
 
       <Field>
-        <FieldLabel htmlFor="count-location">Lokation</FieldLabel>
+        <FieldLabel htmlFor="count-location" className="sr-only">Lokation</FieldLabel>
         <LocationField
           id="count-location"
           locations={locations}
@@ -115,7 +112,7 @@ export function CountHeader() {
           <ClipboardListIcon />
           <AlertTitle>Ekstra Count er åben</AlertTitle>
           <AlertDescription>
-            Lageret opdateres for de Produkter, du tæller, når Count
+            Lageret opdateres for de produkter, du tæller, når Count
             registreres. Den planlagte Count påvirkes ikke.
           </AlertDescription>
         </Alert>

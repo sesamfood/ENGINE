@@ -551,11 +551,21 @@ export default defineSchema({
   feedbackSettings: defineTable({
     organizationId: v.string(),
     enabled: v.boolean(),
-    destination: v.union(v.literal("linear"), v.literal("email")),
+    destination: v.union(
+      v.literal("linear"),
+      v.literal("notion"),
+      v.literal("email"),
+    ),
     email: v.optional(v.string()),
     linearApiKey: v.optional(v.string()),
     linearTeamId: v.optional(v.string()),
     linearTeamName: v.optional(v.string()),
+    notionToken: v.optional(v.string()),
+    notionDatabaseId: v.optional(v.string()),
+    notionDatabaseName: v.optional(v.string()),
+    notionProjectProperty: v.optional(v.string()),
+    notionProjectName: v.optional(v.string()),
+    notionProjectPageId: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
@@ -572,7 +582,11 @@ export default defineSchema({
     description: v.optional(v.string()),
     screenshotStorageId: v.optional(v.id("_storage")),
     sessionReplayUrl: v.optional(v.string()),
-    destination: v.union(v.literal("linear"), v.literal("email")),
+    destination: v.union(
+      v.literal("linear"),
+      v.literal("notion"),
+      v.literal("email"),
+    ),
     status: v.union(
       v.literal("pending"),
       v.literal("sent"),
@@ -637,6 +651,9 @@ export default defineSchema({
     displayName: v.string(),
     normalizedName: v.string(),
     imageUrl: v.union(v.string(), v.null()),
+    // Role names from the scheduling provider, unless set in the app.
+    roleNames: v.optional(v.array(v.string())),
+    roleNamesManaged: v.optional(v.boolean()),
     active: v.boolean(),
     updatedAt: v.number(),
   })
@@ -693,12 +710,15 @@ export default defineSchema({
   staffFoodSettings: defineTable({
     organizationId: v.string(),
     afterShiftMinutes: v.number(),
+    wholeDay: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
   staffFoodRuleTiers: defineTable({
     organizationId: v.string(),
     minimumShiftMinutes: v.number(),
+    // Shift role names this tier is limited to. Missing or empty means all roles.
+    roleNames: v.optional(v.array(v.string())),
     updatedAt: v.number(),
   }).index("by_organizationId_and_minimumShiftMinutes", [
     "organizationId",
@@ -745,6 +765,7 @@ export default defineSchema({
     employeeId: v.id("employees"),
     source: v.union(v.literal("scheduled"), v.literal("manual")),
     scheduledShiftId: v.optional(v.id("scheduledShifts")),
+    roleName: v.optional(v.string()),
     workDate: v.string(),
     startsAt: v.optional(v.number()),
     endsAt: v.optional(v.number()),
@@ -841,6 +862,10 @@ export default defineSchema({
     organizationId: v.string(),
     name: v.string(),
     normalizedName: v.string(),
+    // Shown instead of name for any quantity other than exactly 1.
+    pluralName: v.optional(v.string()),
+    // Set on built-in standard units, e.g. "dry:g". See lib/unit-system.ts.
+    systemKey: v.optional(v.string()),
   }).index("by_organizationId_and_normalizedName", [
     "organizationId",
     "normalizedName",
@@ -890,6 +915,10 @@ export default defineSchema({
     name: v.string(),
     normalizedName: v.string(),
     categoryId: v.id("categories"),
+    // Absent on products created before standard units; see unit migration.
+    productType: v.optional(
+      v.union(v.literal("dry"), v.literal("wet"), v.literal("piece")),
+    ),
     defaultUnitId: v.id("units"),
     // Amount the ingredient list produces; absent means one default unit.
     recipeYield: v.optional(
@@ -911,6 +940,10 @@ export default defineSchema({
       "normalizedName",
     ])
     .index("by_organizationId_and_categoryId", ["organizationId", "categoryId"])
+    .index("by_organizationId_and_productType", [
+      "organizationId",
+      "productType",
+    ])
     .index("by_organizationId_and_status_and_normalizedName", [
       "organizationId",
       "status",
@@ -930,6 +963,20 @@ export default defineSchema({
   catalogSettings: defineTable({
     organizationId: v.string(),
     packagingEnabled: v.boolean(),
+    unitSystem: v.optional(
+      v.object({
+        mode: v.union(
+          v.literal("metric"),
+          v.literal("imperial"),
+          v.literal("custom"),
+        ),
+        drySystem: v.union(v.literal("metric"), v.literal("imperial")),
+        wetSystem: v.union(v.literal("metric"), v.literal("imperial")),
+      }),
+    ),
+    disabledProductTypes: v.optional(
+      v.array(v.union(v.literal("dry"), v.literal("wet"), v.literal("piece"))),
+    ),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
@@ -952,8 +999,10 @@ export default defineSchema({
     productId: v.id("products"),
     unitId: v.id("units"),
     factorToDefault: v.number(),
-    // Packaging weight in this unit, subtracted when a Count includes packaging.
+    // Legacy packaging weight in this unit; moved to containers by migration.
     packagingWeight: v.optional(v.number()),
+    // Set when the unit is a container, e.g. one bucket.
+    containerId: v.optional(v.id("containers")),
   })
     .index("by_organizationId_and_productId", ["organizationId", "productId"])
     .index("by_organizationId_and_productId_and_unitId", [
@@ -962,6 +1011,24 @@ export default defineSchema({
       "unitId",
     ])
     .index("by_organizationId_and_unitId", ["organizationId", "unitId"]),
+
+  containers: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    imageStorageId: v.optional(v.id("_storage")),
+    // Empty weight in grams, subtracted from a weighed Count.
+    weightGrams: v.number(),
+    capacityMilliliters: v.optional(v.number()),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_imageStorageId", ["imageStorageId"])
+    .index("by_organizationId_and_normalizedName", [
+      "organizationId",
+      "normalizedName",
+    ]),
 
   productIngredients: defineTable({
     organizationId: v.string(),
@@ -1391,8 +1458,13 @@ export default defineSchema({
     manualGoodsReceiptId: v.optional(v.id("manualGoodsReceipts")),
     // Internal orders: received through the fulfilling Transfer, not receiptStatus.
     fulfillingLocationId: v.optional(v.id("locations")),
+    comment: v.optional(v.string()),
     fulfillmentStatus: v.optional(
-      v.union(v.literal("open"), v.literal("transferred")),
+      v.union(
+        v.literal("open"),
+        v.literal("transferred"),
+        v.literal("cancelled"),
+      ),
     ),
     transferId: v.optional(v.id("transfers")),
     // Set when an open internal order is edited. A Transfer must match the latest version.
@@ -1432,12 +1504,15 @@ export default defineSchema({
   goodsReceiptSettings: defineTable({
     organizationId: v.string(),
     transferDeliveryNotePhotoEnabled: v.boolean(),
+    // Missing means required. Internal-order transfers always need a receipt.
+    transferReceiptRequired: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
   wasteSettings: defineTable({
     organizationId: v.string(),
-    inactivitySeconds: v.number(),
+    // Unused. Older rows still carry it.
+    inactivitySeconds: v.optional(v.number()),
     popularityPeriod: v.union(
       v.literal("allTime"),
       v.literal("30Days"),
@@ -1957,8 +2032,27 @@ export default defineSchema({
     enabledPages: v.array(v.string()),
     homePage: v.string(),
     inactivitySeconds: v.union(v.number(), v.null()),
+    // Lets the kiosk leave a due start of day and use its other pages.
+    allowLeavingStartOfDay: v.optional(v.boolean()),
+    // Modules whose kiosk pages ask for the location's PIN code.
+    pinFeatures: v.optional(v.array(v.string())),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  kioskPins: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    pinHash: v.string(),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  // PIN unlock state for one kiosk session; it locks again when the kiosk leaves PIN pages.
+  kioskPinUnlocks: defineTable({
+    sessionId: v.string(),
+    unlocked: v.boolean(),
+    failedAttempts: v.number(),
+    blockedUntil: v.union(v.number(), v.null()),
+  }).index("by_sessionId", ["sessionId"]),
 
   // Kiosk mode started by a regular user's own session, bound to one location.
   kioskSessions: defineTable({

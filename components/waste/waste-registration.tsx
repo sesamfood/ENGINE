@@ -25,8 +25,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import Link from "next/link";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -36,6 +38,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
@@ -54,11 +57,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ProductGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { searchProducts } from "@/lib/product-search";
+import { unitNameFor } from "@/lib/unit-system";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -72,6 +82,7 @@ import {
 import Image from "next/image";
 import posthog from "posthog-js";
 import { useEffect, useMemo, useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { useWasteContext } from "./waste-header";
 
@@ -101,6 +112,14 @@ function formatQuantity(quantity: number) {
   );
 }
 
+const FALLBACK_QUANTITIES: Record<string, [number, number]> = {
+  stk: [1, 2],
+  g: [100, 500],
+  ml: [100, 500],
+  oz: [1, 4],
+  "fl oz": [4, 8],
+};
+
 function shortcutsFor(
   product: Product,
   learned: Shortcut[] | undefined,
@@ -111,18 +130,25 @@ function shortcutsFor(
     (shortcut) => valid.has(shortcut.unitId) && shortcut.quantity > 0,
   );
   if (override) return result.slice(0, 2);
-  for (const quantity of [1, 0.5]) {
+  const fillUnitId = result[0]?.unitId ?? product.defaultUnitId;
+  const fillUnit = product.units.find((unit) => unit.id === fillUnitId);
+  const fallbackQuantities =
+    FALLBACK_QUANTITIES[fillUnit?.name.trim().toLowerCase() ?? ""] ?? [1, 0.5];
+  for (const quantity of fallbackQuantities) {
     if (result.length === 2) break;
     if (
       !result.some(
-        (item) =>
-          item.unitId === product.defaultUnitId && item.quantity === quantity,
+        (item) => item.unitId === fillUnitId && item.quantity === quantity,
       )
     ) {
-      result.push({ unitId: product.defaultUnitId, quantity });
+      result.push({ unitId: fillUnitId, quantity });
     }
   }
-  return result.slice(0, 2);
+  const sliced = result.slice(0, 2);
+  if (sliced.length === 2 && sliced[0].unitId === sliced[1].unitId) {
+    sliced.sort((a, b) => a.quantity - b.quantity);
+  }
+  return sliced;
 }
 
 function WasteUndoControls({
@@ -158,7 +184,7 @@ function WasteUndoControls({
         variant="destructive"
         size="lg"
         appearance="floating"
-        className="fixed right-3 bottom-(--spacing-safe-inset) z-20 h-12 sm:right-4"
+        className="fixed right-3 bottom-(--spacing-safe-actions) z-20 h-12 sm:right-4"
         disabled={undoingIds.length > 0}
         onClick={() => {
           if (registrations.length === 1) {
@@ -247,7 +273,7 @@ function WasteUndoControls({
 }
 
 export function WasteRegistration() {
-  const { locationId, locations } = useWasteContext();
+  const { locationId, locations, setDraftState } = useWasteContext();
   const catalog = useCompleteCatalog(
     api.waste.listCatalogPage,
     locationId ? { locationId } : "skip",
@@ -285,6 +311,8 @@ export function WasteRegistration() {
   const [category, setCategory] = useState("all");
   const [selectedId, setSelectedId] = useState<Id<"products"> | null>(null);
   const [quantity, setQuantity] = useState("1");
+  const [quantityError, setQuantityError] = useState<string>();
+  const [submittingCustom, setSubmittingCustom] = useState(false);
   const [unitId, setUnitId] = useState<Id<"units"> | null>(null);
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const [shortcutDrafts, setShortcutDrafts] = useState<Shortcut[] | null>(null);
@@ -387,6 +415,19 @@ export function WasteRegistration() {
     setEditingShortcuts(false);
   }
 
+  const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
+  const draftBusy = pendingKeys.size > 0 || undoingIds.length > 0;
+  useEffect(() => {
+    setDraftState({ dirty: false, busy: draftBusy });
+  }, [draftBusy, setDraftState]);
+  useEffect(
+    () => () => setDraftState({ dirty: false, busy: false }),
+    [setDraftState],
+  );
+
   async function register(
     product: Product,
     shortcut: Shortcut,
@@ -394,6 +435,8 @@ export function WasteRegistration() {
   ) {
     if (!locationId) return;
     const key = `${product.id}:${shortcut.unitId}:${shortcut.quantity}`;
+    if (pendingKeys.has(key)) return;
+    setPendingKeys((keys) => new Set(keys).add(key));
     try {
       const result = await registerWaste({
         locationId,
@@ -414,7 +457,7 @@ export function WasteRegistration() {
           result.registeredAt + UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS,
       };
       toast.success(
-        `Waste registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
+        `Waste registreret: ${formatQuantity(shortcut.quantity)} ${unit ? unitNameFor(unit, shortcut.quantity) : ""} ${product.name}`,
         {
           duration: 10_000,
           action: {
@@ -448,6 +491,12 @@ export function WasteRegistration() {
           "Waste-handlingen kunne ikke gennemføres. Prøv igen.",
         ),
       );
+    } finally {
+      setPendingKeys((keys) => {
+        const next = new Set(keys);
+        next.delete(key);
+        return next;
+      });
     }
   }
 
@@ -536,16 +585,7 @@ export function WasteRegistration() {
     }
   }
 
-  if (!locations || catalog === undefined) {
-    return (
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 10 }, (_, index) => (
-          <Skeleton key={index} className="h-72" />
-        ))}
-      </div>
-    );
-  }
-  if (!locations.length) {
+  if (locations && locations.length === 0) {
     return (
       <Empty className="min-h-72">
         <EmptyHeader>
@@ -557,7 +597,30 @@ export function WasteRegistration() {
             Opret en lokation, før Waste kan registreres.
           </EmptyDescription>
         </EmptyHeader>
+        <EmptyContent>
+          <Button render={<Link href="/administration/locations" />}>
+            Opret lokation
+          </Button>
+        </EmptyContent>
       </Empty>
+    );
+  }
+  if (!locations || catalog === undefined) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+        <ProductGridSkeleton>
+          <CardHeader appearance="productCompact">
+            <Skeleton className="h-5 w-2/3" />
+            <Skeleton className="h-4 w-1/3" />
+          </CardHeader>
+          <CardContent appearance="productGrid" className="grid grid-cols-2">
+            <Skeleton className="h-12" />
+            <Skeleton className="h-12" />
+          </CardContent>
+        </ProductGridSkeleton>
+      </div>
     );
   }
   if (!catalog.length) {
@@ -572,6 +635,11 @@ export function WasteRegistration() {
             Der er ingen aktive produkter at registrere Waste for.
           </EmptyDescription>
         </EmptyHeader>
+        <EmptyContent>
+          <Button render={<Link href="/administration/products" />}>
+            Gå til produkter
+          </Button>
+        </EmptyContent>
       </Empty>
     );
   }
@@ -581,13 +649,14 @@ export function WasteRegistration() {
       <Tabs value={category} onValueChange={setCategory}>
         <TabsList
           className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
+          appearance="scrollFade"
           aria-label="Produktkategorier"
         >
-          <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
+          <TabsTrigger value="all" appearance="standard" className="shrink-0">
             Alle
           </TabsTrigger>
           {categories.map(([id, name]) => (
-            <TabsTrigger key={id} value={id} appearance="standard" className="min-w-28 shrink-0">
+            <TabsTrigger key={id} value={id} appearance="standard" className="shrink-0">
               {name}
             </TabsTrigger>
           ))}
@@ -636,19 +705,18 @@ export function WasteRegistration() {
                       imageUrl={product.imageUrl}
                       alt=""
                       fallback={
-                        <ImageIcon
-                          className="size-10 lg:size-12"
-                          aria-hidden="true"
-                        />
+                        <span className="flex size-14 items-center justify-center rounded-full bg-background/70">
+                          <ImageIcon className="size-7" aria-hidden="true" />
+                        </span>
                       }
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                     />
-                    <CardHeader appearance="product">
-                      <div className="flex min-w-0 items-baseline gap-2">
-                        <CardTitle appearance="truncate" className="min-w-0 flex-1">
+                    <CardHeader appearance="productCompact">
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <CardTitle appearance="productName" className="min-w-0">
                           {product.name}
                         </CardTitle>
-                        <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
+                        <CardDescription appearance="truncate">
                           {product.categories
                             .map((category) => category.name)
                             .join(" · ")}
@@ -663,26 +731,35 @@ export function WasteRegistration() {
                       aria-label={`Registrér en anden mængde Waste for ${product.name}`}
                       onClick={() => openProduct(product)}
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      appearance="imageAction"
-                      className="absolute right-1 top-1 z-10 size-11"
-                      aria-label={
-                        config?.pinnedAt
-                          ? `Fjern ${product.name} fra fastgjorte produkter`
-                          : `Fastgør ${product.name}`
-                      }
-                      aria-pressed={Boolean(config?.pinnedAt)}
-                      onClick={() => togglePin(product)}
-                    >
-                      <PinIcon
-                        className={cn(
-                          config?.pinnedAt && "fill-current text-primary",
-                        )}
-                      />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-lg"
+                            appearance="imageAction"
+                            className="absolute right-1 top-1 z-10 size-11"
+                            aria-label={
+                              config?.pinnedAt
+                                ? `Fjern ${product.name} fra fastgjorte produkter`
+                                : `Fastgør ${product.name}`
+                            }
+                            aria-pressed={Boolean(config?.pinnedAt)}
+                            onClick={() => togglePin(product)}
+                          />
+                        }
+                      >
+                        <PinIcon
+                          className={cn(
+                            config?.pinnedAt && "fill-current text-primary",
+                          )}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {config?.pinnedAt ? "Fjern fra fastgjorte" : "Fastgør"}
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   <CardContent appearance="productGrid" className="grid grid-cols-2">
                     {shortcuts.map((shortcut, index) => {
@@ -698,11 +775,17 @@ export function WasteRegistration() {
                             recent === key ? "recentQuantity" : "quantity"
                           }
                           className="h-12 min-w-0"
+                          disabled={pendingKeys.has(key)}
+                          aria-label={`Registrér ${formatQuantity(shortcut.quantity)} ${unit ? unitNameFor(unit, shortcut.quantity) : ""} ${product.name} som Waste`}
                           onClick={() =>
                             register(product, shortcut, "shortcut")
                           }
                         >
-                          {formatQuantity(shortcut.quantity)} {unit?.name}
+                          {pendingKeys.has(key) ? (
+                            <Spinner data-icon="inline-start" />
+                          ) : null}
+                          {formatQuantity(shortcut.quantity)}{" "}
+                          {unit && unitNameFor(unit, shortcut.quantity)}
                         </Button>
                       );
                     })}
@@ -853,7 +936,7 @@ export function WasteRegistration() {
                 </FieldGroup>
               ) : (
                 <div className="grid grid-cols-(--grid-cols-delivery-product) gap-3">
-                  <Field>
+                  <Field data-invalid={Boolean(quantityError)}>
                     <FieldLabel htmlFor="waste-quantity">Mængde</FieldLabel>
                     <Input
                       id="waste-quantity"
@@ -862,8 +945,16 @@ export function WasteRegistration() {
                       max="1000000"
                       step="any"
                       value={quantity}
-                      onChange={(event) => setQuantity(event.target.value)}
+                      aria-invalid={Boolean(quantityError)}
+                      aria-describedby={quantityError ? "waste-quantity-error" : undefined}
+                      onChange={(event) => {
+                        setQuantity(event.target.value);
+                        setQuantityError(undefined);
+                      }}
                     />
+                    {quantityError ? (
+                      <FieldError id="waste-quantity-error">{quantityError}</FieldError>
+                    ) : null}
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="waste-unit">Enhed</FieldLabel>
@@ -911,23 +1002,30 @@ export function WasteRegistration() {
                       </Button>
                     ) : null}
                     <Button
-                      onClick={() => {
+                      disabled={submittingCustom}
+                      onClick={async () => {
                         const parsed = Number(quantity);
                         if (
                           !unitId ||
                           !Number.isFinite(parsed) ||
                           parsed <= 0
                         ) {
-                          toast.error("Angiv en mængde større end 0");
+                          setQuantityError("Angiv en mængde større end 0");
                           return;
                         }
-                        register(
-                          selected,
-                          { unitId, quantity: parsed },
-                          "custom",
-                        );
+                        setSubmittingCustom(true);
+                        try {
+                          await register(
+                            selected,
+                            { unitId, quantity: parsed },
+                            "custom",
+                          );
+                        } finally {
+                          setSubmittingCustom(false);
+                        }
                       }}
                     >
+                      {submittingCustom ? <Spinner data-icon="inline-start" /> : null}
                       Registrér Waste
                     </Button>
                   </>

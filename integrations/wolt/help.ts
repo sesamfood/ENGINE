@@ -22,7 +22,7 @@ const woltOrdersGuide: HelpGuide = {
       title: "Ordredetaljer",
       bullets: [
         "Ordren viser Netto kurv, bruttobeløb, antal varer, ordretype, status og tidspunkter.",
-        "Hver produktlinje viser antal, priser og det koblede lokale Produkt. Ikke koblet eller Konflikt kræver en produktkobling under Integrationer → Wolt.",
+        "Hver produktlinje viser antal, priser og det koblede lokale produkt. Ikke koblet eller Konflikt kræver en produktkobling under Integrationer → Wolt.",
         "Statushistorik viser tidspunktet hos Wolt og tidspunktet, appen modtog ændringen.",
         "Visningen indeholder ingen forbrugeroplysninger. Ordrer gemmes i 400 dage.",
         "Advarsler peger på lokationer uden forbindelse, uden nylig aktivitet eller med fejl. Kontrollér dem under Integrationer → Wolt.",
@@ -43,7 +43,7 @@ export const woltGuide: HelpGuide = {
   slug: "wolt",
   label: "Wolt",
   summary:
-    "Forbind Wolt pr. Lokation, kobl Wolt-produkter til jeres Produkter, og kontrollér, at ordrer kommer ind.",
+    "Forbind Wolt pr. Lokation, kobl Wolt-produkter til jeres produkter, og kontrollér, at ordrer kommer ind.",
   appHref: "/administration/integrations/wolt",
   appLinkLabel: "Åbn Wolt-indstillinger",
   sections: [
@@ -51,7 +51,7 @@ export const woltGuide: HelpGuide = {
       id: "adgang",
       title: "Før du starter",
       bullets: [
-        "Opret lokationer og Produkter. Din rolle skal kunne administrere integrationer.",
+        "Opret lokationer og produkter. Din rolle skal kunne administrere integrationer.",
         "Integrationen læser ordredata. Den kan ikke acceptere, annullere eller ændre ordrer hos Wolt.",
         "Siden Wolt-ordrer slås til under Administration → Wolt-ordrer.",
       ],
@@ -90,7 +90,7 @@ export const woltGuide: HelpGuide = {
       title: "Kobl Wolt-produkter",
       steps: [
         "Find Observerede Wolt-produkter. Listen fyldes, når der kommer ordrer.",
-        "Vælg det lokale Produkt, og vælg Gælder for: Alle lokationer eller én Lokation. Vælg Gem.",
+        "Vælg det lokale produkt, og vælg Gælder for: Alle lokationer eller én Lokation. Vælg Gem.",
       ],
       bullets: [
         "Koblingen bruger GTIN, POS-id, SKU eller navn i den rækkefølge. Navneforslag gemmes ikke automatisk.",

@@ -98,7 +98,6 @@ const shortcutValidator = v.object({
   quantity: v.number(),
 });
 const viewSettingsValidator = v.object({
-  inactivitySeconds: v.number(),
   popularityPeriod: popularityPeriodValidator,
   historyScope: historyScopeValidator,
 });
@@ -205,7 +204,6 @@ async function settingsFor(ctx: WasteContext, organizationId: string) {
     .withIndex("by_org", (q) => q.eq("organizationId", organizationId))
     .unique();
   return {
-    inactivitySeconds: settings?.inactivitySeconds ?? 30,
     popularityPeriod: settings?.popularityPeriod ?? ("allTime" as const),
     historyScope: settings?.historyScope ?? ("location" as const),
     badDeliveryDeductFromStock: settings?.badDeliveryDeductFromStock ?? true,
@@ -916,13 +914,6 @@ export const setSettings = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireWasteSettings(ctx);
-    if (
-      !Number.isInteger(args.inactivitySeconds) ||
-      args.inactivitySeconds < 5 ||
-      args.inactivitySeconds > 3600
-    ) {
-      throw new ConvexError("Inaktivitet skal være mellem 5 og 3600 sekunder");
-    }
     const recipients = validateBadDeliveryRecipients({
       to: args.badDeliveryTo,
       cc: args.badDeliveryCc,
@@ -1097,7 +1088,6 @@ export const getViewState = query({
     if (args.omitProducts) {
       return {
         settings: {
-          inactivitySeconds: settings.inactivitySeconds,
           popularityPeriod: settings.popularityPeriod,
           historyScope: settings.historyScope,
         },
@@ -1198,7 +1188,6 @@ export const getViewState = query({
     requireCompleteProductSet(configs);
     return {
       settings: {
-        inactivitySeconds: settings.inactivitySeconds,
         popularityPeriod: settings.popularityPeriod,
         historyScope: settings.historyScope,
       },

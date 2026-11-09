@@ -138,7 +138,7 @@ export async function queueStockSync(
     stocks.length > 500
       ? "Lokationen har for mange lagerprodukter"
       : settings.stockSyncSinceLastCount && earliestCount < historyStart
-        ? "Salgshistorikken dækker ikke seneste Count for alle Produkter. Registrér en ny Count, eller aktivér kun fremtidige salg."
+        ? "Salgshistorikken dækker ikke seneste Count for alle produkter. Registrér en ny Count, eller aktivér kun fremtidige salg."
         : undefined;
   const value = {
     organizationId,

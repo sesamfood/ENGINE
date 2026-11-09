@@ -3,10 +3,9 @@
 import { BoxesIcon, ClipboardListIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useKiosk, usePermission } from "@/components/app-shell";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { cn } from "@/lib/utils";
+import { SectionNav } from "@/components/section-nav";
 
 export function CountNavigation({ action }: { action?: ReactNode }) {
   const pathname = usePathname();
@@ -30,45 +29,23 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
 
   if (!showSectionTabs && !action) return null;
 
+  const onStock = pathname.startsWith("/count/stock");
+  const items = [
+    ...(showCount
+      ? [{ href: "/count", label: "Registrér", icon: ClipboardListIcon, active: !onStock }]
+      : []),
+    ...(showStock
+      ? [{ href: "/count/stock", label: "Lager", icon: BoxesIcon, active: onStock }]
+      : []),
+  ];
+
   return (
     <AppBottomBar>
-      <div
-        className={cn(
-          "mx-auto flex w-full max-w-(--container-page) items-center gap-3",
-          showSectionTabs ? "justify-between" : "justify-end",
-        )}
-      >
+      <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse gap-2 sm:flex-row sm:items-center">
         {showSectionTabs ? (
-          <Tabs
-            value={pathname.startsWith("/count/stock") ? "stock" : "count"}
-            onValueChange={(value) =>
-              router.push(value === "stock" ? "/count/stock" : "/count", {
-                scroll: false,
-              })
-            }
-            className="min-w-0"
-          >
-            <TabsList
-              variant="line"
-              aria-label="Count-sektioner"
-              className="h-12 max-w-full justify-start"
-            >
-              {showCount ? (
-                <TabsTrigger value="count" appearance="standard" className="min-w-28">
-                  <ClipboardListIcon data-icon="inline-start" />
-                  Count
-                </TabsTrigger>
-              ) : null}
-              {showStock ? (
-                <TabsTrigger value="stock" appearance="standard" className="min-w-24">
-                  <BoxesIcon data-icon="inline-start" />
-                  Lager
-                </TabsTrigger>
-              ) : null}
-            </TabsList>
-          </Tabs>
+          <SectionNav label="Count-sektioner" items={items} />
         ) : null}
-        {action}
+        {action ? <div className="sm:ml-auto">{action}</div> : null}
       </div>
     </AppBottomBar>
   );

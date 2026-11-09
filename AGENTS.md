@@ -20,6 +20,7 @@ The system should support practical customization without becoming a general-pur
 - Make frequent and important actions prominent, direct, and easy to understand.
 - Minimize the number of taps or clicks required to complete important actions.
 - Put supplementary settings guidance in the existing question-mark help tooltip pattern when the field label is clear on its own.
+- Check every UI change visually in a browser before calling it done: phone, tablet, and desktop widths, with no horizontal page scroll. Typecheck and lint passing is not a visual check.
 
 ## App terminology
 
@@ -40,6 +41,7 @@ Use this vocabulary in every user-facing surface, including navigation, help tex
 | Personal areas          | `Profil` and `Indstillinger` as separate siblings |
 
 - Treat `Transfer`, `Waste`, `Count`, and `Staff food` as fixed product terms inside Danish copy. Write `Transferhistorik`, `transferdato`, and `transferlinje`. Use a hyphen after the other product terms, for example `Waste-rapport`, `Count-vindue`, and `Staff food-regel`. Use `transferen` and `transfers` when Danish grammar requires inflection.
+- Write `produkt` in lowercase mid-sentence. Capitalize it at the start of a sentence and in a label that names a screen, such as `Produkter og områder`.
 - Reserve `Medlem` for the built-in role name. Use `Bruger` for a person who belongs to an organization. `Medarbejder` still means a Workfeed employee.
 - Use `Lokation` for an app location. `Afdeling` still means a provider department.
 - Describe dashboard selection with the concrete term involved, such as `lokationsvalg`, `marked`, or `operatør`. Do not show the implementation term `scope` to users.

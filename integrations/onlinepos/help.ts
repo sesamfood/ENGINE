@@ -5,7 +5,7 @@ export const onlinePosGuide: HelpGuide = {
   slug: "onlinepos",
   label: "OnlinePOS",
   summary:
-    "Hent produktlister og salg fra OnlinePOS, kobl salget til jeres Produkter, og lad salget opdatere lageret.",
+    "Hent produktlister og salg fra OnlinePOS, kobl salget til jeres produkter, og lad salget opdatere lageret.",
   appHref: "/administration/integrations/onlinepos",
   appLinkLabel: "Åbn OnlinePOS-indstillinger",
   sections: [
@@ -13,7 +13,7 @@ export const onlinePosGuide: HelpGuide = {
       id: "data",
       title: "Masterforbindelser og lokationer",
       paragraphs: [
-        "En masterforbindelse leverer produktlisten, som jeres Produkter kobles til. Hver Lokation har sin egen forbindelse, som leverer salg og ordrer. Har I flere OnlinePOS-produktlister, opretter du en masterforbindelse for hver og vælger, hvilken lokationen bruger.",
+        "En masterforbindelse leverer produktlisten, som jeres produkter kobles til. Hver Lokation har sin egen forbindelse, som leverer salg og ordrer. Har I flere OnlinePOS-produktlister, opretter du en masterforbindelse for hver og vælger, hvilken lokationen bruger.",
       ],
     },
     {
@@ -21,7 +21,7 @@ export const onlinePosGuide: HelpGuide = {
       title: "Rækkefølge",
       steps: [
         "Forbind masterforbindelsen og lokationerne.",
-        "Kobl Produkterne, og kontrollér en kendt ordre under Salg.",
+        "Kobl produkterne, og kontrollér en kendt ordre under Salg.",
         "Slå lagersynkronisering til, når koblinger, enheder og opskrifter er klar.",
       ],
     },
@@ -41,7 +41,7 @@ export const onlinePosGuide: HelpGuide = {
           bullets: [
             "Du skal kunne administrere integrationer. Masterforbindelser og fælles lagerindstillinger kræver adgang til alle lokationer.",
             "Få firma-id og API-token til masterkontoen og til hver Lokations OnlinePOS-konto hos OnlinePOS.",
-            "Opret lokationer og Produkter først.",
+            "Opret lokationer og produkter først.",
           ],
         },
         {
@@ -66,43 +66,43 @@ export const onlinePosGuide: HelpGuide = {
         },
       ],
       relatedLinks: [
-        { integration: "onlinepos", href: "/help/integrationer/onlinepos/produktkoblinger", label: "Kobl Produkter" },
+        { integration: "onlinepos", href: "/help/integrationer/onlinepos/produktkoblinger", label: "Kobl produkter" },
       ],
     },
     {
       slug: "produktkoblinger",
-      label: "Kobl Produkter og opskrifter",
+      label: "Kobl produkter og opskrifter",
       summary:
-        "Forbind OnlinePOS-produkter med jeres Produkter, så salg kan omregnes til forbrug.",
+        "Forbind OnlinePOS-produkter med jeres produkter, så salg kan omregnes til forbrug.",
       appHref: "/administration/integrations/onlinepos",
       appLinkLabel: "Åbn OnlinePOS-indstillinger",
       sections: [
         {
           id: "produktkoblinger",
-          title: "Kobl salget til jeres Produkter",
+          title: "Kobl salget til jeres produkter",
           steps: [
             "Åbn fanen Produktkoblinger. Vælg masterforbindelse og eventuelt Kategori.",
-            "Find det lokale Produkt, og vælg det tilsvarende OnlinePOS-produkt. Valget gemmes med det samme.",
+            "Find det lokale produkt, og vælg det tilsvarende OnlinePOS-produkt. Valget gemmes med det samme.",
             "Brug Opdatér produkter, hvis OnlinePOS-listen er ændret. Kontrollér navneforslag, før du vælger dem.",
           ],
           bullets: [
             "Koblingen kan også vælges i produkteditoren.",
-            "Koblinger opretter ikke Produkter. Opret manglende Produkter under Administration → Produkter.",
+            "Koblinger opretter ikke produkter. Opret manglende produkter under Administration → Produkter.",
           ],
         },
         {
           id: "opskrifter",
           title: "Opskrifter, tilvalg og fravalg",
           paragraphs: [
-            "Et solgt Produkt med opskrift trækker ingredienserne fra lageret. Kobl ingrediensernes tilvalg og fravalg i produkteditoren, og kontrollér mængder og enheder. En forkert kobling giver forkert forbrug og lager.",
+            "Et solgt produkt med opskrift trækker ingredienserne fra lageret. Kobl ingrediensernes tilvalg og fravalg i produkteditoren, og kontrollér mængder og enheder. En forkert kobling giver forkert forbrug og lager.",
           ],
         },
       ],
       troubleshooting: [
         {
-          question: "Et Produkt mangler på koblingslisten",
+          question: "Et produkt mangler på koblingslisten",
           answer:
-            "Kontrollér, at Produktet er aktivt, og ryd kategorifilteret. Listen viser højst 500 Produkter. Mangler OnlinePOS-produktet, så vælg Opdatér produkter og kontrollér masterforbindelsen.",
+            "Kontrollér, at produktet er aktivt, og ryd kategorifilteret. Listen viser højst 500 produkter. Mangler OnlinePOS-produktet, så vælg Opdatér produkter og kontrollér masterforbindelsen.",
         },
       ],
       relatedLinks: [
@@ -184,8 +184,8 @@ export const onlinePosGuide: HelpGuide = {
           id: "beregning",
           title: "Sådan ændres lageret",
           bullets: [
-            "Et Produkt med opskrift trækker ingredienserne. Andre Produkter trækker sig selv. Tilvalg og fravalg følger koblingerne.",
-            "Synkronisering siden Count starter ved hvert Produkts seneste Count. Produkter uden Count starter fra nu. Salg trækkes aldrig fra to gange.",
+            "Et produkt med opskrift trækker ingredienserne. Andre produkter trækker sig selv. Tilvalg og fravalg følger koblingerne.",
+            "Synkronisering siden Count starter ved hvert produkts seneste Count. Produkter uden Count starter fra nu. Salg trækkes aldrig fra to gange.",
             "Ændring af refunderingsvalget gælder kun refunderinger, der behandles fremover.",
             "Slår du synkroniseringen fra, stopper nye lagerændringer. Tidligere ændringer bevares.",
           ],

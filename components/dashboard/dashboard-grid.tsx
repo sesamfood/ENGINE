@@ -34,7 +34,8 @@ import {
   widgetsOverlappingPosition,
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
-import type { ComparisonPeriod, CustomMetricSpec, DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { ComparisonPeriod, CustomMetricSpec, DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, WidgetTarget, VisualizationId } from "@/lib/dashboard/types";
+import { supportsTarget, widgetTarget } from "@/lib/dashboard/target";
 import { DashboardWidget } from "./dashboard-widget";
 import { useLiveMetrics, type LiveMetricState } from "./use-live-metrics";
 import { useFinancialMetrics } from "./use-financial-metrics";
@@ -285,10 +286,14 @@ function DraggableWidget({
   metricLabel,
   tooltipLabel,
   range,
+  scope,
+  now,
+  budgetAllowed,
   editable,
   visualizations,
   onChange,
   onEditCustomMetric,
+  onLiveRetry,
   onResize,
   onRemove,
 }: {
@@ -296,9 +301,13 @@ function DraggableWidget({
   sourceSize: WidgetSize;
   result?: MetricResult | Error;
   live?: LiveMetricState;
+  onLiveRetry?: () => void;
   metricLabel?: string;
   tooltipLabel?: string;
   range: DashboardRange;
+  scope: DashboardScope;
+  now: number;
+  budgetAllowed: boolean;
   editable: boolean;
   visualizations?: readonly VisualizationId[];
   onChange: (widget: WidgetInstance) => void;
@@ -312,6 +321,12 @@ function DraggableWidget({
   const dragProps = editable
     ? { ...draggable.attributes, ...draggable.listeners }
     : {};
+  const budget = useQuery(
+    api.dashboard.getBudgetTarget,
+    budgetAllowed && widgetTarget(widget)?.kind === "budget"
+      ? { scope, range: widget.range ? { preset: widget.range } : range, now }
+      : "skip",
+  );
 
   return (
     <div
@@ -347,9 +362,17 @@ function DraggableWidget({
         metricLabel={metricLabel}
         tooltipLabel={tooltipLabel}
         range={range}
+        now={now}
+        budget={budget}
         editable={editable}
         resizing={widget.size !== sourceSize}
-        onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
+        onVisualizationChange={(visualization: VisualizationId) => {
+          const next = { ...widget, visualization };
+          if (!next.options?.target || supportsTarget(next)) return onChange(next);
+          const options = { ...next.options };
+          delete options.target;
+          onChange({ ...next, options: Object.keys(options).length ? options : undefined });
+        }}
         visualizations={visualizations}
         onRangeChange={(range: WidgetRangePreset | undefined) => onChange({ ...widget, range })}
         onComparisonChange={(comparison: ComparisonPeriod | undefined) => onChange({ ...widget, comparison })}
@@ -365,11 +388,15 @@ function DraggableWidget({
           else options.yAxisMax = axis.max;
           onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
         }}
-        onGoalPercentChange={(goalPercent: number) => onChange({
-          ...widget,
-          options: { ...widget.options, goalPercent },
-        })}
+        onTargetChange={(target: WidgetTarget | undefined) => {
+          const options = { ...widget.options };
+          delete options.goalPercent;
+          if (target) options.target = target;
+          else delete options.target;
+          onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
+        }}
         onEditCustomMetric={onEditCustomMetric}
+        onLiveRetry={onLiveRetry}
         onResize={onResize}
         onRemove={onRemove}
       />
@@ -543,11 +570,17 @@ export function DashboardGrid({
       <div
         data-dashboard-grid
         className={cn(
-          "dashboard-grid col-start-1 row-start-1 grid grid-flow-dense xl:grid-flow-row",
+          "dashboard-grid col-start-1 row-start-1 grid grid-flow-row",
           activeKey && "cursor-grabbing",
         )}
       >
-        {displayedWidgets.map((widget) => {
+        {[...displayedWidgets]
+          .sort(
+            (left, right) =>
+              (left.position?.row ?? 0) - (right.position?.row ?? 0) ||
+              (left.position?.column ?? 0) - (right.position?.column ?? 0),
+          )
+          .map((widget) => {
           const source = layout.find((item) => item.key === widget.key) ?? widget;
           const customMetric = widget.metric.kind === "custom"
             ? customMetricsById.get(String(widget.metric.id))
@@ -563,9 +596,13 @@ export function DashboardGrid({
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
               live={liveMetrics.byWidget.get(widget.key)}
+              onLiveRetry={liveMetrics.retry}
               metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
               tooltipLabel={comparisonTooltipLabel(scope, metricResults.get(widget.key))}
               range={range}
+              scope={scope}
+              now={now}
+              budgetAllowed={!publicAccess}
               editable={editable}
               visualizations={customVisualizations}
               onEditCustomMetric={widget.metric.kind === "custom" && customMetricsById.has(String(widget.metric.id))

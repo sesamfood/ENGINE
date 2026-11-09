@@ -27,7 +27,7 @@ export function AuthCard({
         </div>
         <Card spacing="relaxed" className="w-full">
           <CardHeader>
-            <CardTitle appearance="auth">{title}</CardTitle>
+            <CardTitle appearance="auth" role="heading" aria-level={1}>{title}</CardTitle>
             <CardDescription>{description}</CardDescription>
           </CardHeader>
           <CardContent>{children}</CardContent>

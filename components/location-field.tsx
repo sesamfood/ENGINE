@@ -50,7 +50,7 @@ export function LocationField({
         id={id}
         aria-label={lockedName ?? "Lokation"}
         className={cn(
-          "flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium",
+          "flex h-11 items-center gap-2 text-sm font-medium",
           className,
         )}
       >

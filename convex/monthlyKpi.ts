@@ -1,6 +1,6 @@
 import { isIntegrationEnabled } from "./integrations/state";
 import { ConvexError, v } from "convex/values";
-import { hasPermission } from "../lib/auth-permissions";
+import { canSyncDashboardData, hasPermission } from "../lib/auth-permissions";
 import {
   buildMonthlyKpiReport, economicBudgetComponents, kpiCell, kpiCutoff, kpiMonthEnd, kpiMonths, previousKpiMonth,
   validateKpiMonth, type EconomicBudgetComponent, type MonthlyKpiInputs,
@@ -52,7 +52,7 @@ async function selectedLocations(ctx: QueryCtx, auth: OrganizationAuth, location
   })));
 }
 
-async function latestBudget(ctx: QueryCtx, organizationId: string, locationId: Id<"locations">, month: string) {
+export async function latestBudget(ctx: QueryCtx, organizationId: string, locationId: Id<"locations">, month: string) {
   return ctx.db.query("monthlyKpiBudgets")
     .withIndex("by_organizationId_and_locationId_and_month_and_revision", (q) =>
       q.eq("organizationId", organizationId).eq("locationId", locationId).eq("month", month))
@@ -90,7 +90,7 @@ export const getContext = query({
       organizationId: auth.organizationId,
       timeZone: await resolveTimeZone(ctx, auth.organizationId),
       canManageBudgets: auth.principalKind !== "apiKey" && hasPermission(auth.role, auth.permissions, "dashboard.manageBudgets"),
-      canSync: auth.principalKind !== "apiKey" && hasPermission(auth.role, auth.permissions, "integrations.manage"),
+      canSync: auth.principalKind !== "apiKey" && canSyncDashboardData(auth.permissions),
     };
   },
 });
@@ -325,7 +325,7 @@ export const requestSync = mutation({
   returns: v.object({ queued: v.number() }),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireFinancialReportViewer(ctx));
-    if (!hasPermission(auth.role, auth.permissions, "integrations.manage")) throw new ConvexError("Du har ikke adgang til at opdatere integrationerne");
+    if (!canSyncDashboardData(auth.permissions)) throw new ConvexError("Du har ikke adgang til at opdatere dashboarddata");
     requireMonth(args.month);
     const locations = await selectedLocations(ctx, auth, args.locationIds);
     if (!locations.length) return { queued: 0 };

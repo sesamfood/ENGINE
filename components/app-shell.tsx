@@ -32,6 +32,7 @@ import {
   ShieldIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
+  SunIcon,
 } from "lucide-react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Image from "next/image";
@@ -42,6 +43,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -49,6 +51,7 @@ import { toast } from "sonner";
 import posthog from "posthog-js";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { KioskPinGate } from "@/components/kiosk/kiosk-pin-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -104,6 +107,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
+  AppMobilePageHeaderTarget,
   AppPageHeaderProvider,
   AppPageHeaderTarget,
 } from "@/components/app-page-header";
@@ -112,12 +116,14 @@ import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
 import { authClient } from "@/lib/auth-client";
 import type { DataGranularity, PermissionId } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
+import { clearLocalDrafts } from "@/lib/local-draft";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { featureForPath, featureLabels, type FeatureId } from "@/lib/features";
-import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
-import { kioskDestinationMatches } from "@/lib/kiosk";
+import { OrganizationTheme } from "@/components/organization/organization-theme";
+import { kioskDestinationMatches, type KioskDestinationId } from "@/lib/kiosk";
+import { isPreview } from "@/lib/page-title";
 import type { KioskDayTask } from "@/lib/kiosk-day";
 import {
   normalizeSidebarOrder,
@@ -155,6 +161,8 @@ type KioskSettings = {
   enabledPages: string[];
   homePage: string | null;
   inactivitySeconds: number | null;
+  allowLeavingStartOfDay: boolean;
+  pinFeatures: string[];
   updatedAt: number;
 };
 
@@ -164,6 +172,7 @@ export type KioskRuntime = {
   locationId: Id<"locations"> | null;
   locationName: string | null;
   settings: KioskSettings | null;
+  pinLocked: boolean;
 };
 
 type LocationOption = { id: Id<"locations">; name: string };
@@ -195,6 +204,11 @@ type KioskDayState = {
   timeZone: string | null;
   endOfDayDismissed: boolean;
   dismissEndOfDay: () => void;
+  startOfDayLeft: boolean;
+  // Null when kiosk settings do not allow leaving a due start of day.
+  leaveStartOfDay: (() => void) | null;
+  endOfDaySimulated: boolean;
+  setEndOfDaySimulated: (simulated: boolean) => void;
 };
 
 const KioskDayContext = createContext<KioskDayState | null>(null);
@@ -270,6 +284,15 @@ function useOnLinkedDayTaskPage() {
 
 export function useKiosk() {
   return useContext(AccessContext)?.kiosk ?? null;
+}
+
+// True outside kiosk mode, or when the kiosk has the page enabled.
+export function useKioskPage(page: KioskDestinationId) {
+  const kiosk = useKiosk();
+  return (
+    !kiosk?.kioskModeEnabled ||
+    Boolean(kiosk.settings?.enabledPages.includes(page))
+  );
 }
 
 export function usePermission(permissionId: PermissionId) {
@@ -461,8 +484,28 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const home = useHomeDestination();
   const { disabled, pending } = useCurrentFeatureState();
-  const dayPhase = useKioskDay()?.phase;
+  const day = useKioskDay();
+  const dayPhase = day?.phase;
   const onDayTasks = pathname === KIOSK_DAY_PATH && Boolean(dayPhase);
+  const lockPinPages = useMutation(api.kiosk.lockPinPages);
+  const onPinPage = Boolean(
+    runtime?.kioskModeEnabled &&
+      !countLocked &&
+      runtime.settings?.pinFeatures.includes(featureForPath(pathname) ?? "") &&
+      runtime.settings.enabledPages.some((page) =>
+        kioskDestinationMatches(page, pathname),
+      ),
+  );
+  const pinUnlocked = Boolean(
+    runtime?.kioskModeEnabled && runtime.settings?.pinFeatures.length && !runtime.pinLocked,
+  );
+
+  // Leaving the PIN pages locks them again.
+  useEffect(() => {
+    if (pinUnlocked && !onPinPage) void lockPinPages().catch(() => {});
+  }, [lockPinPages, onPinPage, pinUnlocked]);
+  // A start of day left for other pages takes over as the inactivity destination.
+  const idleTarget = day?.startOfDayLeft ? KIOSK_DAY_PATH : home;
 
   useEffect(() => {
     if (
@@ -490,17 +533,20 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     const seconds = runtime?.kioskModeEnabled
       ? runtime.settings?.inactivitySeconds
       : null;
-    if (!seconds || !home || pathname === home || onDayTasks || disabled || pending) {
+    const atHome =
+      pathname === idleTarget ||
+      (idleTarget === "/dashboard" && kioskDestinationMatches("dashboard.view", pathname));
+    if (!seconds || !idleTarget || atHome || onDayTasks || disabled || pending) {
       return;
     }
     let timeout = window.setTimeout(
-      () => window.location.replace(home),
+      () => window.location.replace(idleTarget),
       seconds * 1000,
     );
     const activity = () => {
       window.clearTimeout(timeout);
       timeout = window.setTimeout(
-        () => window.location.replace(home),
+        () => window.location.replace(idleTarget),
         seconds * 1000,
       );
     };
@@ -524,7 +570,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     };
   }, [
     disabled,
-    home,
+    idleTarget,
     onDayTasks,
     pathname,
     pending,
@@ -533,6 +579,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     runtime?.settings?.updatedAt,
   ]);
 
+  if (onPinPage && runtime?.pinLocked) return <KioskPinGate />;
   return children;
 }
 
@@ -669,6 +716,7 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [queryNow, setQueryNow] = useState(minuteTimestamp);
+  const [endOfDaySimulated, setEndOfDaySimulated] = useState(false);
   const [dismissedKey, setDismissedKey] = useState(() => {
     try {
       return window.sessionStorage.getItem(END_OF_DAY_DISMISSED_KEY);
@@ -678,7 +726,9 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   });
   const state = useQuery(
     api.kioskDay.getState,
-    kiosk?.kioskModeEnabled ? { now: queryNow } : "skip",
+    kiosk?.kioskModeEnabled
+      ? { now: queryNow, ...(endOfDaySimulated ? { simulateEndOfDay: true } : {}) }
+      : "skip",
   );
   const current = useLastDefined(state, kiosk?.locationId ?? "kiosk");
   const nextTransitionAt = current?.nextTransitionAt;
@@ -686,8 +736,30 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
     current?.phase &&
       current.tasks.some((task) => task.link && kioskDestinationMatches(task.link, pathname)),
   );
+  // Opening the closing page counts as dismissing the closing popup.
+  const endOfDayKey = current?.phase === "endOfDay" ? String(current.nextTransitionAt) : null;
+  if (endOfDayKey && pathname === KIOSK_DAY_PATH && dismissedKey !== endOfDayKey) {
+    setDismissedKey(endOfDayKey);
+  }
+  const canLeaveStartOfDay = Boolean(kiosk?.settings?.allowLeavingStartOfDay);
+  // In memory only, so the inactivity reload returns to start of day.
+  const [startOfDayLeft, setStartOfDayLeft] = useState(false);
+  if (startOfDayLeft && current && current.phase !== "startOfDay") setStartOfDayLeft(false);
+  // Navigating away from the start-of-day page counts as leaving it.
+  const [previousPathname, setPreviousPathname] = useState(pathname);
+  if (pathname !== previousPathname) {
+    setPreviousPathname(pathname);
+    if (
+      canLeaveStartOfDay &&
+      current?.phase === "startOfDay" &&
+      previousPathname === KIOSK_DAY_PATH
+    ) {
+      setStartOfDayLeft(true);
+    }
+  }
+  const leftStartOfDay = canLeaveStartOfDay && startOfDayLeft;
   const startOfDayDue =
-    current?.phase === "startOfDay" && !countLocked && !onLinkedPage;
+    current?.phase === "startOfDay" && !countLocked && !onLinkedPage && !leftStartOfDay;
 
   useEffect(() => {
     if (nextTransitionAt === null || nextTransitionAt === undefined) return;
@@ -707,6 +779,13 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [nextTransitionAt]);
+
+  useEffect(() => {
+    if (!dismissedKey) return;
+    try {
+      window.sessionStorage.setItem(END_OF_DAY_DISMISSED_KEY, dismissedKey);
+    } catch {}
+  }, [dismissedKey]);
 
   useEffect(() => {
     if (startOfDayDue && pathname !== KIOSK_DAY_PATH) router.replace(KIOSK_DAY_PATH);
@@ -736,13 +815,11 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
               ...current,
               // Dismissal lasts until the closed period ends.
               endOfDayDismissed: dismissedKey === String(current.nextTransitionAt),
-              dismissEndOfDay: () => {
-                const key = String(current.nextTransitionAt);
-                try {
-                  window.sessionStorage.setItem(END_OF_DAY_DISMISSED_KEY, key);
-                } catch {}
-                setDismissedKey(key);
-              },
+              dismissEndOfDay: () => setDismissedKey(String(current.nextTransitionAt)),
+              startOfDayLeft: current.phase === "startOfDay" && leftStartOfDay,
+              leaveStartOfDay: canLeaveStartOfDay ? () => setStartOfDayLeft(true) : null,
+              endOfDaySimulated,
+              setEndOfDaySimulated,
             }
           : null
       }
@@ -755,11 +832,9 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
 function KioskDayPrompts() {
   const day = useKioskDay();
   const pathname = usePathname();
-  const onLinkedPage = useOnLinkedDayTaskPage();
   const countLocked = useContext(FeatureLockContext);
   if (countLocked) return null;
   if (!day?.phase || pathname === KIOSK_DAY_PATH) return null;
-  if (onLinkedPage) return null;
   if (day.phase !== "endOfDay" || day.endOfDayDismissed) return null;
 
   function dismiss() {
@@ -867,6 +942,7 @@ function OrganizationHome() {
 
 function NavigationList() {
   const organization = useActiveOrganization();
+  const navRef = useRef<HTMLElement>(null);
   const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -880,11 +956,18 @@ function NavigationList() {
     return item ? [item] : [];
   });
 
+  useEffect(() => {
+    navRef.current
+      ?.querySelector('[data-active-nav="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [pathname, navigation.length]);
+
+
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        <nav aria-label="Primær navigation">
-          <SidebarMenu appearance="spaced">
+        <nav ref={navRef} aria-label="Primær navigation">
+          <SidebarMenu appearance="compact">
             {navigation.map((item) => {
               const Icon = navigationIcons[item.id];
               const active =
@@ -903,7 +986,9 @@ function NavigationList() {
                     render={
                       <Link
                         href={item.href}
+                        aria-label={item.label}
                         aria-current={active ? "page" : undefined}
+                        data-active-nav={active || undefined}
                         onClick={() => {
                           if (isMobile) setOpenMobile(false);
                         }}
@@ -1046,8 +1131,7 @@ function ProfileMenu({
       .join("")
       .slice(0, 2)
       .toUpperCase() || "P";
-  const accountPageActive =
-    pathname === "/profile" || pathname.startsWith("/administration");
+  const accountPageActive = pathname === "/profile";
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
@@ -1084,10 +1168,7 @@ function ProfileMenu({
         {!compact ? (
           <>
             <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate font-semibold">{displayName}</span>
-              <span className="truncate text-xs text-muted-foreground">
-                {email}
-              </span>
+              <span className="line-clamp-2 font-semibold wrap-break-word whitespace-normal">{displayName}</span>
             </div>
             <ChevronsUpDownIcon
               className="ml-auto group-data-[collapsible=icon]:hidden"
@@ -1316,6 +1397,7 @@ function useDayTaskShortcut() {
   if (day?.phase === "endOfDay" && day.endOfDayDismissed) {
     return { label: "Gå til lukning", Icon: MoonIcon };
   }
+  if (day?.startOfDayLeft) return { label: "Gå til åbning", Icon: SunIcon };
   return null;
 }
 
@@ -1329,9 +1411,24 @@ function SidebarAccount({
   const kiosk = useKiosk();
   const access = useAccess();
   const shortcut = useDayTaskShortcut();
+  const day = useKioskDay();
   const kioskModeControl = <KioskModeControl />;
   const accountMenu = (
     <SidebarMenu appearance="spaced">
+      {isPreview && day && !day.phase ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="lg"
+            appearance="icon"
+            tooltip="Simulér lukning"
+            className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
+            onClick={() => day.setEndOfDaySimulated(true)}
+          >
+            <FlaskConicalIcon aria-hidden="true" />
+            <span className="group-data-[collapsible=icon]:hidden">Simulér lukning</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
       {shortcut ? (
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -1567,32 +1664,15 @@ function OrganizationBoundary({
   return children;
 }
 
-function OrganizationTheme({ children }: { children: React.ReactNode }) {
-  const organization = useActiveOrganization();
-  const { isAuthenticated } = useConvexAuth();
-  const branding = useQuery(
-    api.organization.getBranding,
-    organization.data && isAuthenticated ? {} : "skip",
-  );
-
+function TabletSidebarDefault() {
+  const { setOpen } = useSidebar();
   useEffect(() => {
-    if (!branding?.theme) return;
-    const root = document.documentElement;
-    const variables = getOrganizationThemeCssVariables(branding.theme);
-    const previous = new Map<string, string>();
-    for (const [name, value] of Object.entries(variables)) {
-      previous.set(name, root.style.getPropertyValue(name));
-      root.style.setProperty(name, value);
-    }
-    return () => {
-      for (const [name, value] of previous) {
-        if (value) root.style.setProperty(name, value);
-        else root.style.removeProperty(name);
-      }
-    };
-  }, [branding?.theme]);
-
-  return children;
+    if (document.cookie.includes("sidebar_state=")) return;
+    if (window.innerWidth >= 768 && window.innerWidth < 1024) setOpen(false);
+    // Only on first mount: a stored choice always wins afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 export function AppShell({
@@ -1613,7 +1693,10 @@ export function AppShell({
     void authClient
       .signOut()
       .then((result) => {
-        if (!result.error) posthog.reset();
+        if (!result.error) {
+          posthog.reset();
+          clearLocalDrafts();
+        }
         if (cancelled) return;
         if (result.error) {
           setSigningOut(false);
@@ -1664,6 +1747,7 @@ export function AppShell({
   const showAdministrationHeader =
     pathname === "/administration" || pathname.startsWith("/administration/");
   const showPageHeader =
+    pathname === "/profile" ||
     pathname === "/date-labels" ||
     showOrderingHeader ||
     showCountHeader ||
@@ -1709,8 +1793,15 @@ export function AppShell({
                       } as CSSProperties
                     }
                   >
+                    <TabletSidebarDefault />
+                    <a
+                      href="#main-content"
+                      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+                    >
+                      Spring til indhold
+                    </a>
                     <Sidebar collapsible="icon">
-                      <SidebarHeader className="h-24 items-center justify-center">
+                      <SidebarHeader className="h-16 items-center justify-center md:h-18">
                         <OrganizationHome />
                       </SidebarHeader>
 
@@ -1724,14 +1815,17 @@ export function AppShell({
                       />
                     </Sidebar>
 
-                    <SidebarInset className="min-w-0">
+                    <SidebarInset id="main-content" tabIndex={-1} className="min-w-0">
                       <header
                         className={cn(
-                          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                          showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+                          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:h-auto md:min-h-18 md:py-2 md:border-b-0",
                         )}
                       >
-                        <SidebarTrigger size="icon-lg" />
+                        <SidebarTrigger size="icon-lg">
+                          <span aria-hidden="true" className="text-sm font-medium md:hidden">
+                            Menu
+                          </span>
+                        </SidebarTrigger>
                         {showPageHeader ? <AppPageHeaderTarget /> : null}
                         {showAdministrationBack ? (
                           <Button
@@ -1747,15 +1841,15 @@ export function AppShell({
                             nativeButton={false}
                           >
                             <ArrowLeftIcon data-icon="inline-start" />
-                            <span className="hidden sm:inline">
+                            <span className="hidden lg:inline">
                               {showIntegrationsBack
                                 ? "Tilbage til integrationer"
                                 : "Tilbage til administration"}
                             </span>
-                            <span className="sm:hidden">Tilbage</span>
+                            <span className="lg:hidden">Tilbage</span>
                           </Button>
                         ) : null}
-                        <div className="flex flex-1 justify-center md:hidden">
+                        <div className={cn("flex flex-1 justify-center md:hidden", showAdministrationBack && "max-md:invisible")}>
                           <OrganizationHome />
                         </div>
                         <div className="md:hidden">
@@ -1765,18 +1859,17 @@ export function AppShell({
                           />
                         </div>
                       </header>
+                      {showPageHeader ? <AppMobilePageHeaderTarget /> : null}
                       {/* Sticks below the sticky header, so offsets match its heights. */}
-                      <SupportBanner
-                        className={cn("top-16", showPageHeader && "md:top-24")}
-                      />
+                      <SupportBanner className="top-16 md:top-18" />
                       <TestOrganizationBanner />
 
                       <div
                         className={cn(
-                          "flex-1",
+                          "flex-1 pb-safe-bottom-bar",
                           showPageHeader
-                            ? "p-4"
-                            : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
+                            ? "px-4 pt-4"
+                            : "px-5 pt-8 sm:px-8 lg:px-12 lg:pt-11",
                         )}
                       >
                         <KioskDayPrompts />

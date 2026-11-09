@@ -2,12 +2,13 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ComparisonPeriod, DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { ComparisonPeriod, DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, WidgetTarget, VisualizationId } from "@/lib/dashboard/types";
+import { resolveTarget, type BudgetTotals } from "@/lib/dashboard/target";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { WidgetCard } from "./widget-card";
-import { comparisonPeriodText } from "./visualizations/utils";
+import { comparisonPeriodText, formatMetricValue, previousTotal } from "./visualizations/utils";
 import { LiveMetricContent } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
 
@@ -19,6 +20,8 @@ export function DashboardWidget({
   metricLabel,
   tooltipLabel,
   range,
+  now,
+  budget,
   editable,
   resizing,
   onVisualizationChange,
@@ -27,8 +30,9 @@ export function DashboardWidget({
   onComparisonChange,
   onSalesSourceChange,
   onYAxisChange,
-  onGoalPercentChange,
+  onTargetChange,
   onEditCustomMetric,
+  onLiveRetry,
   onResize,
   onRemove,
 }: {
@@ -39,6 +43,8 @@ export function DashboardWidget({
   metricLabel?: string;
   tooltipLabel?: string;
   range?: DashboardRange;
+  now: number;
+  budget?: BudgetTotals | null;
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
@@ -47,13 +53,25 @@ export function DashboardWidget({
   onComparisonChange?: (comparison: ComparisonPeriod | undefined) => void;
   onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
-  onGoalPercentChange?: (goalPercent: number) => void;
+  onTargetChange?: (target: WidgetTarget | undefined) => void;
   onEditCustomMetric?: () => void;
+  onLiveRetry?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
 }) {
   const Visualization = visualizationRegistry[widget.visualization];
   const compact = widgetSizeSpans[widget.size].rows === 1;
+  const widgetRange = widget.range ? { preset: widget.range } : range;
+  const target = result && widgetRange ? resolveTarget({
+    widget,
+    result,
+    range: widgetRange,
+    now,
+    budget,
+    previous: previousTotal(result),
+    comparisonLabel: comparisonPeriodText(result, widgetRange),
+    formatValue: (value) => formatMetricValue(value, result),
+  }) : null;
 
   return (
     <WidgetCard
@@ -70,20 +88,24 @@ export function DashboardWidget({
       onComparisonChange={onComparisonChange}
       onSalesSourceChange={onSalesSourceChange}
       onYAxisChange={onYAxisChange}
-      onGoalPercentChange={onGoalPercentChange}
+      target={target}
+      onTargetChange={onTargetChange}
       onEditCustomMetric={onEditCustomMetric}
       onResize={onResize}
       onRemove={onRemove}
     >
-      {live ? <LiveMetricContent widget={widget} state={live} compact={compact} /> : error ? (
+      {live ? <LiveMetricContent widget={widget} state={live} compact={compact} onRetry={onLiveRetry} /> : error ? (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       ) : result == null ? (
-        <div className="flex h-full flex-col gap-3">
+        <div className="flex h-full flex-col gap-3" aria-busy="true">
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="min-h-24 flex-1" />
+          <p className="text-sm text-muted-foreground" role="status">
+            Indlæser data …
+          </p>
         </div>
       ) : (
-        <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} goalPercent={widget.options?.goalPercent} comparisonLabel={comparisonPeriodText(result, widget.range ? { preset: widget.range } : range)} />
+        <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} target={target} />
       )}
     </WidgetCard>
   );

@@ -41,11 +41,11 @@ import {
 } from "@/components/ui/dialog";
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldLegend,
+  FieldSeparator,
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -57,17 +57,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
+import { KioskPinSettings } from "./kiosk-pin-settings";
 import { SettingsSwitchField } from "./settings-switch-field";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { useRouter } from "next/navigation";
 import {
-  kioskDestinationWarnings,
   kioskDestinations,
   type KioskDestinationId,
 } from "@/lib/kiosk";
 import type { SystemOrganizationRole } from "@/lib/auth-permissions";
+import { featureLabels, type FeatureId } from "@/lib/features";
 
 const roleLabels: Record<SystemOrganizationRole, string> = {
   admin: "Administrator",
@@ -262,6 +263,8 @@ export function KioskSettings() {
   const [homePage, setHomePage] = useState<KioskDestinationId | "">("");
   const [inactivityEnabled, setInactivityEnabled] = useState(true);
   const [inactivitySeconds, setInactivitySeconds] = useState(60);
+  const [allowLeavingStartOfDay, setAllowLeavingStartOfDay] = useState(false);
+  const [pinFeatures, setPinFeatures] = useState<FeatureId[]>([]);
   const [settingsPending, setSettingsPending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string>();
@@ -276,12 +279,14 @@ export function KioskSettings() {
       setHomePage((settings?.homePage as KioskDestinationId | undefined) ?? "");
       setInactivityEnabled(settings?.inactivitySeconds !== null);
       setInactivitySeconds(settings?.inactivitySeconds ?? 60);
+      setAllowLeavingStartOfDay(settings?.allowLeavingStartOfDay ?? false);
+      setPinFeatures((settings?.pinFeatures ?? []) as FeatureId[]);
     });
     return () => window.clearTimeout(timeout);
   }, [settings]);
 
   if (!access) {
-    return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
+    return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
   }
 
   if (!canManageSettings && !canManageAccounts) {
@@ -297,7 +302,7 @@ export function KioskSettings() {
     (canManageSettings && settings === undefined) ||
     (canManageAccounts && (accounts === undefined || locations === undefined))
   ) {
-    return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
+    return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
   }
 
   const availableAccounts = accounts ?? [];
@@ -309,14 +314,22 @@ export function KioskSettings() {
     label: roleLabels[item],
   }));
 
-  const groups = [...new Set(kioskDestinations.map((page) => page.group))];
-  const homeItems = kioskDestinations.filter((page) => enabledPages.includes(page.id)).map((page) => ({ value: page.id, label: page.label }));
+  // Modules turned off for the organization are hidden.
+  const visiblePages = kioskDestinations.filter(
+    (page) =>
+      !access.disabledFeatures.includes(page.feature) &&
+      (page.feature !== "woltOrders" || access.woltEnabled),
+  );
+  const features = [...new Set(visiblePages.map((page) => page.feature))];
+  const featureEnabled = (feature: FeatureId) =>
+    kioskDestinations.some((page) => page.feature === feature && enabledPages.includes(page.id));
+  const homeItems = visiblePages.filter((page) => enabledPages.includes(page.id)).map((page) => ({ value: page.id, label: page.label }));
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSettingsPending(true);
     try {
-      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null });
+      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay, pinFeatures: pinFeatures.filter(featureEnabled) });
       toast.success("Kioskopsætningen er gemt");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
@@ -381,11 +394,11 @@ export function KioskSettings() {
             <FieldSet>
               <FieldLegend>Aktiverede sider</FieldLegend>
               <div data-slot="checkbox-group" className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {groups.map((group) => (
-                  <FieldSet key={group} appearance="outline">
-                    <FieldLegend variant="label">{group}</FieldLegend>
-                    {kioskDestinations
-                      .filter((page) => page.group === group)
+                {features.map((feature) => (
+                  <FieldSet key={feature} appearance="outline">
+                    <FieldLegend variant="label">{featureLabels[feature]}</FieldLegend>
+                    {visiblePages
+                      .filter((page) => page.feature === feature)
                       .map((page) => (
                         <Field key={page.id} orientation="horizontal">
                           <Checkbox
@@ -399,18 +412,32 @@ export function KioskSettings() {
                               if (homePage === page.id && !checked) setHomePage("");
                             }}
                           />
-                          <FieldContent>
-                            <FieldLabel htmlFor={`page-${page.id}`}>
-                              {page.label}
-                            </FieldLabel>
-                            {kioskDestinationWarnings[page.id] ? (
-                              <FieldDescription>
-                                {kioskDestinationWarnings[page.id]}
-                              </FieldDescription>
-                            ) : null}
-                          </FieldContent>
+                          <FieldLabel htmlFor={`page-${page.id}`}>
+                            {page.label}
+                          </FieldLabel>
                         </Field>
                       ))}
+                    {featureEnabled(feature) ? (
+                      <>
+                        <FieldSeparator />
+                        <Field orientation="horizontal">
+                          <Checkbox
+                            id={`pin-${feature}`}
+                            checked={pinFeatures.includes(feature)}
+                            onCheckedChange={(checked) =>
+                              setPinFeatures(
+                                checked
+                                  ? [...pinFeatures, feature]
+                                  : pinFeatures.filter((id) => id !== feature),
+                              )
+                            }
+                          />
+                          <FieldLabel htmlFor={`pin-${feature}`}>
+                            Kræver PIN-kode
+                          </FieldLabel>
+                        </Field>
+                      </>
+                    ) : null}
                   </FieldSet>
                 ))}
               </div>
@@ -420,12 +447,15 @@ export function KioskSettings() {
               <FieldGroup>
                 <SettingsSwitchField label="Nulstil ved inaktivitet" checked={inactivityEnabled} onCheckedChange={setInactivityEnabled} help={{ label: "Nulstil ved inaktivitet", content: "Sender kiosken tilbage til startsiden og rydder igangværende arbejde." }} />
                 <Field data-disabled={!inactivityEnabled}><FieldLabel htmlFor="kiosk-timeout">Sekunder</FieldLabel><Input id="kiosk-timeout" type="number" min={5} max={3600} value={inactivitySeconds} onChange={(event) => setInactivitySeconds(Number(event.target.value))} disabled={!inactivityEnabled} /></Field>
+                <SettingsSwitchField label="Tillad andre sider før åbning" checked={allowLeavingStartOfDay} onCheckedChange={setAllowLeavingStartOfDay} help={{ label: "Tillad andre sider før åbning", content: "Kiosken kan forlade åbningsopgaverne og bruge de andre sider, før opgaverne er udført. Ved inaktivitet vender kiosken tilbage til åbningsopgaverne." }} />
               </FieldGroup>
             </FieldGroup>
             <Button type="submit" size="lg" className="self-start" disabled={settingsPending}>{settingsPending ? <Spinner data-icon="inline-start" /> : null}Gem kioskopsætning</Button>
           </form>
         </CardContent>
       </Card> : null}
+
+      {canManageSettings ? <KioskPinSettings /> : null}
 
       {canManageSettings ? <SessionKioskCard disabled={!settings} /> : null}
 

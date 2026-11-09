@@ -12,13 +12,38 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import posthog from "posthog-js";
 import { authClient } from "@/lib/auth-client";
 
-export function SignupForm({ redirectTo }: { redirectTo: string }) {
+type SignupError = { message: string; field: "email" | "password" };
+
+function signupError(error: { code?: string; message?: string }): SignupError {
+  const code = error.code ?? "";
+  const message = (error.message ?? "").toLowerCase();
+  if (code.includes("USER_ALREADY_EXISTS") || message.includes("already exists")) {
+    return { message: "Der findes allerede en konto med denne e-mail. Log ind i stedet.", field: "email" };
+  }
+  if (code.includes("PASSWORD_TOO_SHORT") || message.includes("password")) {
+    return { message: "Adgangskoden er for kort. Brug mindst 12 tegn.", field: "password" };
+  }
+  if (code.includes("INVALID_EMAIL") || message.includes("email")) {
+    return { message: "E-mailen ser ikke gyldig ud. Kontrollér den og prøv igen.", field: "email" };
+  }
+  return { message: "Kontoen kunne ikke oprettes. Kontrollér oplysningerne og prøv igen.", field: "password" };
+}
+
+export function SignupForm({
+  redirectTo,
+  email: lockedEmail,
+}: {
+  redirectTo: string;
+  /** Locks the form to this e-mail, e.g. for an invitation. */
+  email?: string;
+}) {
   const router = useRouter();
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<SignupError>();
   const [pending, setPending] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -38,9 +63,7 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
       });
 
       if (result.error) {
-        setError(
-          "Kontoen kunne ikke oprettes. Kontrollér oplysningerne og prøv igen.",
-        );
+        setError(signupError(result.error));
         return;
       }
 
@@ -54,9 +77,10 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
         `/verify-email?email=${encodeURIComponent(email)}&redirect=${encodeURIComponent(redirectTo)}`,
       );
     } catch {
-      setError(
-        "Kontoen kunne ikke oprettes. Kontrollér forbindelsen og prøv igen.",
-      );
+      setError({
+        message: "Kontoen kunne ikke oprettes. Kontrollér forbindelsen og prøv igen.",
+        field: "password",
+      });
     } finally {
       setPending(false);
     }
@@ -65,8 +89,8 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
       {error ? (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+        <Alert id="signup-error" variant="destructive">
+          <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       ) : null}
       <FieldGroup>
@@ -87,36 +111,43 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
             name="email"
             type="email"
             autoComplete="email"
+            defaultValue={lockedEmail}
+            readOnly={Boolean(lockedEmail)}
             required
+            aria-invalid={error?.field === "email" || undefined}
+            aria-describedby={error?.field === "email" ? "signup-error" : undefined}
           />
         </Field>
         <Field>
           <FieldLabel htmlFor="password">Adgangskode</FieldLabel>
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="new-password"
             minLength={12}
             maxLength={256}
             required
+            aria-invalid={error?.field === "password" || undefined}
+            aria-describedby={error?.field === "password" ? "password-hint signup-error" : "password-hint"}
           />
-          <FieldDescription>Brug mindst 12 tegn.</FieldDescription>
+          <FieldDescription id="password-hint">Brug mindst 12 tegn.</FieldDescription>
         </Field>
       </FieldGroup>
       <Button type="submit" size="lg" disabled={pending}>
         {pending ? <Spinner data-icon="inline-start" /> : null}
         Opret konto
       </Button>
-      <p className="text-center text-sm text-muted-foreground">
-        Har du allerede en konto?{" "}
-        <Link
-          href={`/login?redirect=${encodeURIComponent(redirectTo)}`}
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          Log ind
-        </Link>
-      </p>
+      {lockedEmail ? null : (
+        <p className="text-center text-sm text-muted-foreground">
+          Har du allerede en konto?{" "}
+          <Link
+            href={`/login?redirect=${encodeURIComponent(redirectTo)}`}
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Log ind
+          </Link>
+        </p>
+      )}
     </form>
   );
 }

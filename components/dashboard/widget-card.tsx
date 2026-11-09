@@ -13,6 +13,7 @@ import {
   MinusIcon,
   PencilIcon,
   Settings2Icon,
+  TargetIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,15 +51,15 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { defaultSalesSource, metricRegistry, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
-import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type ComparisonPeriod, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
+import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type ComparisonPeriod, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type WidgetTarget, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
-import { GoalSettings } from "./goal-settings";
-import { comparisonPeriodText, previousTotal, total } from "./visualizations/utils";
+import { TargetSettings } from "./target-settings";
+import { supportsTarget, targetReached, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
+import { comparisonPeriodText, formatMetricValue, previousTotal, total } from "./visualizations/utils";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
 
@@ -110,12 +111,12 @@ function FreshnessNotice({
   });
   return (
     <Popover>
-      <PopoverTrigger
+      <PopoverTrigger openOnHover
         render={
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             className="shrink-0"
             aria-label={label}
           />
@@ -158,13 +159,34 @@ function FreshnessNotice({
   );
 }
 
+function TruncatedNotice() {
+  return (
+    <Popover>
+      <PopoverTrigger openOnHover
+        render={<button type="button" className="inline-flex min-h-11 shrink-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" aria-label="Begrænset data: se forklaring" />}
+      >
+        <Badge variant="secondary">Begrænset data</Badge>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <PopoverHeader>
+          <PopoverTitle>Begrænset data</PopoverTitle>
+          <PopoverDescription>
+            Ikke alle data i perioden er med i beregningen, så tallet kan være
+            lavere end det faktiske.
+          </PopoverDescription>
+        </PopoverHeader>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function WarningNotice({ warning }: { warning: NonNullable<MetricResult["warning"]> }) {
   return (
     <Popover>
-      <PopoverTrigger
-        render={<Button type="button" variant="ghost" size="icon-sm" className="shrink-0" aria-label={warning.title} />}
+      <PopoverTrigger openOnHover
+        render={<Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={warning.title} />}
       >
-        <CircleAlertIcon className="text-destructive" />
+        <CircleAlertIcon className="text-warning" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <PopoverHeader>
@@ -205,7 +227,8 @@ export function WidgetCard({
   onComparisonChange,
   onSalesSourceChange,
   onYAxisChange,
-  onGoalPercentChange,
+  target,
+  onTargetChange,
   onEditCustomMetric,
   onResize,
   onRemove,
@@ -224,7 +247,8 @@ export function WidgetCard({
   onComparisonChange?: (comparison: ComparisonPeriod | undefined) => void;
   onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
-  onGoalPercentChange?: (goalPercent: number) => void;
+  target?: ResolvedTarget | null;
+  onTargetChange?: (target: WidgetTarget | undefined) => void;
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
@@ -244,7 +268,8 @@ export function WidgetCard({
   const sourceSuffix = definition?.live ? ` (${definition.live.sourceLabel})` : "";
   const hasSourceSuffix = Boolean(sourceSuffix) && metricLabel.endsWith(sourceSuffix);
   const hasAttributions = live?.kind === "ready" && live.data.attributions.length > 0;
-  const compactLive = Boolean(definition?.live) && widgetSizeSpans[widget.size].rows === 1;
+  const compactHeader = widgetSizeSpans[widget.size].rows === 1;
+  const compactLive = Boolean(definition?.live) && compactHeader;
   const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
   const salesSource = definition && supportsSalesSource(definition.id)
     ? widget.options?.salesSource ?? defaultSalesSource(definition.id)
@@ -254,13 +279,15 @@ export function WidgetCard({
   const current = result && result.emptyMessage === undefined && result.series.length > 0 ? total(result) : null;
   const previous = result && result.emptyMessage === undefined && result.series.length > 0 ? previousTotal(result) : null;
   const freshness = result?.freshness;
-  const hasFreshness = Boolean(freshness);
+  const hasFreshness = Boolean(freshness && (freshness.errorLocationCount > 0 || freshness.staleLocationCount > 0));
   const change = !definition?.live && widget.visualization !== "goal" && current !== null && previous !== null && (financial || previous !== 0)
     ? financial ? current - previous : ((current - previous) / Math.abs(previous)) * 100
     : null;
 
   const comparisonLabel = financial ? "den foregående måned" : comparisonPeriodText(result, range);
-  const goalComparisonLabel = comparisonPeriodText(result, widget.range ? { preset: widget.range } : range);
+  // Charts keep the target details in a header pill; KPI and goal widgets show them in the body.
+  const chartTarget = target && current !== null && target.total > 0 && result?.series.length === 1
+    && visualizationHasYAxis(widget.visualization) ? target : null;
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [resizeActive, setResizeActive] = useState(false);
   const resizeSession = useRef<ResizeSession | null>(null);
@@ -337,36 +364,58 @@ export function WidgetCard({
       <CardHeader appearance={compactLive ? "liveWidget" : "widget"} className="shrink-0">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-            <CardTitle title={metricLabel} appearance={hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix ? "flex flex-wrap items-baseline" : "")}>
-              {hasSourceSuffix ? <>
-                <span className="max-w-full truncate">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
-                <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal">{sourceSuffix.trimStart()}</span>
+            <CardTitle title={metricLabel} role="heading" aria-level={2} appearance={compactHeader ? "widgetCompact" : hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix && !compactHeader ? "flex flex-wrap items-baseline" : "")}>
+              {hasSourceSuffix && !compactHeader ? <>
+                <span className="line-clamp-2 max-w-full @max-xs/card-header:line-clamp-1">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
+                <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal @max-xs/card-header:hidden">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
-            {change !== null || result?.truncated || hasFreshness || result?.warning ? (
+            {change !== null || chartTarget || result?.truncated || hasFreshness || result?.warning ? (
               <CardDescription appearance="inline" className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center overflow-hidden">
                 {change !== null ? (
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="inline-flex min-w-0" />}>
+                  <Popover>
+                    <PopoverTrigger openOnHover render={<button type="button" aria-label={`Ændring: ${change >= 0 ? "steget" : "faldet"} ${new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} ${financial ? "procentpoint" : "procent"} sammenlignet med ${comparisonLabel}`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
                       <Badge
                         variant="secondary"
                         appearance={
-                          financial
+                          change === 0
                             ? undefined
-                            : change >= 0
-                              ? "positive"
-                              : "negative"
+                            : definition?.direction === "up-good" || definition?.direction === "down-good"
+                              ? (definition.direction === "down-good" ? change < 0 : change > 0)
+                                ? "favorable"
+                                : "negative"
+                              : change >= 0
+                                ? "positive"
+                                : "negative"
                         }
                         className="max-w-full"
                       >
                         {change >= 0 ? <ArrowUpRightIcon /> : <ArrowDownRightIcon />}
                         <span className="truncate">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} {financial ? "procentpoint" : "%"}</span>
                       </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>Sammenlignet med {comparisonLabel}</TooltipContent>
-                  </Tooltip>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-auto max-w-64">
+                      <p>Sammenlignet med {comparisonLabel}</p>
+                    </PopoverContent>
+                  </Popover>
                 ) : null}
-                {result?.truncated ? <Badge variant="outline" className="max-w-full"><span className="truncate">Begrænset data</span></Badge> : null}
+                {chartTarget && current !== null && result ? (
+                  <Popover>
+                    <PopoverTrigger openOnHover render={<button type="button" aria-label={`Mål: ${Math.round((current / chartTarget.total) * 100)} % af målet`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
+                      <Badge variant="secondary" appearance={targetReached(current, chartTarget) ? "favorable" : undefined} className="max-w-full">
+                        <TargetIcon />
+                        <span className="truncate tabular-nums">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format((current / chartTarget.total) * 100)} %</span>
+                      </Badge>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-auto max-w-64">
+                      <p>{chartTarget.chart?.caption ?? chartTarget.description}</p>
+                      <p className="text-muted-foreground tabular-nums">
+                        {formatMetricValue(current, result)} {chartTarget.ceiling ? "– maks." : "af"} {formatMetricValue(chartTarget.total, result)}
+                      </p>
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
+                {result?.truncated ? <TruncatedNotice /> : null}
                 {hasFreshness ? <FreshnessNotice freshness={freshness!} /> : null}
                 {result?.warning ? <WarningNotice warning={result.warning} /> : null}
               </CardDescription>
@@ -444,7 +493,7 @@ export function WidgetCard({
                                       }
                                     }}
                                   >
-                                    {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} goalPercent={widget.options?.goalPercent} comparisonLabel={goalComparisonLabel} /> : <Skeleton className="size-full" />}
+                                    {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} target={target} /> : <Skeleton className="size-full" />}
                                   </CardContent>
                                 </ToggleGroupItem>
                               );
@@ -531,9 +580,16 @@ export function WidgetCard({
                         </SelectGroup>
                       </SelectContent>
                     </Select> : null}
-                    {widget.visualization === "goal" && onGoalPercentChange ? (
+                    {supportsTarget(widget) && onTargetChange ? (
                       <div className="w-full">
-                        <GoalSettings id={`widget-${widget.key}-goal`} value={widget.options?.goalPercent} onChange={onGoalPercentChange} />
+                        <TargetSettings
+                          key={widget.visualization}
+                          id={`widget-${widget.key}-target`}
+                          metric={widget.metric}
+                          value={widgetTarget(widget)}
+                          required={widget.visualization === "goal"}
+                          onChange={onTargetChange}
+                        />
                       </div>
                     ) : null}
                     <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
@@ -545,9 +601,19 @@ export function WidgetCard({
             </div>
           ) : null}
         </div>
-        {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
+        {definition?.live && !compactLive ? <CardDescription className="@max-xs/card-header:hidden">{definition.live.currentLabel}</CardDescription> : null}
         {financial ? <CardDescription>Månedsrapport · {financialRange?.preset === "thisMonth" ? "Denne måned"
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
+        {current !== null && result && visualizationHasYAxis(widget.visualization) ? (
+          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <span className="text-2xl font-semibold tracking-tight">{formatMetricValue(current, result)}</span>
+            {chartTarget ? (
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {chartTarget.ceiling ? "maks." : "af"} {formatMetricValue(chartTarget.total, result)}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent data-widget-size={widget.size} appearance={editable && !definition?.live ? "editableWidget" : "widget"} attributed={hasAttributions} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden", hasAttributions && "flex flex-col")}>
         {salesSource === "combined" ? (

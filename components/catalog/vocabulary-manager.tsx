@@ -32,6 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,6 +52,7 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -64,7 +66,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -81,7 +83,13 @@ import {
 } from "@/components/ui/tooltip";
 
 type VocabularyKind = "unit" | "location";
-type VocabularyItem = { id: string; name: string; inUse: boolean };
+type VocabularyItem = {
+  id: string;
+  name: string;
+  pluralName?: string;
+  inUse: boolean;
+  isStandard?: boolean;
+};
 type Unit = FunctionReturnType<typeof api.catalog.listUnits>[number];
 type Location = FunctionReturnType<typeof api.locations.listLocations>[number];
 
@@ -157,8 +165,10 @@ function UnitManager() {
       <VocabularyList
         kind="unit"
         items={items}
-        onCreate={(name) => create({ name })}
-        onRename={(item, name) => rename({ unitId: item.id, name })}
+        onCreate={(name, pluralName) => create({ name, pluralName })}
+        onRename={(item, name, pluralName) =>
+          rename({ unitId: item.id, name, pluralName })
+        }
         onRemove={(item) => remove({ unitId: item.id })}
         renderActions={(item) => (
           <>
@@ -169,7 +179,7 @@ function UnitManager() {
                     variant="ghost"
                     size="icon-lg"
                     aria-label={`Sammenlæg ${item.name} med en anden enhed`}
-                    disabled={(items?.length ?? 0) < 2}
+                    disabled={item.isStandard || (items?.length ?? 0) < 2}
                     onClick={() => openMerge(item)}
                   />
                 }
@@ -336,8 +346,8 @@ function VocabularyList<Item extends VocabularyItem>({
 }: {
   kind: VocabularyKind;
   items: Item[] | undefined;
-  onCreate: (name: string) => Promise<unknown>;
-  onRename: (item: Item, name: string) => Promise<unknown>;
+  onCreate: (name: string, pluralName: string) => Promise<unknown>;
+  onRename: (item: Item, name: string, pluralName: string) => Promise<unknown>;
   onRemove: (item: Item) => Promise<unknown>;
   renderActions: (item: Item) => ReactNode;
 }) {
@@ -345,6 +355,7 @@ function VocabularyList<Item extends VocabularyItem>({
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
   const [name, setName] = useState("");
+  const [pluralName, setPluralName] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -353,6 +364,7 @@ function VocabularyList<Item extends VocabularyItem>({
   function openEditor(item: Item | "new") {
     setEditing(item);
     setName(item === "new" ? "" : item.name);
+    setPluralName(item === "new" ? "" : (item.pluralName ?? ""));
     setError("");
   }
 
@@ -365,9 +377,9 @@ function VocabularyList<Item extends VocabularyItem>({
     setError("");
     try {
       if (editing === "new") {
-        await onCreate(name);
+        await onCreate(name, pluralName);
       } else if (editing) {
-        await onRename(editing, name);
+        await onRename(editing, name, pluralName);
       }
       toast.success(`${config.definite} er gemt`);
       setEditing(null);
@@ -415,11 +427,7 @@ function VocabularyList<Item extends VocabularyItem>({
       </div>
 
       {showSkeleton ? (
-        <div className="flex flex-col gap-3">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-14 w-full" />
-          ))}
-        </div>
+        <TableSkeleton rows={4} />
       ) : null}
 
       {items?.length === 0 ? (
@@ -454,7 +462,19 @@ function VocabularyList<Item extends VocabularyItem>({
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id} className={cn(kind === "location" && "flex flex-col lg:table-row")}>
-                  <TableCell appearance="label">{item.name}</TableCell>
+                  <TableCell appearance="label">
+                    <span className="flex items-center gap-2">
+                      {item.name}
+                      {item.pluralName ? (
+                        <span className="font-normal text-muted-foreground">
+                          {item.pluralName}
+                        </span>
+                      ) : null}
+                      {item.isStandard ? (
+                        <Badge variant="secondary">Standard</Badge>
+                      ) : null}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <div className={cn("flex gap-2", kind === "location" ? "flex-wrap lg:justify-end" : "justify-end")}>
                       {renderActions(item)}
@@ -465,6 +485,7 @@ function VocabularyList<Item extends VocabularyItem>({
                               variant="ghost"
                               size="icon-lg"
                               aria-label={`Omdøb ${item.name}`}
+                              disabled={item.isStandard}
                               onClick={() => openEditor(item)}
                             />
                           }
@@ -505,7 +526,7 @@ function VocabularyList<Item extends VocabularyItem>({
                                 variant="ghost"
                                 size="icon-lg"
                                 aria-label={`Fjern ${item.name}`}
-                                disabled={item.inUse}
+                                disabled={item.inUse || item.isStandard}
                                 onClick={() => setPendingDelete(item)}
                               />
                             }
@@ -558,6 +579,28 @@ function VocabularyList<Item extends VocabularyItem>({
               />
               <FieldError>{error}</FieldError>
             </Field>
+            {kind === "unit" ? (
+              <Field>
+                <FieldLabel htmlFor="unit-plural-name">
+                  Navn i flertal (valgfrit)
+                </FieldLabel>
+                <Input
+                  id="unit-plural-name"
+                  value={pluralName}
+                  placeholder={name.trim() || undefined}
+                  onChange={(event) => setPluralName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void save();
+                    }
+                  }}
+                />
+                <FieldDescription>
+                  Bruges ved alle antal undtagen 1, fx 2 kasser.
+                </FieldDescription>
+              </Field>
+            ) : null}
           </FieldGroup>
           <DialogFooter>
             <Button

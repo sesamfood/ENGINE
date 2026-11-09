@@ -19,6 +19,7 @@ import { getDatabaseAdapter } from "./auth";
 import { internal } from "./_generated/api";
 import { listScopedLocationOptions } from "./locations";
 import {
+  kioskPinOpen,
   requireAllLocationAccess,
   requireMemberManager,
   requireOrganization,
@@ -54,6 +55,8 @@ const kioskSettingsValidator = v.object({
   enabledPages: v.array(v.string()),
   homePage: v.string(),
   inactivitySeconds: v.union(v.number(), v.null()),
+  allowLeavingStartOfDay: v.boolean(),
+  pinFeatures: v.array(v.string()),
   updatedAt: v.number(),
 });
 
@@ -64,6 +67,8 @@ const kioskContextValidator = v.object({
   locationName: v.union(v.string(), v.null()),
   role: v.string(),
   settings: v.union(kioskSettingsValidator, v.null()),
+  // False when the kiosk location has no PIN or the session entered it.
+  pinLocked: v.boolean(),
 });
 
 const accessContextValidator = v.object({
@@ -359,9 +364,19 @@ async function getAccessContext(ctx: QueryCtx) {
               enabledPages: settings.enabledPages,
               homePage: settings.homePage,
               inactivitySeconds: settings.inactivitySeconds,
+              allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
+              pinFeatures: settings.pinFeatures ?? [],
               updatedAt: settings.updatedAt,
             }
           : null,
+        pinLocked: auth.kioskModeEnabled && auth.kioskLocationId
+          ? !(await kioskPinOpen(
+              ctx,
+              auth.organizationId,
+              auth.kioskLocationId,
+              auth.sessionId,
+            ))
+          : false,
       },
     },
   };

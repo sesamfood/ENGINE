@@ -34,10 +34,15 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 type LatestCountProduct = {
   id: Id<"products">;
   name: string;
-  units: Array<{ id: Id<"units">; name: string; packagingWeight?: number }>;
+  units: Array<{
+    id: Id<"units">;
+    name: string;
+    factorToDefault: number;
+    container?: { id: Id<"containers">; name: string; weightGrams: number };
+  }>;
 };
 
-// Bottom-bar action for adding a Produkt that was forgotten in the latest Count.
+// Bottom-bar action for adding a product that was forgotten in the latest Count.
 export function AddForgottenProductButton() {
   const { locationId } = useCountState();
   const canManage = usePermission("count.manage");
@@ -59,8 +64,8 @@ export function AddForgottenProductButton() {
         onClick={() => setOpen(true)}
       >
         <PlusIcon data-icon="inline-start" />
-        <span className="sm:hidden">Glemt Produkt</span>
-        <span className="hidden sm:inline">Tilføj glemt Produkt</span>
+        <span className="sm:hidden">Seneste Count</span>
+        <span className="hidden sm:inline">Tilføj til seneste Count</span>
       </Button>
       <AddToLatestCountDialog
         locationId={locationId}
@@ -130,7 +135,7 @@ function AddToLatestCountDialog({
         <form className="flex flex-col gap-4" onSubmit={save}>
           <DialogHeader>
             <DialogTitle>
-              Tilføj glemt Produkt
+              Tilføj til seneste Count
             </DialogTitle>
             <DialogDescription>
               Tilføj den optalte beholdning til den seneste registrerede
@@ -155,12 +160,12 @@ function AddToLatestCountDialog({
                 >
                   <ComboboxInput
                     id="latest-count-product"
-                    placeholder="Søg efter Produkt"
+                    placeholder="Søg efter produkt"
                     className="h-11 w-full"
                     disabled={saving}
                   />
                   <ComboboxContent>
-                    <ComboboxEmpty>Ingen Produkter fundet.</ComboboxEmpty>
+                    <ComboboxEmpty>Ingen produkter fundet.</ComboboxEmpty>
                     <ComboboxList>
                       {(id: Id<"products">) => (
                         <ComboboxItem key={id} value={id} className="min-h-11">
@@ -180,6 +185,7 @@ function AddToLatestCountDialog({
                 <div className="w-full @md/field-group:w-56">
                   <CountQuantityInput
                     label={`Mængde af ${product.name} i ${unit.name}`}
+                    units={product.units}
                     unit={unit}
                     value={quantities[unit.id] ?? 0}
                     disabled={saving}

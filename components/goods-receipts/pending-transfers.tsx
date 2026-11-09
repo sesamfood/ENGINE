@@ -26,6 +26,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { CardGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
@@ -50,10 +51,12 @@ export function PendingTransfers() {
 
   if (!access) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }, (_, index) => (
-          <Skeleton key={index} className="h-48 w-full" />
-        ))}
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-11 w-48" />
+        </div>
+        <CardGridSkeleton count={3} />
       </div>
     );
   }
@@ -87,10 +90,12 @@ export function PendingTransfers() {
 
   if (result === undefined || orders === undefined) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }, (_, index) => (
-          <Skeleton key={index} className="h-48 w-full" />
-        ))}
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-11 w-48" />
+        </div>
+        <CardGridSkeleton count={3} />
       </div>
     );
   }

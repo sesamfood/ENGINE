@@ -6,9 +6,10 @@ import { dateKey, addDays, dateTimeFormatter } from "@/lib/date";
 
 import { selectedLocationId } from "@/lib/location-preference";
 
+import { DatePicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { cn } from "@/lib/utils";
-import { AppPageHeader } from "@/components/app-page-header";
+import { SectionNav } from "@/components/section-nav";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { EmployeeAvatar } from "@/components/employees/employee-avatar";
 import { EmployeeEditor, type DirectoryEmployee } from "@/components/employees/employee-editor";
@@ -32,12 +33,12 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { BottomBarSkeleton, LocationHeaderSkeleton, TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -48,7 +49,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -196,18 +196,17 @@ function ScheduleTab({
         >
           <ChevronRightIcon />
         </Button>
-        <Input
-          className="h-9 w-40"
-          type="date"
+        <DatePicker
+          className="w-44"
           value={weekStart}
-          onChange={(event) => goToWeek(event.target.value)}
+          onValueChange={goToWeek}
           aria-label="Vælg uge"
         />
         {syncButton}
       </div>
 
       {week === undefined ? (
-        <Skeleton className="h-96 w-full" />
+        <TableSkeleton />
       ) : (
         <>
           {week.limitReached ? (
@@ -472,7 +471,7 @@ function DirectoryTab({
         </ToggleGroup>
       </div>
       {status === "LoadingFirstPage" ? (
-        <Skeleton className="h-72 w-full" />
+        <TableSkeleton />
       ) : results.length ? (
         <>
           <div className="hidden overflow-hidden rounded-xl border sm:block">
@@ -480,6 +479,7 @@ function DirectoryTab({
               <TableHeader>
                 <TableRow>
                   <TableHead>Medarbejder</TableHead>
+                  <TableHead>Roller</TableHead>
                   <TableHead>Lokationer</TableHead>
                   <TableHead className="text-right">Status</TableHead>
                   {canManage ? <TableHead className="w-14"><span className="sr-only">Handlinger</span></TableHead> : null}
@@ -506,6 +506,19 @@ function DirectoryTab({
                         </div>
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {employee.roleNames.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {employee.roleNames.map((roleName) => (
+                            <Badge key={roleName} variant="outline">
+                              {roleName}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">Ingen rolle</span>
+                      )}
+                    </TableCell>
                     <TableCell appearance="muted" className="hidden sm:table-cell">
                       {employee.locations
                         .map((location) => location.name)
@@ -520,7 +533,7 @@ function DirectoryTab({
                     </TableCell>
                     {canManage ? (
                       <TableCell>
-                        {employee.managedLocally ? (
+                        {canManage ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -548,6 +561,15 @@ function DirectoryTab({
                   />
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">{employee.displayName}</div>
+                    {employee.roleNames.length ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {employee.roleNames.map((roleName) => (
+                          <Badge key={roleName} variant="outline">
+                            {roleName}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
                     <p className="mt-1 text-sm text-muted-foreground">
                       {employee.locations
                         .map((location) => location.name)
@@ -558,7 +580,7 @@ function DirectoryTab({
                     <Badge variant={employee.active ? "secondary" : "outline"}>
                       {employee.active ? "Aktiv" : "Inaktiv"}
                     </Badge>
-                    {canManage && employee.managedLocally ? (
+                    {canManage ? (
                       <Button
                         variant="outline"
                         className="min-h-11"
@@ -695,10 +717,12 @@ export function EmployeeScheduling() {
 
   if (!context || !locations)
     return (
-      <div className="flex flex-col gap-5">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-96 w-full" />
-      </div>
+      <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-5">
+        <LocationHeaderSkeleton title="Medarbejdere" />
+        <Skeleton className="h-11 w-full max-w-xl" />
+        <TableSkeleton />
+        <BottomBarSkeleton />
+      </section>
     );
   const effectiveRetryAt = retryAt ?? context.manualSyncRetryAt;
   const cooldown = effectiveRetryAt !== null && effectiveRetryAt > now;
@@ -711,17 +735,14 @@ export function EmployeeScheduling() {
   const lastSync = context.lastShiftSyncAt ?? context.lastEmployeeSyncAt;
   const stale = Boolean(lastSync && now - lastSync > 45 * 60 * 1_000);
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Personale
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+        <PageTitle>
           Medarbejdere
-        </h1>
+        </PageTitle>
       </div>
       <Field>
-        <FieldLabel htmlFor="employees-location">Lokation</FieldLabel>
+        <FieldLabel htmlFor="employees-location" className="sr-only">Lokation</FieldLabel>
         <LocationField
           id="employees-location"
           locations={locations}
@@ -738,7 +759,6 @@ export function EmployeeScheduling() {
   const syncButton =
     integrations?.workfeed && context.workfeedEnabled && !kiosk?.kioskModeEnabled ? (
       <Button
-        size="lg"
         variant="outline"
         disabled={queued || syncing || cooldown}
         onClick={() => void request()}
@@ -763,10 +783,7 @@ export function EmployeeScheduling() {
   }
   return (
     <main
-      className={cn(
-        "mx-auto flex w-full max-w-(--container-page) flex-col gap-6",
-        showSectionTabs && "pb-(--spacing-safe-actions-compact)",
-      )}
+      className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6"
     >
       <AppPageHeader>{header}</AppPageHeader>
 
@@ -775,7 +792,8 @@ export function EmployeeScheduling() {
           <AlertTriangleIcon />
           <AlertTitle>Seneste synkronisering mislykkedes</AlertTitle>
           <AlertDescription>
-            {context.lastError} De senest hentede data vises fortsat.
+            {context.lastError.replace(/\.?$/, ".")} De senest hentede data
+            vises fortsat.
           </AlertDescription>
         </Alert>
       ) : !context.workfeedConnected ? (
@@ -807,65 +825,34 @@ export function EmployeeScheduling() {
         </Alert>
       ) : null}
 
-      <Tabs
-        value={selectedTab}
-        onValueChange={(value) =>
-          router.push(
-            value === "directory" ? "/employees/directory" : "/employees",
-            { scroll: false },
-          )
-        }
-      >
-        {showSectionTabs ? (
-          <AppBottomBar>
-            <div className="mx-auto w-full max-w-(--container-page)">
-              <TabsList
-                variant="line"
-                aria-label="Medarbejdersektioner"
-                className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
-              >
-                {showSchedule ? (
-                  <TabsTrigger
-                    value="schedule"
-                    appearance="standard"
-                    className="min-w-32"
-                  >
-                    Vagtplan
-                  </TabsTrigger>
-                ) : null}
-                {showDirectory ? (
-                  <TabsTrigger
-                    value="directory"
-                    appearance="standard"
-                    className="min-w-32"
-                  >
-                    Medarbejdere
-                  </TabsTrigger>
-                ) : null}
-              </TabsList>
-            </div>
-          </AppBottomBar>
-        ) : null}
-        {showSchedule ? (
-          <TabsContent value="schedule">
-            <ScheduleTab
-              locationId={activeLocationId}
-              hasLocations={Boolean(locations.length)}
-              syncButton={syncButton}
-              timeZone={context.timeZone}
+      {showSectionTabs ? (
+        <AppBottomBar>
+          <div className="mx-auto w-full max-w-(--container-page)">
+            <SectionNav
+              label="Medarbejdersektioner"
+              items={[
+                { href: "/employees", label: "Vagtplan", icon: CalendarDaysIcon, active: selectedTab === "schedule" },
+                { href: "/employees/directory", label: "Medarbejdere", icon: UsersRoundIcon, active: selectedTab === "directory" },
+              ]}
             />
-          </TabsContent>
-        ) : null}
-        {showDirectory ? (
-          <TabsContent value="directory">
-            <DirectoryTab
-              key={`${organizationId}:${activeLocationId}`}
-              locationId={activeLocationId}
-              syncButton={syncButton}
-            />
-          </TabsContent>
-        ) : null}
-      </Tabs>
+          </div>
+        </AppBottomBar>
+      ) : null}
+      {showSchedule && selectedTab === "schedule" ? (
+        <ScheduleTab
+          locationId={activeLocationId}
+          hasLocations={Boolean(locations.length)}
+          syncButton={syncButton}
+          timeZone={context.timeZone}
+        />
+      ) : null}
+      {showDirectory && selectedTab === "directory" ? (
+        <DirectoryTab
+          key={`${organizationId}:${activeLocationId}`}
+          locationId={activeLocationId}
+          syncButton={syncButton}
+        />
+      ) : null}
     </main>
   );
 }

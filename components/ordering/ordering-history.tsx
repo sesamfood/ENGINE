@@ -1,12 +1,19 @@
 "use client";
 
-import { useConvex, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { DownloadIcon, HistoryIcon, PencilIcon } from "lucide-react";
+import {
+  BanIcon,
+  DownloadIcon,
+  HistoryIcon,
+  PencilIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AppPageHeader } from "@/components/app-page-header";
+import { DatePicker } from "@/components/date-picker";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import {
@@ -19,9 +26,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -50,7 +59,14 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { TableSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -62,7 +78,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { dateKey, DEFAULT_TIME_ZONE, inclusiveDateRangeDays } from "@/lib/date";
 import { downloadCsv } from "@/lib/download-csv";
@@ -101,7 +117,12 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
   const convex = useConvex();
   const canExport = usePermission("ordering.export");
   const canPlace = usePermission("ordering.place");
+  const cancelOrder = useMutation(api.ordering.cancelInternalOrder);
+  const reopenOrder = useMutation(api.ordering.reopenInternalOrder);
   const [exporting, setExporting] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -110,6 +131,37 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       mounted.current = false;
     };
   }, []);
+
+  async function cancel() {
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      await cancelOrder({ orderId });
+      toast.success("Bestillingen er annulleret");
+      if (mounted.current) setConfirmCancel(false);
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Bestillingen kunne ikke annulleres"),
+      );
+    } finally {
+      if (mounted.current) setCancelling(false);
+    }
+  }
+
+  async function reopen() {
+    if (reopening) return;
+    setReopening(true);
+    try {
+      await reopenOrder({ orderId });
+      toast.success("Bestillingen er genåbnet");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Bestillingen kunne ikke genåbnes"),
+      );
+    } finally {
+      if (mounted.current) setReopening(false);
+    }
+  }
 
   async function exportOrder() {
     if (exporting || !canExport) return;
@@ -195,7 +247,17 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               <dd>
                 {order.fulfillmentStatus === "open"
                   ? "Afventer transfer"
-                  : "Transfer oprettet"}
+                  : order.fulfillmentStatus === "cancelled"
+                    ? "Annulleret"
+                    : "Transfer oprettet"}
+              </dd>
+            </div>
+          ) : null}
+          {order.comment ? (
+            <div className="sm:col-span-2">
+              <dt className="text-muted-foreground">Kommentar</dt>
+              <dd className="wrap-anywhere whitespace-pre-line">
+                {order.comment}
               </dd>
             </div>
           ) : null}
@@ -261,6 +323,55 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
       </div>
       <DialogFooter showCloseButton>
         {canPlace && order.fulfillmentStatus === "open" ? (
+          <Popover
+            open={confirmCancel}
+            onOpenChange={(open) => {
+              if (!cancelling) setConfirmCancel(open);
+            }}
+          >
+            <PopoverTrigger render={<Button variant="destructive" />}>
+              <BanIcon data-icon="inline-start" />
+              Annullér bestilling
+            </PopoverTrigger>
+            <PopoverContent side="top">
+              <PopoverHeader>
+                <PopoverTitle>Annullér bestillingen?</PopoverTitle>
+              </PopoverHeader>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  disabled={cancelling}
+                  onClick={() => setConfirmCancel(false)}
+                >
+                  Behold
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={cancelling}
+                  onClick={() => void cancel()}
+                >
+                  {cancelling ? <Spinner data-icon="inline-start" /> : null}
+                  Annullér bestilling
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : null}
+        {canPlace && order.fulfillmentStatus === "cancelled" ? (
+          <Button
+            variant="outline"
+            disabled={reopening}
+            onClick={() => void reopen()}
+          >
+            {reopening ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RotateCcwIcon data-icon="inline-start" />
+            )}
+            Genåbn bestilling
+          </Button>
+        ) : null}
+        {canPlace && order.fulfillmentStatus === "open" ? (
           <Button
             variant="outline"
             render={<Link href={`/ordering?order=${order._id}`} />}
@@ -285,6 +396,17 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
   );
 }
 
+function FulfillmentBadge({
+  status,
+}: {
+  status: Doc<"orders">["fulfillmentStatus"];
+}) {
+  if (status === "open") return <Badge variant="outline">Afventer transfer</Badge>;
+  if (status === "cancelled") return <Badge variant="destructive">Annulleret</Badge>;
+  if (status === "transferred") return <Badge variant="success">Transfer oprettet</Badge>;
+  return null;
+}
+
 function HistoryList({
   locationId,
   fromDate,
@@ -305,7 +427,7 @@ function HistoryList({
   return (
     <div className="flex flex-col gap-5">
       {status === "LoadingFirstPage" ? (
-        <Skeleton className="h-64 w-full" />
+        <TableSkeleton />
       ) : results.length === 0 ? (
         <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
@@ -328,6 +450,7 @@ function HistoryList({
                   <TableHead>Dækker perioden</TableHead>
                   <TableHead>Afgivet af</TableHead>
                   <TableHead>Leverandør</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Produkter</TableHead>
                 </TableRow>
               </TableHeader>
@@ -362,6 +485,9 @@ function HistoryList({
                       {order.supplierName ?? "Ingen"}
                       {order.fulfillingLocationId ? " (intern)" : ""}
                     </TableCell>
+                    <TableCell>
+                      <FulfillmentBadge status={order.fulfillmentStatus} />
+                    </TableCell>
                     <TableCell appearance="numeric" className="text-right">
                       {numberFormatter.format(order.itemCount)}
                     </TableCell>
@@ -392,6 +518,11 @@ function HistoryList({
                     <CardTitle>
                       {timestampFormatter.format(order.createdAt)}
                     </CardTitle>
+                    {order.fulfillmentStatus ? (
+                      <CardAction>
+                        <FulfillmentBadge status={order.fulfillmentStatus} />
+                      </CardAction>
+                    ) : null}
                     <CardDescription>
                       Dækker {formatPeriod(order.fromDate, order.toDate)}
                     </CardDescription>
@@ -592,19 +723,16 @@ function History({ organizationId }: { organizationId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-(--spacing-safe-actions-compact)">
+    <div className="flex flex-col gap-6">
       <AppPageHeader>
-        <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+        <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
           <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-              Bestilling
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            <PageTitle>
               Bestillingshistorik
-            </h1>
+            </PageTitle>
           </div>
           <Field>
-            <FieldLabel htmlFor="ordering-history-location">Lokation</FieldLabel>
+            <FieldLabel htmlFor="ordering-history-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
               id="ordering-history-location"
               locations={locations}
@@ -623,13 +751,11 @@ function History({ organizationId }: { organizationId: string }) {
           <FieldGroup className="grid sm:grid-cols-2">
             <Field data-invalid={Boolean(rangeError)}>
               <FieldLabel htmlFor="ordering-history-from">Fra dato</FieldLabel>
-              <Input
+              <DatePicker
                 id="ordering-history-from"
-                type="date"
-                className="h-11"
                 value={fromDate}
                 max={toDate || undefined}
-                onChange={(event) => setFromDate(event.target.value)}
+                onValueChange={setFromDate}
                 aria-invalid={Boolean(rangeError)}
                 aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
                 required
@@ -637,13 +763,11 @@ function History({ organizationId }: { organizationId: string }) {
             </Field>
             <Field data-invalid={Boolean(rangeError)}>
               <FieldLabel htmlFor="ordering-history-to">Til dato</FieldLabel>
-              <Input
+              <DatePicker
                 id="ordering-history-to"
-                type="date"
-                className="h-11"
                 value={toDate}
                 min={fromDate || undefined}
-                onChange={(event) => setToDate(event.target.value)}
+                onValueChange={setToDate}
                 aria-invalid={Boolean(rangeError)}
                 aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
                 required
@@ -726,7 +850,7 @@ function History({ organizationId }: { organizationId: string }) {
 export function OrderingHistory() {
   const { data: session } = authClient.useSession();
   const organizationId = useActiveOrganization().data?.id;
-  if (!organizationId) return <Skeleton className="h-96 w-full" />;
+  if (!organizationId) return <TableSkeleton />;
   return (
     <History
       key={`${organizationId}:${session?.user.id}`}

@@ -6,14 +6,14 @@ export const administrationFeatures: HelpFeature[] = [
     slug: "administration",
     label: "Administration",
     summary:
-      "Klargør lokationer og Produkter, vælg funktioner, tilpas udseendet, og giv eksterne systemer API-adgang.",
+      "Klargør lokationer og produkter, vælg funktioner, tilpas udseendet, og giv eksterne systemer API-adgang.",
     icon: SettingsIcon,
     guides: [
       {
         slug: "overblik",
         label: "Overblik",
         summary:
-          "Administration samler de lokationer, Produkter og indstillinger, som den daglige drift bygger på.",
+          "Administration samler de lokationer, produkter og indstillinger, som den daglige drift bygger på.",
         appHref: "/administration",
         appLinkLabel: "Åbn Administration",
         sections: [
@@ -29,9 +29,9 @@ export const administrationFeatures: HelpFeature[] = [
             title: "Klargør organisationen",
             steps: [
               "Opret lokationer med tidszone, valuta og åbningstider.",
-              "Opret Produkter, enheder og kategorier. Vælg derefter Produkter og Områder for hver Lokation.",
+              "Opret produkter, enheder og kategorier. Vælg derefter Produkter og Områder for hver Lokation.",
               "Opret roller, og invitér Brugerne. Forbind de integrationer, I bruger.",
-              "Gennemgå indstillingerne for hver driftsfunktion. Kontrollér med en Bruger fra den daglige drift, at Produkter, lokationer og handlinger er de rigtige.",
+              "Gennemgå indstillingerne for hver driftsfunktion. Kontrollér med en Bruger fra den daglige drift, at produkter, lokationer og handlinger er de rigtige.",
             ],
           },
           {
@@ -86,26 +86,26 @@ export const administrationFeatures: HelpFeature[] = [
             id: "produktvalg",
             title: "Vælg Produkter og Områder",
             paragraphs: [
-              "Produkter og Områder bestemmer, hvilke Produkter lokationen bruger i Waste og Count, og i hvilken rækkefølge de tælles. Produkterne står i kolonner, som du trækker dem mellem:",
+              "Produkter og Områder bestemmer, hvilke produkter lokationen bruger i Waste og Count, og i hvilken rækkefølge de tælles. Produkterne står i kolonner, som du trækker dem mellem:",
             ],
             bullets: [
               "Ikke brugt: Produktet bruges ikke på lokationen.",
               "Kun Waste: Produktet kan registreres som Waste, men tælles ikke.",
               "Count eller et Område: Produktet tælles i den viste rækkefølge. Opdel i Områder for at følge den fysiske rute, eksempelvis køl og tørvarer.",
-              "Hold Shift, mens du trækker, for at kopiere et Produkt til flere Områder. Du kan også bruge menuen på produktkortet.",
-              "Brug nye Produkter automatisk lægger nye Produkter i Kun Waste. Produkter i Ikke brugt forbliver fravalgt.",
-              "En ingrediens i et valgt Produkt kan ikke flyttes til Ikke brugt. Produkter, der er udeladt fra Count for hele organisationen, kan ikke tælles.",
+              "Hold Shift, mens du trækker, for at kopiere et produkt til flere Områder. Du kan også bruge menuen på produktkortet.",
+              "Brug nye produkter automatisk lægger nye produkter i Kun Waste. Produkter i Ikke brugt forbliver fravalgt.",
+              "En ingrediens i et valgt produkt kan ikke flyttes til Ikke brugt. Produkter, der er udeladt fra Count for hele organisationen, kan ikke tælles.",
             ],
             steps: [
               "Vælg Produkter og områder på lokationens række.",
-              "Træk Produkterne til den rigtige kolonne og rækkefølge. Søg, hvis listen er lang.",
+              "Træk produkterne til den rigtige kolonne og rækkefølge. Søg, hvis listen er lang.",
               "Vælg Opdel i Områder eller Nyt Område for at oprette et Område. Gem ændringerne.",
             ],
             screenshot: {
               src: "/help/screenshots/lokation-produkter.webp",
               alt: "Produkter og Områder med kolonnerne Ikke brugt, Kun Waste og lokationens Count-områder",
               caption:
-                "Træk et Produkt til den kolonne, det skal bruges i. Rækkefølgen i et Område er rækkefølgen ved Count. Eksempeldata.",
+                "Træk et produkt til den kolonne, det skal bruges i. Rækkefølgen i et Område er rækkefølgen ved Count. Eksempeldata.",
               width: 1280,
               height: 736,
             },
@@ -113,9 +113,9 @@ export const administrationFeatures: HelpFeature[] = [
         ],
         troubleshooting: [
           {
-            question: "Hvorfor mangler et Produkt på en Lokation?",
+            question: "Hvorfor mangler et produkt på en Lokation?",
             answer:
-              "Kontrollér, at Produktet er aktivt, og at det ikke ligger i Ikke brugt under lokationens Produkter og Områder. Mangler det kun i Count, så kontrollér, om det ligger i Kun Waste eller er udeladt under Administration → Count.",
+              "Kontrollér, at produktet er aktivt, og at det ikke ligger i Ikke brugt under lokationens Produkter og Områder. Mangler det kun i Count, så kontrollér, om det ligger i Kun Waste eller er udeladt under Administration → Count.",
           },
         ],
         relatedLinks: [
@@ -127,28 +127,28 @@ export const administrationFeatures: HelpFeature[] = [
         slug: "produkter",
         label: "Produkter, enheder og opskrifter",
         summary:
-          "Byg produktkataloget med enheder, ingredienser og holdbarhed. Importér, eksportér og arkivér Produkter.",
+          "Byg produktkataloget med enheder, ingredienser og holdbarhed. Importér, eksportér og arkivér produkter.",
         appHref: "/administration/products",
-        appLinkLabel: "Åbn Produkter",
+        appLinkLabel: "Åbn produkter",
         sections: [
           {
             id: "produkt",
-            title: "Opret et Produkt",
+            title: "Opret et produkt",
             steps: [
               "Åbn Administration → Produkter, og vælg Nyt produkt. Angiv Navn og Kategorier. Nye kategorier kan oprettes direkte i feltet.",
-              "Angiv Maksimal temperatur, hvis Produktet skal temperaturkontrolleres ved Transfer, og Holdbarhed, hvis det skal have datoetiketter. Tilføj eventuelt et billede.",
+              "Angiv Maksimal temperatur, hvis produktet skal temperaturkontrolleres ved Transfer, og Holdbarhed, hvis det skal have datoetiketter. Tilføj eventuelt et billede.",
               "Vælg standardenheden under Enheder og omregninger. Tilføj andre pakninger med Tilføj enhed, og angiv, hvor mange standardenheder de svarer til.",
-              "Tilføj ingredienser, hvis Produktet er en opskrift, og gem.",
+              "Tilføj ingredienser, hvis produktet er en opskrift, og gem.",
             ],
             bullets: [
               "Omregningen går altid til standardenheden. Er standarden kg, og en kasse indeholder 5 kg, er kassens omregning 5.",
-              "Ingredienser er andre Produkter med mængde og enhed. Kan fjernes markerer en ingrediens, kunden kan fravælge. Ingredienser, der kan tilføjes, er ekstra tilvalg.",
+              "Ingredienser er andre produkter med mængde og enhed. Kan fjernes markerer en ingrediens, kunden kan fravælge. Ingredienser, der kan tilføjes, er ekstra tilvalg.",
             ],
             screenshot: {
               src: "/help/screenshots/product-setup.webp",
               alt: "Produkteditor med produktdetaljer, enheder og omregninger samt ingredienser",
               caption:
-                "Standardenheden er grundlaget for alle omregninger. Ingredienser er andre Produkter med egen mængde og enhed. Eksempeldata.",
+                "Standardenheden er grundlaget for alle omregninger. Ingredienser er andre produkter med egen mængde og enhed. Eksempeldata.",
               width: 1204,
               height: 600,
             },
@@ -157,8 +157,9 @@ export const administrationFeatures: HelpFeature[] = [
             id: "enheder-og-opskrift",
             title: "Kategorier og enheder",
             bullets: [
-              "Fanen Kategorier samler Produkter og underkategorier. Brug Ny underkategori eller Redigér til at ændre opdelingen.",
-              "Fanen Enheder viser alle enheder. Sammenlæg flytter Produkter og aktive opsætninger fra en dublet til den valgte enhed. Historiske registreringer bevares.",
+              "Fanen Kategorier samler produkter og underkategorier. Brug Ny underkategori eller Redigér til at ændre opdelingen.",
+              "Fanen Enheder viser alle enheder. Sammenlæg flytter produkter og aktive opsætninger fra en dublet til den valgte enhed. Historiske registreringer bevares.",
+              "Fanen Beholdere samler baljer, spande og kasser med billede, vægt og rumfang. Vælg en beholder som enhed på produktet. Ved Count kan en ikke fuld beholder vejes med indhold, og beholderens egen vægt trækkes fra, når produktet har en vægtenhed.",
             ],
           },
           {
@@ -168,11 +169,11 @@ export const administrationFeatures: HelpFeature[] = [
             steps: [
               "Åbn fanen Menuer, og vælg Ny menu.",
               "Angiv Navn, og vælg Menu i OnlinePOS. Vælg masterforbindelse, hvis I har flere.",
-              "Opret en gruppe for hvert valg i menuen, eksempelvis Hovedret og Drikke. Angiv Antal valg, og vælg gruppens Produkter.",
+              "Opret en gruppe for hvert valg i menuen, eksempelvis Hovedret og Drikke. Angiv Antal valg, og vælg gruppens produkter.",
               "Vælg Opret menu, og opret de OnlinePOS-koblinger, advarslerne peger på.",
             ],
             bullets: [
-              "Menuen samler salgslinjer til 0 kr. ud fra Produkternes OnlinePOS-koblinger. Menuer kan også vælges ved registrering af Salg.",
+              "Menuen samler salgslinjer til 0 kr. ud fra produkternes OnlinePOS-koblinger. Menuer kan også vælges ved registrering af Salg.",
               "Sletning af en menu fjerner kun grupperingen. Gemte salgslinjer bevares.",
             ],
           },
@@ -182,7 +183,7 @@ export const administrationFeatures: HelpFeature[] = [
             bullets: [
               "Eksportér giver en ZIP-fil med kataloget. Importér indlæser en eksporteret fil og opretter manglende kategorier og enheder.",
               "Ved samme produktnavn vælger du Spring over eller Overskriv. Overskriv erstatter produktdata og billeder og omregner lager og opskrifter.",
-              "Arkivér fjerner Produktet fra vælgerne. Det bliver i arkivet, indtil du gendanner eller sletter det permanent.",
+              "Arkivér fjerner produktet fra vælgerne. Det bliver i arkivet, indtil du gendanner eller sletter det permanent.",
               "Permanent sletning fjerner også billede, enheder, opskrift og brugen som ingrediens. Det kan ikke fortrydes.",
             ],
           },
@@ -192,12 +193,12 @@ export const administrationFeatures: HelpFeature[] = [
             integration: "onlinepos",
             question: "Hvorfor kan jeg ikke se Menuer eller OnlinePOS-koblinger?",
             answer:
-              "Menuer kræver adgang til at administrere integrationer, og OnlinePOS skal være forbundet og aktiveret. Et nyt Produkt skal gemmes, før dets OnlinePOS-kobling kan vælges.",
+              "Menuer kræver adgang til at administrere integrationer, og OnlinePOS skal være forbundet og aktiveret. Et nyt produkt skal gemmes, før dets OnlinePOS-kobling kan vælges.",
           },
           {
             question: "Produktet blev gemt, men billedet mangler?",
             answer:
-              "Produktdata kan være gemt, selv om upload af billedet fejlede. Åbn Produktet igen, og tilføj billedet.",
+              "Produktdata kan være gemt, selv om upload af billedet fejlede. Åbn produktet igen, og tilføj billedet.",
           },
         ],
         relatedLinks: [
@@ -245,11 +246,11 @@ export const administrationFeatures: HelpFeature[] = [
             id: "feedback",
             title: "Feedback fra Brugerne",
             paragraphs: [
-              "Med Tillad feedback kan Brugerne vælge Send feedback i appen og indsende en Fejl eller et Forslag med titel, beskrivelse og eventuelt skærmbillede.",
+              "Med Tillad feedback kan Brugerne vælge Giv feedback i appen og indsende en Fejl eller et Forslag med titel, beskrivelse og eventuelt skærmbillede.",
             ],
             steps: [
               "Åbn Administration → Feedback, og slå Tillad feedback til.",
-              "Vælg Modtager: e-mail eller Linear. Ved e-mail angiver du adressen. Ved Linear indtaster du en API-nøgle, henter teams og vælger Team. Du kan også sende en kopi til en e-mailadresse.",
+              "Vælg Modtager: e-mail, Linear eller Notion. Ved e-mail angiver du adressen. Ved Linear indtaster du en API-nøgle, henter teams og vælger Team. Ved Notion indtaster du nøglen fra en intern integration, deler databasen med integrationen, henter databaser og vælger Database. Vælg eventuelt en Kolonne og den Værdi, feedback oprettes med. Du kan også sende en kopi til en e-mailadresse.",
               "Gem. Seneste feedback viser indsendt feedback og om den blev sendt.",
             ],
           },
@@ -318,7 +319,7 @@ export const administrationFeatures: HelpFeature[] = [
     slug: "adgang-og-profil",
     label: "Adgang og profil",
     summary:
-      "Opret konto og organisation, invitér Brugere, vælg roller og lokationsadgang, og klargør fælles tablets.",
+      "Opret konto og organisation, invitér brugere, vælg roller og lokationsadgang, og klargør fælles tablets.",
     icon: UserRoundIcon,
     guides: [
       {
@@ -354,7 +355,7 @@ export const administrationFeatures: HelpFeature[] = [
         slug: "brugere-og-roller",
         label: "Brugere, invitationer og roller",
         summary:
-          "Vælg rollernes handlinger, invitér Brugere, og giv dem adgang til de rigtige lokationer.",
+          "Vælg rollernes handlinger, invitér brugere, og giv dem adgang til de rigtige lokationer.",
         appHref: "/administration/users",
         appLinkLabel: "Åbn Brugere",
         sections: [
@@ -433,13 +434,27 @@ export const administrationFeatures: HelpFeature[] = [
             id: "opsatning",
             title: "Vælg kioskens sider",
             steps: [
-              "Åbn Administration → Kiosk, og vælg de sider, kiosker må bruge, under Kiosktilstand.",
+              "Åbn Administration → Kiosk, og vælg de sider, kiosker må bruge, under Kiosktilstand. Moduler, der er slået fra, vises ikke.",
               "Vælg Startside. Slå eventuelt Nulstil ved inaktivitet til, og angiv 5–3600 sekunder.",
               "Vælg Gem kioskopsætning.",
             ],
             bullets: [
               "Nulstilling sender kiosken til startsiden og rydder igangværende arbejde.",
               "Egenkontroloversigt tillader korrigerende handlinger, og Kontroldokumentation tillader eksport, uanset kontoens rolle.",
+              "Bestilling, Udgift, Varemodtagelse, Wolt-ordrer, Månedsrapport og Staff food-rapport kræver også, at kontoens rolle har adgang.",
+            ],
+          },
+          {
+            id: "pin",
+            title: "Lås sider med PIN-kode",
+            steps: [
+              "Markér Kræver PIN-kode under hvert modul, der skal låses, og vælg Gem kioskopsætning. Alle modulets sider låses.",
+              "Vælg Angiv PIN-kode ud for hver Lokation under PIN-koder, og angiv 4–8 cifre.",
+            ],
+            bullets: [
+              "Kiosken beder om koden, når en låst side åbnes. Siderne låses igen, når kiosken går til en side uden PIN-kode.",
+              "Lokationer uden PIN-kode låser ikke siderne.",
+              "Efter 5 forkerte forsøg skal kiosken vente 5 minutter.",
             ],
           },
           {

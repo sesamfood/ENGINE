@@ -41,6 +41,8 @@ export type MetricDefinition = {
   defaultSize: WidgetSize;
   defaultRange?: WidgetRangePreset;
   sensitive?: boolean;
+  /** Whether an increase is good, bad, or neither. Controls delta coloring. */
+  direction?: "up-good" | "down-good" | "neutral";
   shareable?: boolean;
   live?: {
     currentLabel: string;
@@ -76,6 +78,7 @@ const definitions = {
   cogsPercent: {
     ...financialDefaults,
     id: "cogsPercent",
+    direction: "down-good",
     label: "Vareforbrug",
     description: "Vareforbrug som andel af månedens nettoomsætning.",
     formula: "Lagerreguleret vareforbrug ÷ nettoomsætning × 100. Bruger et manuelt godkendt beløb eller e-conomic-konti med bekræftet lagerregulering. Bogførte beløb er foreløbige, indtil måneden er godkendt.",
@@ -83,6 +86,7 @@ const definitions = {
   labourPercent: {
     ...financialDefaults,
     id: "labourPercent",
+    direction: "down-good",
     label: "Lønprocent",
     description: "Lønomkostninger som andel af månedens nettoomsætning.",
     formula: "Lønomkostninger ÷ nettoomsætning × 100. Godkendt bogført løn fra e-conomic erstatter Workfeeds estimat for den enkelte lokation og måned.",
@@ -90,6 +94,7 @@ const definitions = {
   grossMarginPercent: {
     ...financialDefaults,
     id: "grossMarginPercent",
+    direction: "up-good",
     label: "Bruttoavance",
     description: "Nettoomsætning efter vareforbrug, vist i procent.",
     formula: "(Nettoomsætning − vareforbrug) ÷ nettoomsætning × 100. Bruger samme vareforbrug og periode som månedsrapporten.",
@@ -97,6 +102,7 @@ const definitions = {
   wastePercent: {
     ...financialDefaults,
     id: "wastePercent",
+    direction: "down-good",
     label: "Waste-procent",
     description: "Godkendt Waste-værdi som andel af månedens nettoomsætning.",
     formula: "Godkendt Waste-værdi ÷ nettoomsætning × 100. Waste trækkes ikke fra EBITDA igen, når værdien allerede indgår i vareforbruget.",
@@ -104,6 +110,7 @@ const definitions = {
   rentPercent: {
     ...financialDefaults,
     id: "rentPercent",
+    direction: "down-good",
     label: "Huslejeprocent",
     description: "Husleje som andel af månedens nettoomsætning.",
     formula: "Husleje fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
@@ -111,6 +118,7 @@ const definitions = {
   utilitiesPercent: {
     ...financialDefaults,
     id: "utilitiesPercent",
+    direction: "down-good",
     label: "Forbrugsprocent",
     description: "El, vand og varme som andel af månedens nettoomsætning.",
     formula: "Forbrugsomkostninger fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
@@ -118,6 +126,7 @@ const definitions = {
   primeCostPercent: {
     ...financialDefaults,
     id: "primeCostPercent",
+    direction: "down-good",
     label: "Primære omkostninger",
     description: "Vareforbrug og løn som andel af månedens nettoomsætning.",
     formula: "(Vareforbrug + lønomkostninger) ÷ nettoomsætning × 100.",
@@ -125,12 +134,14 @@ const definitions = {
   ebitdaPercent: {
     ...financialDefaults,
     id: "ebitdaPercent",
+    direction: "up-good",
     label: "Lokationens EBITDA",
     description: "Månedens resultat før renter, skat og afskrivninger, vist i procent.",
     formula: "(Nettoomsætning − vareforbrug − løn − husleje − forbrug − øvrige driftsomkostninger) ÷ nettoomsætning × 100. Fællesomkostninger kræver en tilknytning til lokationen.",
   },
   googleRating: {
     id: "googleRating",
+    direction: "up-good",
     label: "Gæstescore (Google Maps)",
     category: "Gæster",
     description: "Aktuel Google-bedømmelse fra 1 til 5 for hver lokation.",
@@ -150,6 +161,7 @@ const definitions = {
   },
   predictedSalesRevenue: {
     id: "predictedSalesRevenue",
+    direction: "up-good",
     label: "Forventet omsætning, næste 7 dage",
     category: "Salg",
     description: "Prognose fra i morgen og syv dage frem. Bruger produktmængder, salgsmiks, åbningstider, lukkedage, vejr og helligdage. Kræver prognoseopsætning i lokationens oplysninger.",
@@ -165,6 +177,7 @@ const definitions = {
   },
   wasteQuantity: {
     id: "wasteQuantity",
+    direction: "down-good",
     label: "Waste-mængde",
     category: "Waste",
     description: "Registreret Waste i produkternes standardenhed.",
@@ -221,6 +234,7 @@ const definitions = {
   },
   badDeliveries: {
     id: "badDeliveries",
+    direction: "down-good",
     label: "Dårlige leveringer",
     category: "Leveringer",
     description: "Antal aktive registreringer af dårlige leveringer.",
@@ -235,6 +249,7 @@ const definitions = {
   },
   countCompliance: {
     id: "countCompliance",
+    direction: "up-good",
     label: "Gennemførte Counts",
     category: "Count",
     description: "Andel af periodens Counts, der er indsendt.",
@@ -249,6 +264,7 @@ const definitions = {
   },
   openCounts: {
     id: "openCounts",
+    direction: "down-good",
     label: "Åbne Counts",
     category: "Count",
     description: "Counts, der endnu ikke er indsendt.",
@@ -375,6 +391,7 @@ const definitions = {
   },
   salesRevenue: {
     id: "salesRevenue",
+    direction: "up-good",
     label: "Omsætning",
     category: "Salg",
     description: "Samlet omsætning i perioden.",
@@ -390,6 +407,7 @@ const definitions = {
   },
   salesOrderCount: {
     id: "salesOrderCount",
+    direction: "up-good",
     label: "Ordrer",
     category: "Salg",
     description: "Antal ordrer i perioden.",
@@ -405,6 +423,7 @@ const definitions = {
   },
   averageBasket: {
     id: "averageBasket",
+    direction: "up-good",
     label: "Gennemsnitlig kurv",
     category: "Salg",
     description: "Omsætning divideret med antal ordrer.",
@@ -421,6 +440,7 @@ const definitions = {
   onlineSalesRevenue: {
     ...channelSalesDefaults,
     id: "onlineSalesRevenue",
+    direction: "up-good",
     label: "Online omsætning",
     description: "Omsætning fra OnlinePOS-salg online i perioden.",
     formula: "Summen af daglig omsætning i mindreenheder ÷ 100. Kun ordrer med betalingstyper, der er markeret som online i OnlinePOS-indstillingerne.",
@@ -430,6 +450,7 @@ const definitions = {
   onlineSalesOrderCount: {
     ...channelSalesDefaults,
     id: "onlineSalesOrderCount",
+    direction: "up-good",
     label: "Online ordrer",
     description: "Antal OnlinePOS-ordrer online i perioden.",
     formula: "Summen af daglige ordreantal. Kun ordrer med betalingstyper, der er markeret som online i OnlinePOS-indstillingerne.",
@@ -439,6 +460,7 @@ const definitions = {
   onlineAverageBasket: {
     ...channelSalesDefaults,
     id: "onlineAverageBasket",
+    direction: "up-good",
     label: "Online gennemsnitlig kurv",
     description: "Omsætning divideret med antal ordrer for OnlinePOS-salg online.",
     formula: "Summen af omsætning i mindreenheder ÷ summen af ordrer ÷ 100; 0 hvis der ikke er ordrer. Kun ordrer med betalingstyper, der er markeret som online i OnlinePOS-indstillingerne.",
@@ -448,6 +470,7 @@ const definitions = {
   storeSalesRevenue: {
     ...channelSalesDefaults,
     id: "storeSalesRevenue",
+    direction: "up-good",
     label: "Omsætning i butik",
     description: "Omsætning fra OnlinePOS-salg i butik i perioden.",
     formula: "Summen af daglig omsætning i mindreenheder ÷ 100. Kun ordrer med betalingstyper, der ikke er markeret som online i OnlinePOS-indstillingerne.",
@@ -457,6 +480,7 @@ const definitions = {
   storeSalesOrderCount: {
     ...channelSalesDefaults,
     id: "storeSalesOrderCount",
+    direction: "up-good",
     label: "Ordrer i butik",
     description: "Antal OnlinePOS-ordrer i butik i perioden.",
     formula: "Summen af daglige ordreantal. Kun ordrer med betalingstyper, der ikke er markeret som online i OnlinePOS-indstillingerne.",
@@ -466,6 +490,7 @@ const definitions = {
   storeAverageBasket: {
     ...channelSalesDefaults,
     id: "storeAverageBasket",
+    direction: "up-good",
     label: "Gennemsnitlig kurv i butik",
     description: "Omsætning divideret med antal ordrer for OnlinePOS-salg i butik.",
     formula: "Summen af omsætning i mindreenheder ÷ summen af ordrer ÷ 100; 0 hvis der ikke er ordrer. Kun ordrer med betalingstyper, der ikke er markeret som online i OnlinePOS-indstillingerne.",
@@ -474,6 +499,7 @@ const definitions = {
   },
   woltCancellationRate: {
     id: "woltCancellationRate",
+    direction: "down-good",
     label: "Wolt-annulleringsrate",
     category: "Salg",
     description: "Andel af Wolt-ordrer, der blev annulleret i perioden.",

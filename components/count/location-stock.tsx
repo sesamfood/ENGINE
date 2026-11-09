@@ -24,6 +24,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { ProductGridSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -37,6 +38,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import { useKiosk, usePermission } from "@/components/app-shell";
 import { dateTimeFormatter, DEFAULT_TIME_ZONE } from "@/lib/date";
+import { unitNameFor } from "@/lib/unit-system";
 
 const quantityFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
@@ -45,7 +47,7 @@ const quantityFormatter = new Intl.NumberFormat("da-DK", {
 function formatStockQuantity(
   quantity: number,
   defaultUnitName: string,
-  units: Array<{ name: string; factorToDefault: number }>,
+  units: Array<{ name: string; pluralName?: string; factorToDefault: number }>,
 ) {
   const largestUnit = units
     .filter(
@@ -64,7 +66,7 @@ function formatStockQuantity(
   const remainder = Number(
     (quantity - wholeUnits * largestUnit.factorToDefault).toPrecision(12),
   );
-  const largest = `${quantityFormatter.format(wholeUnits)} ${largestUnit.name}`;
+  const largest = `${quantityFormatter.format(wholeUnits)} ${unitNameFor(largestUnit, wholeUnits)}`;
 
   return Math.abs(remainder) < 1e-9
     ? largest
@@ -105,16 +107,17 @@ export function LocationStock() {
 
   if (!locations || (locationId && !stock)) {
     return (
-      <div className={productGridClassName}>
-        {Array.from({ length: 8 }, (_, index) => (
-          <Card key={index} appearance="gallery">
-            <Skeleton appearance="square" className="aspect-video w-full lg:aspect-4/3" />
-            <CardHeader appearance="inset">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-8 w-1/2" />
-            </CardHeader>
-          </Card>
-        ))}
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-11 w-44 self-end" />
+        <ProductGridSkeleton>
+          <CardHeader appearance="product">
+            <Skeleton className="h-5 w-2/3" />
+          </CardHeader>
+          <CardContent appearance="stock" className="flex flex-col">
+            <Skeleton className="h-7 w-1/2" />
+            <Skeleton className="h-4 w-full" />
+          </CardContent>
+        </ProductGridSkeleton>
       </div>
     );
   }

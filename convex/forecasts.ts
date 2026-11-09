@@ -17,7 +17,11 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import schema from "./schema";
-import { requireLocationAccess, requirePermission } from "./lib/auth";
+import {
+  requireKioskDestination,
+  requireLocationAccess,
+  requirePermission,
+} from "./lib/auth";
 import { resolveTimeZone } from "./lib/timeZone";
 import { fetchForecastConditions } from "./lib/forecastProviders";
 import { readGooglePoint } from "./lib/googlePlaces";
@@ -72,10 +76,7 @@ export const requestRefresh = mutation({
   returns: v.null(),
   handler: async (ctx, { locationId }) => {
     const auth = await requirePermission(ctx, "ordering.plan");
-    if (auth.kioskModeEnabled)
-      throw new ConvexError(
-        "Du har ikke adgang til bestilling i kiosktilstand",
-      );
+    await requireKioskDestination(ctx, auth, "ordering.new");
     requireLocationAccess(auth, locationId);
     const location = await ctx.db.get("locations", locationId);
     if (!location || location.organizationId !== auth.organizationId)

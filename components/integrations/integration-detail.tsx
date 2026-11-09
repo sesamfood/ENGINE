@@ -6,7 +6,7 @@ import type { ComponentType } from "react";
 import dynamic from "next/dynamic";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { integrationRegistry, type IntegrationId } from "@/integrations/registry";
 import { authClient } from "@/lib/auth-client";
 
@@ -27,7 +27,7 @@ export function IntegrationDetail({ integration }: { integration: IntegrationId 
   const entry = integrationRegistry.find((entry) => entry.id === integration);
 
   if (!access || (canManage && !state)) {
-    return <Skeleton className="h-72 w-full max-w-6xl" />;
+    return <FormCardSkeleton className="max-w-6xl" />;
   }
 
   const available = canManage && state?.[integration] && entry &&

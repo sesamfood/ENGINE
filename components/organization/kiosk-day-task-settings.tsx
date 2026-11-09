@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
@@ -366,7 +367,7 @@ export function KioskDayTaskSettings() {
   );
   const linkablePages = useQuery(api.kioskDay.getLinkablePages, canManage ? {} : "skip");
 
-  if (!access) return <Skeleton className="h-80 w-full" />;
+  if (!access) return <FormCardSkeleton />;
 
   if (!canManage) {
     return (
@@ -388,9 +389,6 @@ export function KioskDayTaskSettings() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="max-w-2xl text-sm text-muted-foreground">
-        Opgaverne vises på lokationens kiosk. Når lukningen er udført, er kiosken låst, indtil åbningen er udført.
-      </p>
       {locations.length > 1 ? (
         <Field className="max-w-sm">
           <FieldLabel htmlFor="day-task-location">Lokation</FieldLabel>

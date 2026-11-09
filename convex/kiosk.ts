@@ -23,6 +23,8 @@ const settingsValidator = v.object({
   enabledPages: v.array(v.string()),
   homePage: v.string(),
   inactivitySeconds: v.union(v.number(), v.null()),
+  allowLeavingStartOfDay: v.boolean(),
+  pinFeatures: v.array(v.string()),
   updatedAt: v.number(),
 });
 const accountValidator = v.object({
@@ -60,6 +62,7 @@ function validateSettings(
   enabledPages: string[],
   homePage: string,
   inactivitySeconds: number | null,
+  pinFeatures: string[] = [],
 ) {
   if (!enabledPages.length) throw new ConvexError("Vælg mindst én kioskside");
   if (new Set(enabledPages).size !== enabledPages.length) {
@@ -70,6 +73,16 @@ function validateSettings(
   }
   if (!enabledPages.includes(homePage)) {
     throw new ConvexError("Startsiden skal være aktiveret");
+  }
+  if (
+    pinFeatures.some(
+      (feature) =>
+        !kioskDestinations.some(
+          (page) => page.feature === feature && enabledPages.includes(page.id),
+        ),
+    )
+  ) {
+    throw new ConvexError("PIN-kode kan kun kræves for moduler med aktiverede sider");
   }
   if (
     inactivitySeconds !== null &&
@@ -139,6 +152,8 @@ export const getAdminSettings = query({
           enabledPages: settings.enabledPages,
           homePage: settings.homePage,
           inactivitySeconds: settings.inactivitySeconds,
+          allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
+          pinFeatures: settings.pinFeatures ?? [],
           updatedAt: settings.updatedAt,
         }
       : null;
@@ -150,11 +165,18 @@ export const saveSettings = mutation({
     enabledPages: v.array(v.string()),
     homePage: v.string(),
     inactivitySeconds: v.union(v.number(), v.null()),
+    allowLeavingStartOfDay: v.optional(v.boolean()),
+    pinFeatures: v.optional(v.array(v.string())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    validateSettings(args.enabledPages, args.homePage, args.inactivitySeconds);
+    validateSettings(
+      args.enabledPages,
+      args.homePage,
+      args.inactivitySeconds,
+      args.pinFeatures,
+    );
     const current = await ctx.db
       .query("kioskSettings")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
@@ -455,6 +477,123 @@ export const setMode = mutation({
       where: [{ field: "id", value: auth.sessionId }],
       update: { kioskModeEnabled: args.enabled, updatedAt: new Date() },
     });
+    return null;
+  },
+});
+
+export const listPinLocations = query({
+  args: {},
+  returns: v.array(v.id("locations")),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const pins = await ctx.db
+      .query("kioskPins")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(500);
+    return pins.map((pin) => pin.locationId);
+  },
+});
+
+export const setLocationPin = mutation({
+  args: { locationId: v.id("locations"), pin: v.union(v.string(), v.null()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireOrganizationAdmin(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, organizationId, args.locationId);
+    if (args.pin !== null && !/^\d{4,8}$/.test(args.pin)) {
+      throw new ConvexError("PIN-koden skal være 4–8 cifre");
+    }
+    const current = await ctx.db
+      .query("kioskPins")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", args.locationId),
+      )
+      .unique();
+    if (args.pin === null) {
+      if (current) await ctx.db.delete("kioskPins", current._id);
+      return null;
+    }
+    const pinHash = await (await createAuth(ctx).$context).password.hash(args.pin);
+    const data = { pinHash, updatedAt: Date.now() };
+    if (current) await ctx.db.patch("kioskPins", current._id, data);
+    else {
+      await ctx.db.insert("kioskPins", {
+        organizationId,
+        locationId: args.locationId,
+        ...data,
+      });
+    }
+    return null;
+  },
+});
+
+const MAX_PIN_ATTEMPTS = 5;
+const PIN_BLOCK_MS = 5 * 60_000;
+
+// Returns an error message instead of throwing so failed attempts are saved.
+export const unlockPinPages = mutation({
+  args: { pin: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const auth = await requireOrganization(ctx);
+    const sessionId = auth.sessionId;
+    if (!auth.kioskModeEnabled || !auth.kioskLocationId || !sessionId) {
+      throw new ConvexError("Kiosktilstand er ikke aktiv");
+    }
+    const kioskLocationId = auth.kioskLocationId;
+    const pin = await ctx.db
+      .query("kioskPins")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("locationId", kioskLocationId),
+      )
+      .unique();
+    if (!pin) return null;
+    const current = await ctx.db
+      .query("kioskPinUnlocks")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .unique();
+    const now = Date.now();
+    if (current?.blockedUntil && current.blockedUntil > now) {
+      return "For mange forkerte forsøg. Prøv igen om et par minutter";
+    }
+    const valid = await (await createAuth(ctx).$context).password.verify({
+      password: args.pin,
+      hash: pin.pinHash,
+    });
+    const failedAttempts = valid ? 0 : (current?.failedAttempts ?? 0) + 1;
+    const blocked = failedAttempts >= MAX_PIN_ATTEMPTS;
+    const data = {
+      sessionId,
+      unlocked: valid,
+      failedAttempts: blocked ? 0 : failedAttempts,
+      blockedUntil: blocked ? now + PIN_BLOCK_MS : null,
+    };
+    if (current) await ctx.db.replace("kioskPinUnlocks", current._id, data);
+    else await ctx.db.insert("kioskPinUnlocks", data);
+    if (valid) return null;
+    return blocked
+      ? "For mange forkerte forsøg. Prøv igen om et par minutter"
+      : "Forkert PIN-kode";
+  },
+});
+
+export const lockPinPages = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const { sessionId } = await requireOrganization(ctx);
+    if (!sessionId) return null;
+    const current = await ctx.db
+      .query("kioskPinUnlocks")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .unique();
+    if (current?.unlocked) {
+      await ctx.db.patch("kioskPinUnlocks", current._id, { unlocked: false });
+    }
     return null;
   },
 });

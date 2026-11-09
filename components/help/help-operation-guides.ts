@@ -76,7 +76,7 @@ export const operationFeatures: HelpFeature[] = [
               "Søg efter en måling, og læs dens formel og datakilder. Vælg Opret tilpasset måling for at bygge din egen.",
               "Vælg visualisering og størrelse, og kontrollér Salgskilde, hvis valget vises.",
               "Flyt widgets på plads. Widgettens knapper ændrer visualisering, akse, indhold eller fjerner den.",
-              "Vælg Gem som standard for at gemme periode og lokationsvalg, og afslut med Færdig.",
+              "Vælg Mere → Gem som standard for at gemme periode og lokationsvalg, og afslut med Færdig.",
             ],
             screenshot: {
               src: "/help/screenshots/dashboard.webp",
@@ -94,7 +94,7 @@ export const operationFeatures: HelpFeature[] = [
               "Vælg periode, eksempelvis I dag eller Denne måned, eller Brugerdefineret.",
               "Vælg Lokation, marked eller operatør i lokationsvalget.",
               "Prognoser kan have deres egen faste periode. Det står i målingens beskrivelse.",
-              "Opdatér henter nye data fra integrationerne, hvis du har adgang.",
+              "Mere → Opdatér henter nye data fra integrationerne, hvis du har adgang.",
               "En advarsel om mulige dubletter betyder, at samme salg kan komme fra flere salgskilder.",
             ],
           },
@@ -148,14 +148,14 @@ export const operationFeatures: HelpFeature[] = [
             bullets: [
               "Tilføj filter afgrænser på et felt med Er lig med eller Er ikke lig med. Værdier adskilles med komma og skal matche kilden præcist.",
               "Flere filtre skal alle være opfyldt. Flere værdier i ét filter er alternativer.",
-              "Med Dimension Produkt kan du vælge Alle, Kun valgte eller Alle undtagen valgte Produkter, også hele kategorier.",
+              "Med Dimension Produkt kan du vælge Alle, Kun valgte eller Alle undtagen valgte produkter, også hele kategorier.",
             ],
           },
           {
             id: "gruppering",
             title: "Gruppering",
             bullets: [
-              "Dimension opdeler målingen, eksempelvis efter Lokation, Produkt eller kategori.",
+              "Dimension opdeler målingen, eksempelvis efter Lokation, produkt eller kategori.",
               "Tidsopdeling bestemmer afstanden mellem punkterne: Dag, Uge eller Måned.",
               "Grænse (1–50) viser de største grupper og samler resten under Andre.",
             ],
@@ -217,8 +217,8 @@ export const operationFeatures: HelpFeature[] = [
             id: "opret",
             title: "Opret et link",
             steps: [
-              "Gem den periode og det lokationsvalg, linket skal vise, med Gem som standard.",
-              "Vælg Del, og giv linket et navn.",
+              "Gem den periode og det lokationsvalg, linket skal vise, med Mere → Gem som standard.",
+              "Vælg Mere → Del, og giv linket et navn.",
               "Vælg udløb efter 1, 7, 30 eller 90 dage, og angiv en adgangskode på mindst fire tegn. Adgangskoden er påkrævet ved følsomme målinger.",
               "Vælg Opret og kopiér link, og åbn linket for at kontrollere det.",
             ],
@@ -252,7 +252,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "laes",
             title: "Læs rapporten",
             steps: [
-              "Vælg Månedsrapport på Dashboard. Vælg Måned og Lokation, eller alle tilgængelige lokationer.",
+              "Vælg Mere → Månedsrapport på Dashboard. Vælg Måned og Lokation, eller alle tilgængelige lokationer.",
               "Sammenhold kolonnerne Faktisk, Budget, Afvigelse, Sidste måned og År til dato.",
               "Brug spørgsmålstegnet ved et tal for at se kilde og årsag til manglende data.",
             ],
@@ -300,7 +300,7 @@ export const operationFeatures: HelpFeature[] = [
         slug: "overblik",
         label: "Overblik",
         summary:
-          "Vælg et Produkt, kontrollér datoen, og print etiketter på en labelprinter eller via enhedens printdialog.",
+          "Vælg et produkt, kontrollér datoen, og print etiketter på en labelprinter eller via enhedens printdialog.",
         appHref: "/date-labels",
         appLinkLabel: "Åbn Datomærkning",
         sections: [
@@ -308,8 +308,8 @@ export const operationFeatures: HelpFeature[] = [
             id: "opsaetning",
             title: "Opsætning",
             steps: [
-              "Angiv Holdbarhed på Produkterne under Administration → Produkter.",
-              "Åbn Administration → Datomærkning, og vælg Lokation. Vælg Vis alle produkter, eller vælg bestemte Produkter og kategorier. Slå Medtag klokkeslæt til, hvis etiketten skal vise klokkeslæt.",
+              "Angiv Holdbarhed på produkterne under Administration → Produkter.",
+              "Åbn Administration → Datomærkning, og vælg Lokation. Vælg Vis alle produkter, eller vælg bestemte produkter og kategorier. Slå Medtag klokkeslæt til, hvis etiketten skal vise klokkeslæt.",
               "Vælg printer under Printer på hver tablet. På iPad og Android bruges Brother Smooth Print: installér appen, og vælg printermodel, forbindelse og adresse. Vælg Etiketstørrelse, og vælg Print testetiket.",
             ],
             bullets: [
@@ -322,13 +322,13 @@ export const operationFeatures: HelpFeature[] = [
             title: "Print etiketter",
             steps: [
               "Åbn Datomærkning, og kontrollér Lokation.",
-              "Find Produktet med søgning, eller vælg Favoritter. Hjertet gemmer en favorit på enheden.",
+              "Find produktet med søgning, eller vælg Favoritter. Hjertet gemmer en favorit på enheden.",
               "Kontrollér Produktionsdato og eventuelt Klokkeslæt. Vælg Antal etiketter (1–100), og kontrollér etiketvisningen.",
               "Vælg Print.",
             ],
             bullets: [
-              "Har Produktet ingen holdbarhed, angiver du den i timer, dage eller måneder. Husk holdbarheden for produktet gemmer den, hvis du kan administrere Produkter.",
-              "Etiketten viser Produkt, produktionstidspunkt og sidste anvendelse.",
+              "Har produktet ingen holdbarhed, angiver du den i timer, dage eller måneder. Husk holdbarheden for produktet gemmer den, hvis du kan administrere produkter.",
+              "Etiketten viser produkt, produktionstidspunkt og sidste anvendelse.",
             ],
             screenshot: {
               src: "/help/screenshots/datomaerkning.webp",
@@ -342,7 +342,7 @@ export const operationFeatures: HelpFeature[] = [
         ],
         troubleshooting: [
           {
-            question: "Et Produkt mangler",
+            question: "Et produkt mangler",
             answer:
               "Ryd søgningen, og vælg Alle. Kontrollér derefter produktvalget under Administration → Datomærkning.",
           },
@@ -458,14 +458,14 @@ export const operationFeatures: HelpFeature[] = [
     slug: "transfer",
     label: "Transfer",
     summary:
-      "Send Produkter mellem lokationer, og følg dem frem til modtagelse.",
+      "Send produkter mellem lokationer, og følg dem frem til modtagelse.",
     icon: ArrowRightLeftIcon,
     guides: [
       {
         slug: "overblik",
         label: "Overblik",
         summary:
-          "En transfer registrerer de Produkter, én Lokation sender til en anden.",
+          "En transfer registrerer de produkter, én Lokation sender til en anden.",
         appHref: "/transfers",
         appLinkLabel: "Opret Transfer",
         sections: [
@@ -473,14 +473,14 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Transfer",
             paragraphs: [
-              "Afsenderen opretter transferen. Modtageren registrerer de faktiske mængder under Varemodtagelse. Først da flyttes mængderne på lageret.",
+              "Afsenderen opretter transferen. Modtageren registrerer de faktiske mængder under Varemodtagelse. Først da flyttes mængderne på lageret. Under Administration → Varemodtagelse kan kravet slås fra, så mængderne flyttes med det samme. Transfers fra interne bestillinger skal altid modtages.",
             ],
           },
           {
             id: "foer-du-starter",
             title: "Før du starter",
             bullets: [
-              "Begge lokationer og Produkterne skal findes. Kontrollér Produkternes enheder og Maksimal temperatur.",
+              "Begge lokationer og produkterne skal findes. Kontrollér produkternes enheder og Maksimal temperatur.",
               "Afsenderen skal kunne oprette transfers, og modtageren skal kunne registrere varemodtagelser på sin Lokation.",
             ],
           },
@@ -490,7 +490,7 @@ export const operationFeatures: HelpFeature[] = [
         slug: "opret",
         label: "Opret en transfer",
         summary:
-          "Registrér Produkter, mængder og temperaturer for det, der sendes.",
+          "Registrér produkter, mængder og temperaturer for det, der sendes.",
         appHref: "/transfers",
         appLinkLabel: "Opret Transfer",
         sections: [
@@ -499,7 +499,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Udfyld transferen",
             steps: [
               "Vælg Fra lokation og Til lokation, ansvarlig Bruger og tidspunkt.",
-              "Søg Produktet frem, vælg enhed, og angiv mængden. Tilføj en ekstra enhed på samme Produkt, hvis du sender både kasser og løse stk.",
+              "Søg produktet frem, vælg enhed, og angiv mængden. Tilføj en ekstra enhed på samme produkt, hvis du sender både kasser og løse stk.",
               "Angiv temperaturer, tilføj en kommentar, og gem.",
             ],
             screenshot: {
@@ -515,7 +515,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "temperatur",
             title: "Temperatur",
             bullets: [
-              "Temperatur er påkrævet for Produkter med Maksimal temperatur. Angiv højst én decimal.",
+              "Temperatur er påkrævet for produkter med Maksimal temperatur. Angiv højst én decimal.",
               "Overstiger målingen maksimum, skal du skrive en kommentar og bekræfte afvigelsen.",
             ],
           },
@@ -524,7 +524,7 @@ export const operationFeatures: HelpFeature[] = [
           {
             question: "Produktet eller enheden mangler",
             answer:
-              "Kontrollér Produktet under Administration → Produkter. En enhed kan kun bruges én gang pr. Produkt i samme transfer.",
+              "Kontrollér produktet under Administration → Produkter. En enhed kan kun bruges én gang pr. Produkt i samme transfer.",
           },
         ],
         relatedLinks: [
@@ -572,7 +572,7 @@ export const operationFeatures: HelpFeature[] = [
     slug: "salg",
     label: "Salg",
     summary:
-      "Registrér salg fra en kvittering, og træk Produkterne fra lageret.",
+      "Registrér salg fra en kvittering, og træk produkterne fra lageret.",
     icon: ReceiptTextIcon,
     guides: [
       {
@@ -588,12 +588,12 @@ export const operationFeatures: HelpFeature[] = [
             title: "Registrér et salg",
             steps: [
               "Åbn Salg → Nyt salg. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
-              "Søg Produkter eller menuer frem, og tilføj dem. Vælg enhed og mængde for hver linje. Ved en menu angiver du antal menuer og vælger Produkterne i hver gruppe.",
+              "Søg produkter eller menuer frem, og tilføj dem. Vælg enhed og mængde for hver linje. Ved en menu angiver du antal menuer og vælger produkterne i hver gruppe.",
               "Tilføj eventuelt Pris, Kommentar og Billede af kvittering.",
               "Vælg Registrér salg, og bekræft med Registrér og træk fra lager.",
             ],
             bullets: [
-              "Salg fra før et Produkts seneste Count er allerede talt med og trækkes ikke fra igen.",
+              "Salg fra før et produkts seneste Count er allerede talt med og trækkes ikke fra igen.",
               "Et salg kan have højst 100 produktlinjer og kan ikke redigeres eller slettes bagefter.",
               "Menuer kræver OnlinePOS-menuer under Administration → Produkter.",
             ],
@@ -732,7 +732,7 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Vælg Lokation under Varemodtagelse, og åbn den afventende transfer.",
               "Angiv den modtagne mængde for hver linje. Alt modtaget udfylder de sendte mængder. Angiv 0 for en manglende linje.",
-              "Tilføj ekstra Produkter, hvis leveringen indeholder mere end transferen. Tilføj eventuelt kommentar og billede af følgesedlen.",
+              "Tilføj ekstra produkter, hvis leveringen indeholder mere end transferen. Tilføj eventuelt kommentar og billede af følgesedlen.",
             ],
             screenshot: {
               src: "/help/screenshots/varemodtagelse.webp",
@@ -772,12 +772,12 @@ export const operationFeatures: HelpFeature[] = [
             title: "Opret varemodtagelsen",
             steps: [
               "Åbn Manuel varemodtagelse, og kontrollér Lokation og tidspunkt.",
-              "Tilføj Produkterne, vælg enhed, og angiv mængden.",
+              "Tilføj produkterne, vælg enhed, og angiv mængden.",
               "Tilføj eventuelt billede af følgesedlen og en kommentar.",
               "Vælg Registrér varemodtagelse, og bekræft.",
             ],
             bullets: [
-              "Brug Produktets enhed, ikke kun tallet på pakningen.",
+              "Brug produktets enhed, ikke kun tallet på pakningen.",
               "Én modtagelse kan have højst 200 linjer.",
             ],
           },
@@ -807,7 +807,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Count",
             paragraphs: [
-              "Produkterne tælles i lokationens Områder og rækkefølge. Når Count registreres, overskrives lageret for de optalte Produkter. Afvigelser siden forrige Count kan eksporteres som Waste-rapport.",
+              "Produkterne tælles i lokationens Områder og rækkefølge. Når Count registreres, overskrives lageret for de optalte produkter. Afvigelser siden forrige Count kan eksporteres som Waste-rapport.",
             ],
           },
           {
@@ -825,7 +825,7 @@ export const operationFeatures: HelpFeature[] = [
         slug: "udfoer",
         label: "Planlæg og udfør Count",
         summary:
-          "Vælg Count-vindue, tæl Produkterne, og registrér lagerafstemningen.",
+          "Vælg Count-vindue, tæl produkterne, og registrér lagerafstemningen.",
         appHref: "/count",
         appLinkLabel: "Åbn Count",
         sections: [
@@ -835,7 +835,7 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Åbn Administration → Count, og vælg Count-frekvens og Count-dag, eller interval og første dato.",
               "Vælg Tillad Count uden for Count-vinduet, Kræv Count før åbning og Lås andre funktioner under Count. Gem.",
-              "Vælg eventuelt Produkter, der aldrig tælles, under Udelad fra Count.",
+              "Vælg eventuelt produkter, der aldrig tælles, under Udelad fra Count.",
             ],
             bullets: [
               "Count-vinduet åbner ved lukketid på Count-dagen. Det lukker ved næste åbning, eller når Count er registreret, hvis Count kræves før åbning.",
@@ -847,9 +847,9 @@ export const operationFeatures: HelpFeature[] = [
             title: "Tæl",
             steps: [
               "Åbn Count, og vælg Lokation og eventuelt Område. Du kan se, om andre tæller i samme Område.",
-              "Vælg Ét Produkt ad gangen for at følge ruten, eller Alle Produkter for at søge.",
+              "Vælg Ét produkt ad gangen for at følge ruten, eller Alle produkter for at søge.",
               "Angiv mængden i den enhed, du tæller. Brug flere enheder, hvis du tæller både hele pakninger og løse mængder.",
-              "Vælg Færdig efter sidste Produkt, og fortsæt i næste Område.",
+              "Vælg Færdig efter sidste produkt, og fortsæt i næste Område.",
             ],
             bullets: [
               "Redigér rækkefølge ændrer rækkefølgen i et Område, hvis du kan administrere lokationer.",
@@ -871,7 +871,7 @@ export const operationFeatures: HelpFeature[] = [
               "Vælg Registrér Count, skriv en begrundelse, og bekræft.",
             ],
             bullets: [
-              "Lageret overskrives for Produkter med en mængde. Tomme felter bevarer lageret.",
+              "Lageret overskrives for produkter med en mængde. Tomme felter bevarer lageret.",
               "En registreret Count kan ikke rettes.",
             ],
           },
@@ -883,9 +883,9 @@ export const operationFeatures: HelpFeature[] = [
               "Se nedtællingen. Kontrollér åbningstiderne og Count-indstillingerne, hvis tidspunktet er forkert.",
           },
           {
-            question: "Et Produkt mangler",
+            question: "Et produkt mangler",
             answer:
-              "Ryd søgningen. Kontrollér derefter lokationens Produkter og Områder, og om Produktet er udeladt fra Count.",
+              "Ryd søgningen. Kontrollér derefter lokationens Produkter og Områder, og om produktet er udeladt fra Count.",
           },
         ],
       },
@@ -935,7 +935,7 @@ export const operationFeatures: HelpFeature[] = [
     slug: "waste",
     label: "Waste",
     summary:
-      "Registrér kasserede Produkter og dårlige leveringer, og følg op i rapporten.",
+      "Registrér kasserede produkter og dårlige leveringer, og følg op i rapporten.",
     icon: Trash2Icon,
     guides: [
       {
@@ -950,7 +950,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Waste",
             paragraphs: [
-              "Lokationens Produkter vælges under Produkter og Områder. Genveje gør det muligt at registrere en almindelig mængde med ét tryk. Fejl kan fortrydes straks eller annulleres i rapporten.",
+              "Lokationens produkter vælges under Produkter og Områder. Genveje gør det muligt at registrere en almindelig mængde med ét tryk. Fejl kan fortrydes straks eller annulleres i rapporten.",
             ],
           },
         ],
@@ -967,7 +967,6 @@ export const operationFeatures: HelpFeature[] = [
             id: "opsaetning",
             title: "Opsætning",
             bullets: [
-              "Administration → Waste: Nulstil efter inaktivitet rydder søgning og dialoger på fælles tablets.",
               "Popularitetsperiode og Brug historik fra hele organisationen bestemmer de anbefalede mængdegenveje.",
             ],
           },
@@ -975,9 +974,9 @@ export const operationFeatures: HelpFeature[] = [
             id: "registrer",
             title: "Registrér",
             steps: [
-              "Kontrollér Lokation, og find Produktet med søgning eller kategori.",
+              "Kontrollér Lokation, og find produktet med søgning eller kategori.",
               "Tryk på en mængdegenvej for at registrere mængden med det samme.",
-              "Åbn Produktet for en anden mængde, vælg enhed, og vælg Registrér Waste.",
+              "Åbn produktet for en anden mængde, vælg enhed, og vælg Registrér Waste.",
             ],
             screenshot: {
               src: "/help/screenshots/waste.webp",
@@ -992,7 +991,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "genveje",
             title: "Genveje",
             bullets: [
-              "Med adgang til Waste-indstillinger kan du fastgøre Produkter og vælge Redigér genveje i produktdialogen.",
+              "Med adgang til Waste-indstillinger kan du fastgøre produkter og vælge Redigér genveje i produktdialogen.",
               "Gem en eller to genveje med mængde og enhed. Brug anbefalede mængder går tilbage til historikken.",
             ],
           },
@@ -1018,7 +1017,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Opsætning",
             steps: [
               "Åbn Administration → Waste → Dårlige leveringer.",
-              "Vælg Træk som standard fra lager og Vis valget ved registrering. Træk kun fra, hvis Produkterne allerede er lagt på lager.",
+              "Vælg Træk som standard fra lager og Vis valget ved registrering. Træk kun fra, hvis produkterne allerede er lagt på lager.",
               "Udfyld Til, E-mailens emne og E-mailens indhold. Skabelonen kan bruge {location}, {products} og {comment}. Tom Til slår meddelelser fra. Gem.",
             ],
           },
@@ -1027,8 +1026,8 @@ export const operationFeatures: HelpFeature[] = [
             title: "Registrér",
             steps: [
               "Åbn Waste → Dårlig levering, og kontrollér Lokation.",
-              "Tag et billede af Produkterne og af følgesedlen. Begge er påkrævede.",
-              "Tilføj Produkter, enheder og mængder, og eventuelt en kommentar.",
+              "Tag et billede af produkterne og af følgesedlen. Begge er påkrævede.",
+              "Tilføj produkter, enheder og mængder, og eventuelt en kommentar.",
               "Vælg Gennemse og registrér, og derefter Bekræft registrering.",
             ],
           },
@@ -1054,7 +1053,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Find registreringer",
             steps: [
               "Vælg Fra, Til og Lokation eller Alle lokationer.",
-              "Oversigt viser mængder pr. Lokation, Produkt og enhed. Registreringer viser hver registrering med kilde og status.",
+              "Oversigt viser mængder pr. Lokation, produkt og enhed. Registreringer viser hver registrering med kilde og status.",
             ],
           },
           {
@@ -1091,7 +1090,7 @@ export const operationFeatures: HelpFeature[] = [
         slug: "overblik",
         label: "Overblik",
         summary:
-          "En regel bestemmer, hvilke Produkter en medarbejder kan vælge, og hvor mange, ud fra vagtlængden.",
+          "En regel bestemmer, hvilke produkter en medarbejder kan vælge, og hvor mange, ud fra vagtlængden.",
         appHref: "/staff-food",
         appLinkLabel: "Åbn Staff food",
         sections: [
@@ -1099,7 +1098,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Staff food",
             paragraphs: [
-              "Medarbejderen vælges ud fra sin vagt eller en erstatningsvagt. Reglen med den højeste opfyldte vagtlængde gælder. Reglerne lægges ikke sammen. Registreringen trækker Produkterne fra lageret.",
+              "Medarbejderen vælges ud fra sin vagt eller en erstatningsvagt. Reglen med den højeste opfyldte vagtlængde gælder. Reglerne lægges ikke sammen. Registreringen trækker produkterne fra lageret.",
             ],
           },
         ],
@@ -1118,12 +1117,12 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Åbn Administration → Staff food, og vælg Ny regel.",
               "Angiv Minimum vagtlængde i timer (0,5–24 i halve timer).",
-              "Vælg Tilføj kategorigruppe. Vælg en eller flere kategorier, angiv Antal (1–20), og vælg de tilladte Produkter. Produkterne i gruppen deler antallet.",
+              "Vælg Tilføj kategorigruppe. Vælg en eller flere kategorier, angiv Antal (1–20), og vælg de tilladte produkter. Produkterne i gruppen deler antallet.",
               "Gem. Opret flere regler for længere vagter.",
             ],
             screenshot: {
               src: "/help/screenshots/staff-food.webp",
-              alt: "Ny Staff food-regel med minimum vagtlængde, en kategorigruppe, antal og tilladte Produkter",
+              alt: "Ny Staff food-regel med minimum vagtlængde, en kategorigruppe, antal og tilladte produkter",
               caption:
                 "Produkterne i en kategorigruppe deler antallet. Eksempeldata.",
               width: 1040,
@@ -1135,7 +1134,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Registrér",
             steps: [
               "Kontrollér Lokation, og vælg medarbejderen under På vagt nu, eller søg.",
-              "Vælg Produkter og antal. Tallet ved kategorien viser, hvad der er tilbage i dag.",
+              "Vælg produkter og antal. Tallet ved kategorien viser, hvad der er tilbage i dag.",
               "Vælg Registrér Staff food, og derefter Bekræft registrering.",
             ],
           },
@@ -1157,7 +1156,7 @@ export const operationFeatures: HelpFeature[] = [
         ],
         troubleshooting: [
           {
-            question: "Jeg kan ikke vælge flere Produkter",
+            question: "Jeg kan ikke vælge flere produkter",
             answer:
               "Produkterne i en kategorigruppe deler antallet, også med dagens tidligere registreringer.",
           },
@@ -1216,7 +1215,7 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Åbn Administration → Egenkontrol, og opret en egenkontrol. Angiv Navn, kontroltype, Beskrivelse, Instruktioner og eventuelt et billede.",
               "Tilføj felter: Tal med enhed og grænser, Punkt, Valg, Tekst eller Fil. Markér Påkrævet efter behov.",
-              "Slå Produkttemperaturer til, hvis der skal måles en temperatur for hvert Produkt.",
+              "Slå produkttemperaturer til, hvis der skal måles en temperatur for hvert produkt.",
               "Vælg Frekvens: Dagligt, Ugentligt, Månedligt eller Fast interval. Angiv Starter kl. og Forfalder kl. samt lokationer.",
               "Vælg eventuelt Ansvarlig rolle. Den bruges til visning og filtrering. Gem.",
             ],
@@ -1351,7 +1350,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Før du starter",
             bullets: [
               "Produkter, enheder, ingredienser og salgskoblinger skal være korrekte, og Lager og åbningstider ajour.",
-              "Under Administration → Bestilling vælger du, om Produkter med ingredienser skal medtages.",
+              "Under Administration → Bestilling vælger du, om produkter med ingredienser skal medtages.",
               "Planlægning, afgivelse og eksport er separate rettigheder.",
             ],
           },
@@ -1388,7 +1387,8 @@ export const operationFeatures: HelpFeature[] = [
             id: "afgiv",
             title: "Afgiv og find bestillingen",
             steps: [
-              "Vælg Afgiv bestilling, og bekræft. Alle mængder over nul medtages, højst 500 Produkter.",
+              "Vælg Afgiv bestilling, og bekræft. Alle mængder over nul medtages, højst 500 produkter.",
+              "Ved en intern bestilling kan du tilføje en kommentar, når du bekræfter. Den vises for Lokationen, der skal sende produkterne.",
               "Find bestillingen i Bestillingshistorik. Vælg periode under Afgivet i perioden.",
               "Bestillingen afventer nu modtagelse under Varemodtagelse på samme Lokation.",
               "Eksportér CSV henter én bestilling eller alle bestillinger i perioden.",

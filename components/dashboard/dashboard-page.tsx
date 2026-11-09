@@ -7,23 +7,33 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
-import { AppPageHeader } from "@/components/app-page-header";
+import { ChevronDownIcon, EllipsisVerticalIcon, FileTextIcon, LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
-import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
+import { useAccess, useKioskPage, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { canSyncDashboardData } from "@/lib/auth-permissions";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
 import { metricRegistry } from "@/lib/dashboard/registry";
-import { comparisonPeriods, DEFAULT_COMPARISON_PERIOD, rangePresets, type ComparisonPeriod, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
+import { comparisonPeriodLabels, comparisonPeriods, DEFAULT_COMPARISON_PERIOD, rangePresets, type ComparisonPeriod, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { DashboardGrid } from "./dashboard-grid";
@@ -85,8 +95,9 @@ function pushUrl(router: ReturnType<typeof useRouter>, pathname: string, params:
 function DashboardLanding() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
-  const canManage = usePermission("dashboard.manage");
+  const canManage = usePermission("dashboard.manage") && !access?.kiosk?.kioskModeEnabled;
   const canViewFinancials = usePermission("dashboard.viewFinancials");
+  const showMonthly = useKioskPage("dashboard.monthly");
   const router = useRouter();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
   const initialize = useMutation(api.dashboard.initialize);
@@ -126,7 +137,7 @@ function DashboardLanding() {
     }
   }, [dashboards, router]);
 
-  if (!access || dashboards === undefined || initializing) return <Skeleton className="h-96 w-full" />;
+  if (!access || dashboards === undefined || initializing) return <DashboardSkeleton />;
   if (!canView) {
     return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
   }
@@ -138,13 +149,26 @@ function DashboardLanding() {
           <EmptyTitle>Ingen dashboards</EmptyTitle>
           <EmptyDescription>Der er ikke oprettet et dashboard, du kan se.</EmptyDescription>
         </EmptyHeader>
-        {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
+        {canViewFinancials && access.granularity === "detail" && showMonthly ? (
           <EmptyContent><Button className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button></EmptyContent>
         ) : null}
       </Empty>
     );
   }
-  return <Skeleton className="h-96 w-full" />;
+  return <DashboardSkeleton />;
+}
+
+function DashboardSkeleton() {
+  return (
+    <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-4 lg:gap-6">
+      <AppPageHeader><PageTitle>Dashboard</PageTitle></AppPageHeader>
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-20 w-full" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-80 w-full" />)}
+      </div>
+    </section>
+  );
 }
 
 function DashboardContent({ dashboardId }: { dashboardId: string }) {
@@ -152,9 +176,12 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
-  const canManage = usePermission("dashboard.manage");
-  const canShare = usePermission("dashboard.share");
-  const canManageIntegrations = usePermission("integrations.manage") && Boolean(integrations?.onlinepos || integrations?.workfeed);
+  const showMonthly = useKioskPage("dashboard.monthly");
+  // Kiosk sessions may view dashboards but not edit, share, or sync them.
+  const kioskMode = Boolean(access?.kiosk?.kioskModeEnabled);
+  const canManage = usePermission("dashboard.manage") && !kioskMode;
+  const canShare = usePermission("dashboard.share") && !kioskMode;
+  const canSyncData = canSyncDashboardData(access?.permissions) && !kioskMode && Boolean(integrations?.onlinepos || integrations?.workfeed);
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
   const canViewDetailedSales = usePermission("sales.viewDetail");
@@ -296,7 +323,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         return;
       }
       setManualNow(Date.now());
-      if (!canManageIntegrations) return;
+      if (!canSyncData) return;
       const result = await requestDataSync({
         dashboardId: dashboard.id,
         scope: currentScope,
@@ -341,25 +368,22 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   }
 
   const title = currentScope ? (
-    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-      <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">Dashboard</p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{dashboard?.name ?? "Dashboard"}</h1>
-      </div>
+    <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <PageTitle>Dashboard</PageTitle>
       <ScopeSelector scope={currentScope} locations={locations} onChange={updateScope} />
     </div>
   ) : null;
 
   if (!access || !canView) {
-    return canView ? <Skeleton className="h-96" /> : <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
+    return canView ? <DashboardSkeleton /> : <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
   }
-  if (!dashboard || !currentScope || !currentRange || dashboardsQuery === undefined || locations === undefined) return <Skeleton className="h-96 w-full" />;
+  if (!dashboard || !currentScope || !currentRange || dashboardsQuery === undefined || locations === undefined) return <DashboardSkeleton />;
   const visibleWidgets = dashboard.widgets.filter((widget) => widgetAvailable(widget, integrations, access.disabledFeatures));
   const hiddenWidgets = dashboard.widgets.filter((widget) => !visibleWidgets.includes(widget));
   const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];
 
   return (
-    <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-6">
+    <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-4 lg:gap-6">
       <AppPageHeader>{title}</AppPageHeader>
       <DashboardTabs
         key={dashboardList.map((candidate) => `${candidate.id}:${candidate.updatedAt}`).join("|")}
@@ -376,59 +400,110 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         onDeleted={() => router.replace("/dashboard")}
         onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
       />
-      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm xl:flex-row xl:items-end xl:justify-between">
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
-          <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
-            <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button>
-          ) : null}
-          {canManageIntegrations || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
-            && dashboard.widgets.some((widget) => widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].source === "economic")) ? (
-            <Button type="button" size="lg" variant="outline" className="min-h-11" disabled={updatingData} onClick={() => void updateDashboardData()}>
-              {updatingData ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
-              {updatingData ? "Opdaterer" : "Opdatér"}
-            </Button>
-          ) : null}
-          {canShare ? (
-            <>
-              <Button
-                type="button"
-                size="lg"
-                className="min-h-11"
-                variant="outline"
-                onClick={() => {
-                  setShareMounted(true);
-                  setShareOpen(true);
+      <div className="flex flex-row flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-3 shadow-sm sm:gap-3 sm:p-4 lg:items-end">
+        <div className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-2 sm:gap-3 lg:items-end lg:gap-x-6">
+          <div className="min-w-32 flex-1 sm:min-w-44 lg:flex-none">
+            <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
+          </div>
+          <div className="max-lg:hidden">
+            <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button type="button" variant="ghost" className="min-h-11 self-start max-lg:-ml-2.5 lg:hidden" aria-label={`Sammenlignet med ${comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}. Vælg sammenligningsperiode`} />
+              }
+            >
+              <span className="sm:hidden">{comparisonPeriodLabels[currentComparison]}</span>
+              <span className="max-sm:hidden">Sammenlignet med {comparisonPeriodLabels[currentComparison].toLocaleLowerCase("da")}</span>
+              <ChevronDownIcon data-icon="inline-end" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-56">
+              <DropdownMenuLabel>Sammenlign med</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={currentComparison}
+                onValueChange={(value) => {
+                  const next = comparisonPeriods.find((period) => period === value);
+                  if (next) updateComparison(next);
                 }}
               >
-                <Share2Icon data-icon="inline-start" />
-                Del
-              </Button>
-              {shareMounted ? (
-                <ShareDialog
-                  dashboardId={dashboard.id}
-                  dashboardName={dashboard.name}
-                  onBeforeCreate={flushConfigSave}
-                  open={shareOpen}
-                  onOpenChange={setShareOpen}
-                  showTrigger={false}
-                />
-              ) : null}
-            </>
-          ) : null}
+                {comparisonPeriods.map((period) => (
+                  <DropdownMenuRadioItem key={period} value={period}>
+                    {comparisonPeriodLabels[period]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        {canShare && shareMounted ? (
+          <ShareDialog
+            dashboardId={dashboard.id}
+            dashboardName={dashboard.name}
+            onBeforeCreate={flushConfigSave}
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+            showTrigger={false}
+          />
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
           {canManage ? (
-            <>
-              {editing ? <Button type="button" size="lg" variant="outline" className="min-h-11" onClick={() => void saveCurrentDefaults()}><SaveIcon data-icon="inline-start" />Gem som standard</Button> : null}
-              <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
-                <PencilIcon data-icon="inline-start" />
-                {editing ? "Færdig" : "Redigér"}
-              </Button>
-              {editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...dashboard.widgets, widget]))} /> : null}
-            </>
+            <Button type="button" size="lg" className="min-h-11 max-sm:hidden" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
+              <PencilIcon data-icon="inline-start" />
+              {editing ? "Færdig" : "Redigér"}
+            </Button>
           ) : null}
+          {canManage && editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...dashboard.widgets, widget]))} /> : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button type="button" size="lg" variant="outline" className="min-h-11 max-sm:min-w-11" aria-label="Mere" />
+              }
+            >
+              <EllipsisVerticalIcon data-icon="inline-start" />
+              <span className="max-sm:sr-only">Mere</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuGroup>
+                {canManage ? (
+                  <DropdownMenuItem className="sm:hidden" onClick={() => setEditing((value) => !value)}>
+                    <PencilIcon />
+                    {editing ? "Færdig" : "Redigér"}
+                  </DropdownMenuItem>
+                ) : null}
+                {canViewFinancials && access.granularity === "detail" && showMonthly ? (
+                  <DropdownMenuItem onClick={() => router.push("/dashboard/monthly")}>
+                    <FileTextIcon />
+                    Månedsrapport
+                  </DropdownMenuItem>
+                ) : null}
+                {canSyncData || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
+                  && dashboard.widgets.some((widget) => widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].source === "economic")) ? (
+                  <DropdownMenuItem disabled={updatingData} onClick={() => void updateDashboardData()}>
+                    <RefreshCwIcon />
+                    {updatingData ? "Opdaterer" : "Opdatér"}
+                  </DropdownMenuItem>
+                ) : null}
+                {canShare ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setShareMounted(true);
+                      setShareOpen(true);
+                    }}
+                  >
+                    <Share2Icon />
+                    Del
+                  </DropdownMenuItem>
+                ) : null}
+                {canManage && editing ? (
+                  <DropdownMenuItem onClick={() => void saveCurrentDefaults()}>
+                    <SaveIcon />
+                    Gem som standard
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       {visibleWidgets.length ? (

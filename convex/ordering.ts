@@ -32,7 +32,11 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { requireLocationAccess, requirePermission } from "./lib/auth";
+import {
+  requireKioskDestination,
+  requireLocationAccess,
+  requirePermission,
+} from "./lib/auth";
 import { recordAudit } from "./lib/audit";
 import schema from "./schema";
 import {
@@ -57,8 +61,7 @@ import {
 
 async function requireOrdering(ctx: QueryCtx | MutationCtx) {
   const auth = await requirePermission(ctx, "ordering.plan");
-  if (auth.kioskModeEnabled)
-    throw new ConvexError("Du har ikke adgang til bestilling i kiosktilstand");
+  await requireKioskDestination(ctx, auth, ["ordering.new", "ordering.history"]);
   return auth;
 }
 
@@ -83,7 +86,9 @@ const productValidator = v.object({
   unitId: v.id("units"),
   unitName: v.string(),
   // All units the Produkt can be ordered in, default first. Used by internal orders.
-  units: v.array(v.object({ id: v.id("units"), name: v.string() })),
+  units: v.array(
+    v.object({ id: v.id("units"), name: v.string(), factor: v.number() }),
+  ),
   hasIngredients: v.boolean(),
   stock: v.union(v.number(), v.null()),
   lastCountedAt: v.union(v.number(), v.null()),
@@ -149,9 +154,12 @@ export const listProducts = query({
                 : null,
               getProductUnitFactors(ctx, product).then((factors) =>
                 Promise.all(
-                  [...factors.keys()]
-                    .filter((unitId) => unitId !== product.defaultUnitId)
-                    .map((unitId) => ctx.db.get("units", unitId)),
+                  [...factors]
+                    .filter(([unitId]) => unitId !== product.defaultUnitId)
+                    .map(async ([unitId, factor]) => {
+                      const item = await ctx.db.get("units", unitId);
+                      return item && { ...item, factor };
+                    }),
                 ),
               ),
             ]);
@@ -167,9 +175,9 @@ export const listProducts = query({
                 : "Uden kategori",
             unitId: unit._id,
             unitName: unit.name,
-            units: [unit, ...units].flatMap((item) =>
+            units: [{ ...unit, factor: 1 }, ...units].flatMap((item) =>
               item?.organizationId === organizationId
-                ? [{ id: item._id, name: item.name }]
+                ? [{ id: item._id, name: item.name, factor: item.factor }]
                 : [],
             ),
             hasIngredients: ingredient !== null,
@@ -458,6 +466,8 @@ export const listOperationalConsumption = query({
   },
 });
 
+const MAX_COMMENT_LENGTH = 500;
+
 const orderInputValidator = v.object({
   locationId: v.id("locations"),
   supplierId: v.optional(v.id("suppliers")),
@@ -508,6 +518,7 @@ const historySummaryValidator = schema
     "supplierOrder",
     "fulfillingLocationId",
     "fulfillmentStatus",
+    "comment",
   );
 const historyDetailValidator = historySummaryValidator.extend({
   locationId: v.id("locations"),
@@ -572,6 +583,47 @@ export const listInternalSuppliers = query({
           ]
         : [];
     });
+  },
+});
+
+// The unit each Produkt was last ordered in on the location's recent internal orders.
+export const listRecentInternalUnits = query({
+  args: { locationId: v.id("locations") },
+  returns: v.array(
+    v.object({ productId: v.id("products"), unitId: v.id("units") }),
+  ),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requirePlanner(ctx, args.locationId);
+    const orders = (
+      await ctx.db
+        .query("orders")
+        .withIndex("by_organizationId_and_locationId_and_createdAt", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", args.locationId),
+        )
+        .order("desc")
+        .take(50)
+    )
+      .filter((order) => order.fulfillingLocationId)
+      .slice(0, 10);
+    const lines = await Promise.all(
+      orders.map((order) =>
+        ctx.db
+          .query("orderLines")
+          .withIndex("by_organizationId_and_orderId", (q) =>
+            q.eq("organizationId", organizationId).eq("orderId", order._id),
+          )
+          .take(200),
+      ),
+    );
+    const units = new Map<Id<"products">, Id<"units">>();
+    for (const line of lines.flat()) {
+      if (line.productId && line.unitId && !units.has(line.productId)) {
+        units.set(line.productId, line.unitId);
+      }
+    }
+    return [...units].map(([productId, unitId]) => ({ productId, unitId }));
   },
 });
 
@@ -757,7 +809,18 @@ function historySummary(order: Doc<"orders">) {
     supplierOrder: order.supplierOrder,
     fulfillingLocationId: order.fulfillingLocationId,
     fulfillmentStatus: order.fulfillmentStatus,
+    comment: order.comment,
   };
+}
+
+function orderComment(comment: string | undefined) {
+  const trimmed = comment?.trim();
+  if (trimmed && trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new ConvexError(
+      `Kommentaren må højst være ${MAX_COMMENT_LENGTH} tegn`,
+    );
+  }
+  return trimmed || undefined;
 }
 
 export const placeOrder = mutation({
@@ -766,6 +829,7 @@ export const placeOrder = mutation({
     coverageDays: v.number(),
     bufferPercent: v.number(),
     sendEmail: v.optional(v.boolean()),
+    comment: v.optional(v.string()),
   }).fields,
   returns: v.id("orders"),
   handler: async (ctx, args) => {
@@ -809,7 +873,11 @@ export const placeOrder = mutation({
       ...(supplier ? { supplierId: supplier._id } : {}),
       ...(supplierName ? { supplierName } : {}),
       ...(fulfillingLocationId
-        ? { fulfillingLocationId, fulfillmentStatus: "open" as const }
+        ? {
+            fulfillingLocationId,
+            fulfillmentStatus: "open" as const,
+            comment: orderComment(args.comment),
+          }
         : {}),
       ...(sendsToApi
         ? {
@@ -943,6 +1011,7 @@ export const getEditableOrder = query({
       id: v.id("orders"),
       locationId: v.id("locations"),
       fulfillingLocationId: v.id("locations"),
+      comment: v.optional(v.string()),
       lines: v.array(
         v.object({
           productId: v.id("products"),
@@ -975,6 +1044,7 @@ export const getEditableOrder = query({
       id: order._id,
       locationId: order.locationId,
       fulfillingLocationId: order.fulfillingLocationId,
+      comment: order.comment,
       lines: lines.flatMap(({ productId, unitId, quantity }) =>
         productId && unitId ? [{ productId, unitId, quantity }] : [],
       ),
@@ -986,6 +1056,7 @@ export const updateInternalOrder = mutation({
   args: {
     orderId: v.id("orders"),
     lines: orderInputValidator.fields.lines,
+    comment: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -997,6 +1068,9 @@ export const updateInternalOrder = mutation({
       !order.fulfillingLocationId
     ) {
       throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    if (order.fulfillmentStatus === "cancelled") {
+      throw new ConvexError("Bestillingen er annulleret");
     }
     if (order.fulfillmentStatus !== "open") {
       throw new ConvexError(
@@ -1026,6 +1100,10 @@ export const updateInternalOrder = mutation({
     await ctx.db.patch("orders", order._id, {
       itemCount: rows.length,
       editedAt: Date.now(),
+      // Omitted by clients loaded before comments existed.
+      ...(args.comment === undefined
+        ? {}
+        : { comment: orderComment(args.comment) }),
     });
     await recordAudit(ctx, auth, {
       action: "ordering.update",
@@ -1033,6 +1111,65 @@ export const updateInternalOrder = mutation({
       entityId: order._id,
       locationId: order.locationId,
       summary: `Intern bestilling ændret til ${rows.length} produkter${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
+    });
+    return null;
+  },
+});
+
+export const cancelInternalOrder = mutation({
+  args: { orderId: v.id("orders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "ordering.place");
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId
+    ) {
+      throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    requireLocationAccess(auth, order.locationId);
+    if (order.fulfillmentStatus === "cancelled") return null;
+    if (order.fulfillmentStatus !== "open") {
+      throw new ConvexError(
+        "Der er allerede oprettet en transfer for bestillingen, så den kan ikke annulleres",
+      );
+    }
+    await ctx.db.patch("orders", order._id, { fulfillmentStatus: "cancelled" });
+    await recordAudit(ctx, auth, {
+      action: "ordering.cancel",
+      entityTable: "orders",
+      entityId: order._id,
+      locationId: order.locationId,
+      summary: `Intern bestilling annulleret${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
+    });
+    return null;
+  },
+});
+
+export const reopenInternalOrder = mutation({
+  args: { orderId: v.id("orders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "ordering.place");
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId
+    ) {
+      throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    requireLocationAccess(auth, order.locationId);
+    if (order.fulfillmentStatus !== "cancelled") return null;
+    await ctx.db.patch("orders", order._id, { fulfillmentStatus: "open" });
+    await recordAudit(ctx, auth, {
+      action: "ordering.reopen",
+      entityTable: "orders",
+      entityId: order._id,
+      locationId: order.locationId,
+      summary: `Intern bestilling genåbnet${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
     });
     return null;
   },

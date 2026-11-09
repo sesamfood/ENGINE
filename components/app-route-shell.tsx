@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useConvexAuth } from "convex/react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { StoredOrganizationTheme } from "@/components/organization/organization-theme";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
@@ -22,10 +23,21 @@ const shelllessRoutes = [
   "/platform",
 ];
 
-function isShelllessRoute(pathname: string | null) {
+// Only these may reuse the last organization's colors. Shared dashboards and
+// invitations belong to another organization, and /platform to none.
+const storedThemeRoutes = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/help",
+];
+
+function matchesRoute(routes: string[], pathname: string | null) {
   return Boolean(
     pathname &&
-      shelllessRoutes.some(
+      routes.some(
         (path) => pathname === path || pathname.startsWith(`${path}/`),
       ),
   );
@@ -96,7 +108,7 @@ export function AppRouteShell({
 }) {
   const pathname = usePathname();
   const { isLoading, isAuthenticated } = useConvexAuth();
-  const shellless = isShelllessRoute(pathname);
+  const shellless = matchesRoute(shelllessRoutes, pathname);
   const requiresAuth =
     !shellless ||
     pathname === "/onboarding" ||
@@ -106,7 +118,13 @@ export function AppRouteShell({
     return <AuthenticationRecovery />;
   }
 
-  if (shellless) return children;
+  if (shellless) {
+    return matchesRoute(storedThemeRoutes, pathname) ? (
+      <StoredOrganizationTheme>{children}</StoredOrganizationTheme>
+    ) : (
+      children
+    );
+  }
 
   return (
     <AuthenticatedAppShell defaultSidebarOpen={defaultSidebarOpen}>

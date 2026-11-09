@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -408,14 +409,12 @@ export function LocationOpeningHours({
                           <FieldLabel htmlFor={`special-${index}-date`}>
                             Dato
                           </FieldLabel>
-                          <Input
+                          <DatePicker
                             id={`special-${index}-date`}
-                            type="date"
-                            className="h-11"
                             value={hours.date}
-                            onChange={(event) =>
+                            onValueChange={(value) =>
                               updateSpecial(index, {
-                                date: event.target.value,
+                                date: value,
                               })
                             }
                           />

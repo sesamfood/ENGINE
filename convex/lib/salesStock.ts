@@ -103,7 +103,7 @@ export function createSalesStockResolver(
         .first(),
     ]);
     if (mappings.length > 1)
-      throw new ConvexError("Et OnlinePOS-produkt er koblet til flere Produkter");
+      throw new ConvexError("Et OnlinePOS-produkt er koblet til flere produkter");
     mapped.set(externalId, mappings[0]?.productId ?? null);
     menus.set(externalId, menu);
   }
@@ -146,7 +146,7 @@ export function createSalesStockResolver(
           const id = String(row.onlinePosProductId);
           if (mapped.has(id))
             throw new ConvexError(
-              "Et OnlinePOS-produkt er koblet til flere Produkter",
+              "Et OnlinePOS-produkt er koblet til flere produkter",
             );
           mapped.set(id, row.productId);
         }

@@ -38,7 +38,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { sidebarItems, type SidebarItemId } from "@/lib/sidebar-navigation";
@@ -195,7 +195,11 @@ export function SidebarSettings() {
   const itemOrder = useQuery(api.navigation.getOrder, canManage ? {} : "skip");
 
   if (!access) {
-    return <Skeleton className="h-144 w-full max-w-3xl" />;
+    return (
+      <CardSkeleton className="max-w-3xl">
+        <RowsSkeleton rows={10} rowClassName="h-16" />
+      </CardSkeleton>
+    );
   }
 
   if (!canManage) {
@@ -210,7 +214,11 @@ export function SidebarSettings() {
   }
 
   if (itemOrder === undefined) {
-    return <Skeleton className="h-144 w-full max-w-3xl" />;
+    return (
+      <CardSkeleton className="max-w-3xl">
+        <RowsSkeleton rows={10} rowClassName="h-16" />
+      </CardSkeleton>
+    );
   }
 
   return (

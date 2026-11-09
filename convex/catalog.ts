@@ -1,5 +1,18 @@
 import { productSearchScore } from "../lib/product-search";
 import {
+  checkUnitName,
+  normalizeUnitName,
+  resolveUnitSystem,
+  standardUnitsFor,
+  suggestMigration,
+  systemKeyFor,
+  unitNameIssueMessage,
+  DEFAULT_UNIT_SYSTEM,
+  PRODUCT_TYPES,
+  type ProductType,
+  type UnitSystemSettings,
+} from "../lib/unit-system";
+import {
   deleteCatalogLinks,
   replaceCatalogLinkUnit,
 } from "./integrations/supplierCatalog";
@@ -45,8 +58,21 @@ import {
   MAX_PRODUCT_CATEGORIES,
   replaceProductCategories,
 } from "./lib/productCategories";
+import { requireUnitContainer } from "./containers";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
+
+const productTypeValidator = v.union(
+  v.literal("dry"),
+  v.literal("wet"),
+  v.literal("piece"),
+);
+
+const unitSystemValidator = v.object({
+  mode: v.union(v.literal("metric"), v.literal("imperial"), v.literal("custom")),
+  drySystem: v.union(v.literal("metric"), v.literal("imperial")),
+  wetSystem: v.union(v.literal("metric"), v.literal("imperial")),
+});
 
 const categoryReferenceValidator = v.union(
   v.object({ kind: v.literal("existing"), id: v.id("categories") }),
@@ -87,6 +113,7 @@ const catalogProductValidator = v.object({
   id: v.id("products"),
   name: v.string(),
   status: statusValidator,
+  productType: v.union(productTypeValidator, v.null()),
   category: v.union(
     productCategoryValidator,
     v.null(),
@@ -105,6 +132,7 @@ const productDetailValidator = v.object({
   id: v.id("products"),
   name: v.string(),
   status: statusValidator,
+  productType: v.union(productTypeValidator, v.null()),
   maxTemperatureCelsius: v.union(v.number(), v.null()),
   expiry: v.union(expiryValidator, v.null()),
   salesPrice: v.union(v.number(), v.null()),
@@ -119,7 +147,7 @@ const productDetailValidator = v.object({
       id: v.id("units"),
       name: v.string(),
       factorToDefault: v.number(),
-      packagingWeight: v.union(v.number(), v.null()),
+      containerId: v.union(v.id("containers"), v.null()),
       isDefault: v.boolean(),
     }),
   ),
@@ -160,12 +188,26 @@ const productFormOptionsValidator = v.object({
     }),
   ),
   units: v.array(v.object({ id: v.id("units"), name: v.string() })),
+  unitSystem: unitSystemValidator,
+  disabledProductTypes: v.array(productTypeValidator),
+  standardUnits: v.array(
+    v.object({
+      productType: productTypeValidator,
+      key: v.string(),
+      name: v.string(),
+      factorToStandard: v.number(),
+      isStandard: v.boolean(),
+      unitId: v.union(v.id("units"), v.null()),
+    }),
+  ),
 });
 
 const managedUnitValidator = v.object({
   id: v.id("units"),
   name: v.string(),
+  pluralName: v.optional(v.string()),
   inUse: v.boolean(),
+  isStandard: v.boolean(),
 });
 
 const unitReferenceValidator = v.union(
@@ -176,7 +218,8 @@ const unitReferenceValidator = v.union(
 const productUnitInputValidator = v.object({
   unit: unitReferenceValidator,
   factorToDefault: v.number(),
-  packagingWeight: v.optional(v.number()),
+  // The container this unit is. Undefined keeps the stored one.
+  containerId: v.optional(v.union(v.id("containers"), v.null())),
   isDefault: v.boolean(),
 });
 
@@ -215,7 +258,6 @@ const productExportValidator = v.object({
     v.object({
       name: v.string(),
       factorToDefault: v.number(),
-      packagingWeight: v.optional(v.number()),
       isDefault: v.boolean(),
     }),
   ),
@@ -241,7 +283,6 @@ const productExportValidator = v.object({
 const importedProductUnitValidator = v.object({
   name: v.string(),
   factorToDefault: v.number(),
-  packagingWeight: v.optional(v.number()),
   isDefault: v.boolean(),
 });
 
@@ -273,7 +314,7 @@ type UnitReference =
 type ProductUnitInput = {
   unit: UnitReference;
   factorToDefault: number;
-  packagingWeight?: number;
+  containerId?: Id<"containers"> | null;
   isDefault: boolean;
 };
 
@@ -470,10 +511,153 @@ async function resolveCategories(
   return categoryIds;
 }
 
+async function getUnitSystemSettings(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+): Promise<UnitSystemSettings> {
+  const settings = await getCatalogSettingsRow(ctx, organizationId);
+  return settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM;
+}
+
+async function requireEnabledProductType(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  productType: ProductType,
+) {
+  const settings = await getCatalogSettingsRow(ctx, organizationId);
+  if (settings?.disabledProductTypes?.includes(productType)) {
+    throw new ConvexError(
+      `Produkttypen ${productTypeLabel(productType)} er slået fra`,
+    );
+  }
+}
+
+function productTypeLabel(productType: ProductType) {
+  return PRODUCT_TYPES.find((type) => type.value === productType)!.label;
+}
+
+function requireSensibleUnitName(
+  name: string,
+  type: ProductType | null,
+  settings: UnitSystemSettings,
+) {
+  const issue = checkUnitName(name, type, settings);
+  if (!issue) return;
+  // The exact name of a standard unit resolves to that unit's row; only
+  // aliases ("gram") and numeric prefixes ("5g") are rejected.
+  if (issue.kind === "duplicate-standard") {
+    const types: ProductType[] = type ? [type] : ["dry", "wet", "piece"];
+    const isExactStandardName = types.some((productType) =>
+      standardUnitsFor(productType, settings).some(
+        (def) => normalizeUnitName(def.name) === normalizeUnitName(name),
+      ),
+    );
+    if (isExactStandardName) return;
+  }
+  throw new ConvexError(unitNameIssueMessage(issue));
+}
+
+// Finds or creates the org's unit rows for a type's standard units.
+async function ensureStandardUnitRows(
+  ctx: MutationCtx,
+  organizationId: string,
+  type: ProductType,
+  settings: UnitSystemSettings,
+) {
+  const rows: Array<{
+    unitId: Id<"units">;
+    factorToStandard: number;
+    isStandard: boolean;
+  }> = [];
+  for (const def of standardUnitsFor(type, settings)) {
+    const normalizedName = normalizeUnitName(def.name);
+    const existing = await ctx.db
+      .query("units")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("normalizedName", normalizedName),
+      )
+      .unique();
+    const systemKey = systemKeyFor(type, def.key);
+    let unitId: Id<"units">;
+    if (existing) {
+      unitId = existing._id;
+      if (existing.systemKey !== systemKey) {
+        await ctx.db.patch("units", unitId, { systemKey });
+      }
+    } else {
+      unitId = await ctx.db.insert("units", {
+        organizationId,
+        name: def.name,
+        normalizedName,
+        systemKey,
+      });
+    }
+    rows.push({
+      unitId,
+      factorToStandard: def.factorToStandard,
+      isStandard: def.isStandard,
+    });
+  }
+  return rows;
+}
+
+type ResolvedProductUnit = {
+  unitId: Id<"units">;
+  factorToDefault: number;
+  containerId?: Id<"containers"> | null;
+  isDefault: boolean;
+};
+
+// Adds missing standard units and pins their factors/default for typed products.
+async function applyStandardUnits(
+  ctx: MutationCtx,
+  organizationId: string,
+  type: ProductType,
+  settings: UnitSystemSettings,
+  units: ResolvedProductUnit[],
+): Promise<ResolvedProductUnit[]> {
+  const standardRows = await ensureStandardUnitRows(
+    ctx,
+    organizationId,
+    type,
+    settings,
+  );
+  const byUnitId = new Map(standardRows.map((row) => [row.unitId, row]));
+  const merged = units.map((unit) => {
+    const standard = byUnitId.get(unit.unitId);
+    if (!standard) {
+      if (unit.isDefault) {
+        throw new ConvexError(
+          "Standardenheden for produkttypen skal være produktets standardenhed",
+        );
+      }
+      return unit;
+    }
+    return {
+      ...unit,
+      factorToDefault: standard.factorToStandard,
+      isDefault: standard.isStandard,
+    };
+  });
+  for (const row of standardRows) {
+    if (!merged.some((unit) => unit.unitId === row.unitId)) {
+      merged.push({
+        unitId: row.unitId,
+        factorToDefault: row.factorToStandard,
+        isDefault: row.isStandard,
+      });
+    }
+  }
+  return merged;
+}
+
 async function resolveUnit(
   ctx: MutationCtx,
   organizationId: string,
   reference: UnitReference,
+  nameCheck?: { type: ProductType | null; settings: UnitSystemSettings },
 ) {
   if (reference.kind === "existing") {
     const unit = await ctx.db.get("units", reference.id);
@@ -489,16 +673,18 @@ async function resolveUnit(
       q.eq("organizationId", organizationId).eq("normalizedName", normalizedName),
     )
     .unique();
-  return (
-    existing?._id ??
-    (await ctx.db.insert("units", { organizationId, name, normalizedName }))
-  );
+  if (existing) return existing._id;
+  if (nameCheck) {
+    requireSensibleUnitName(name, nameCheck.type, nameCheck.settings);
+  }
+  return await ctx.db.insert("units", { organizationId, name, normalizedName });
 }
 
 async function resolveUnits(
   ctx: MutationCtx,
   organizationId: string,
   inputs: ProductUnitInput[],
+  nameCheck?: { type: ProductType | null; settings: UnitSystemSettings },
 ) {
   if (inputs.length === 0) {
     throw new ConvexError("Tilføj mindst én enhed");
@@ -512,26 +698,18 @@ async function resolveUnits(
     throw new ConvexError("Vælg præcis én standardenhed");
   }
 
-  const resolved: Array<{
-    unitId: Id<"units">;
-    factorToDefault: number;
-    packagingWeight?: number;
-    isDefault: boolean;
-  }> = [];
+  const resolved: ResolvedProductUnit[] = [];
 
   for (const input of inputs) {
     requirePositiveNumber(input.factorToDefault, "Omregningsfaktoren");
-    if (input.packagingWeight !== undefined) {
-      requirePositiveNumber(input.packagingWeight, "Emballagevægten");
-    }
     if (input.isDefault && input.factorToDefault !== 1) {
       throw new ConvexError("Omregningen for standardenheden skal være 1");
     }
 
     resolved.push({
-      unitId: await resolveUnit(ctx, organizationId, input.unit),
+      unitId: await resolveUnit(ctx, organizationId, input.unit, nameCheck),
       factorToDefault: input.factorToDefault,
-      packagingWeight: input.packagingWeight,
+      containerId: input.containerId,
       isDefault: input.isDefault,
     });
   }
@@ -922,12 +1100,22 @@ async function replaceProductChildren(
   for (const row of existingUnits) await ctx.db.delete("productUnits", row._id);
 
   for (const row of units) {
+    const storedContainerId = existingUnits.find(
+      (current) => current.unitId === row.unitId,
+    )?.containerId;
+    const containerId =
+      row.containerId === undefined
+        ? storedContainerId
+        : (row.containerId ?? undefined);
+    if (containerId && containerId !== storedContainerId) {
+      await requireUnitContainer(ctx, organizationId, containerId);
+    }
     await ctx.db.insert("productUnits", {
       organizationId,
       productId,
       unitId: row.unitId,
       factorToDefault: row.factorToDefault,
-      packagingWeight: row.packagingWeight,
+      ...(containerId ? { containerId } : {}),
     });
   }
   await replaceProductIngredients(ctx, organizationId, productId, ingredients);
@@ -1207,6 +1395,7 @@ async function hydrateCatalogProduct(
     id: product._id,
     name: product.name,
     status: product.status,
+    productType: product.productType ?? null,
     category: category ? { id: category.id, name: category.name } : null,
     categories,
     defaultUnit: defaultUnit
@@ -1272,6 +1461,7 @@ export const listProducts = query({
           product.name,
           memberships.map((id) => categoryPaths.get(id) ?? "").join(" · "),
           search,
+          product.productType,
         ) !== null
       );
     });
@@ -1417,7 +1607,6 @@ export const exportProducts = query({
               return {
                 name: unit.name,
                 factorToDefault: row.factorToDefault,
-                packagingWeight: row.packagingWeight,
                 isDefault: row.unitId === product.defaultUnitId,
               };
             }),
@@ -1550,7 +1739,7 @@ export const getProduct = query({
               id: row.unitId,
               name: unit.name,
               factorToDefault: row.factorToDefault,
-              packagingWeight: row.packagingWeight ?? null,
+              containerId: row.containerId ?? null,
               isDefault: row.unitId === product.defaultUnitId,
             }
           : null;
@@ -1601,6 +1790,7 @@ export const getProduct = query({
       id: product._id,
       name: product.name,
       status: product.status,
+      productType: product.productType ?? null,
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
       expiry: product.expiry ?? null,
       salesPrice: product.salesPrice ?? null,
@@ -1629,21 +1819,91 @@ async function getCatalogSettingsRow(
 
 export const getSettings = query({
   args: {},
-  returns: v.object({ packagingEnabled: v.boolean() }),
+  returns: v.object({
+    packagingEnabled: v.boolean(),
+    unitSystem: unitSystemValidator,
+    disabledProductTypes: v.array(productTypeValidator),
+  }),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
     const settings = await getCatalogSettingsRow(ctx, organizationId);
-    return { packagingEnabled: settings?.packagingEnabled ?? false };
+    return {
+      packagingEnabled: settings?.packagingEnabled ?? false,
+      unitSystem: settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM,
+      disabledProductTypes: settings?.disabledProductTypes ?? [],
+    };
   },
 });
 
 export const setSettings = mutation({
-  args: { packagingEnabled: v.boolean() },
+  args: {
+    packagingEnabled: v.optional(v.boolean()),
+    unitSystem: v.optional(unitSystemValidator),
+    disabledProductTypes: v.optional(v.array(productTypeValidator)),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireCatalogManager(ctx);
     const current = await getCatalogSettingsRow(ctx, organizationId);
-    const next = { packagingEnabled: args.packagingEnabled, updatedAt: Date.now() };
+    const disabledProductTypes = args.disabledProductTypes
+      ? [...new Set(args.disabledProductTypes)]
+      : current?.disabledProductTypes;
+    if (
+      disabledProductTypes &&
+      disabledProductTypes.length >= PRODUCT_TYPES.length
+    ) {
+      throw new ConvexError("Mindst én produkttype skal være slået til");
+    }
+    for (const productType of disabledProductTypes ?? []) {
+      if (current?.disabledProductTypes?.includes(productType)) continue;
+      const inUse = await ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_productType", (q) =>
+          q.eq("organizationId", organizationId).eq("productType", productType),
+        )
+        .take(6);
+      if (inUse.length > 0) {
+        const names = inUse
+          .slice(0, 5)
+          .map((product) => product.name)
+          .join(", ");
+        const more = inUse.length > 5 ? " og flere" : "";
+        throw new ConvexError(
+          `${productTypeLabel(productType)} kan ikke slås fra, fordi disse produkter bruger typen: ${names}${more}. Skift typen på produkterne først.`,
+        );
+      }
+    }
+    if (args.unitSystem) {
+      const before = resolveUnitSystem(current?.unitSystem);
+      const after = resolveUnitSystem(args.unitSystem);
+      for (const productType of ["dry", "wet"] as const) {
+        if (before[productType] === after[productType]) continue;
+        const inUse = await ctx.db
+          .query("products")
+          .withIndex("by_organizationId_and_productType", (q) =>
+            q.eq("organizationId", organizationId).eq("productType", productType),
+          )
+          .take(6);
+        if (inUse.length > 0) {
+          const names = inUse
+            .slice(0, 5)
+            .map((product) => product.name)
+            .join(", ");
+          const more = inUse.length > 5 ? " og flere" : "";
+          throw new ConvexError(
+            `Enhedssystemet for ${productTypeLabel(productType)} kan ikke ændres, fordi disse produkter bruger det: ${names}${more}. Skift typen på produkterne først.`,
+          );
+        }
+      }
+    }
+    const next = {
+      ...(disabledProductTypes ? { disabledProductTypes } : {}),
+      packagingEnabled: args.packagingEnabled ?? current?.packagingEnabled ?? false,
+      ...(args.unitSystem ?? current?.unitSystem
+        ? { unitSystem: args.unitSystem ?? current?.unitSystem }
+        : {}),
+      updatedAt: Date.now(),
+    };
     if (current) {
       await ctx.db.patch("catalogSettings", current._id, next);
     } else {
@@ -1668,6 +1928,12 @@ export const listFormOptions = query({
         .take(MAX_CHILD_ROWS),
     ]);
 
+    const settings = await getCatalogSettingsRow(ctx, organizationId);
+    const unitSystem = settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM;
+    const unitsByNormalizedName = new Map(
+      units.map((unit) => [unit.normalizedName, unit._id]),
+    );
+    const productTypes: ProductType[] = ["dry", "wet", "piece"];
     return {
       categories: categories.map((category) => ({
         id: category.id,
@@ -1675,6 +1941,18 @@ export const listFormOptions = query({
         path: category.path,
       })),
       units: units.map((unit) => ({ id: unit._id, name: unit.name })),
+      unitSystem,
+      disabledProductTypes: settings?.disabledProductTypes ?? [],
+      standardUnits: productTypes.flatMap((productType) =>
+        standardUnitsFor(productType, unitSystem).map((def) => ({
+          productType,
+          key: def.key,
+          name: def.name,
+          factorToStandard: def.factorToStandard,
+          isStandard: def.isStandard,
+          unitId: unitsByNormalizedName.get(normalizeUnitName(def.name)) ?? null,
+        })),
+      ),
     };
   },
 });
@@ -1760,6 +2038,8 @@ export const listUnits = query({
       units.map(async (unit) => ({
         id: unit._id,
         name: unit.name,
+        pluralName: unit.pluralName,
+        isStandard: unit.systemKey !== undefined,
         inUse: Boolean(
           await ctx.db
             .query("productUnits")
@@ -1786,6 +2066,7 @@ export async function createProductWithAuth(
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
+    productType?: ProductType;
   },
 ): Promise<Id<"products">> {
   const { organizationId, userIdentifier } = auth;
@@ -1799,7 +2080,23 @@ export async function createProductWithAuth(
     args.categories,
   );
   const categoryId = categoryIds[0];
-  const units = await resolveUnits(ctx, organizationId, args.units);
+  if (args.productType) {
+    await requireEnabledProductType(ctx, organizationId, args.productType);
+  }
+  const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+  const resolvedUnits = await resolveUnits(ctx, organizationId, args.units, {
+    type: args.productType ?? null,
+    settings: unitSystem,
+  });
+  const units = args.productType
+    ? await applyStandardUnits(
+        ctx,
+        organizationId,
+        args.productType,
+        unitSystem,
+        resolvedUnits,
+      )
+    : resolvedUnits;
   const recipeYield = await resolveRecipeYield(
     ctx,
     organizationId,
@@ -1822,6 +2119,7 @@ export async function createProductWithAuth(
     name,
     normalizedName,
     categoryId,
+    ...(args.productType ? { productType: args.productType } : {}),
     defaultUnitId,
     ...(recipeYield ? { recipeYield } : {}),
     ...(typeof args.maxTemperatureCelsius === "number"
@@ -1877,6 +2175,7 @@ export async function updateProductWithAuth(
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
+    productType?: ProductType;
     // How to handle stock when the old default unit was removed. Either value
     // keeps recipe quantities that use a removed unit.
     unconvertedStock?: "keep" | "reset";
@@ -1906,7 +2205,24 @@ export async function updateProductWithAuth(
     args.categories,
   );
   const categoryId = categoryIds[0];
-  const units = await resolveUnits(ctx, organizationId, args.units);
+  const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+  const effectiveProductType = args.productType ?? product.productType;
+  if (args.productType && args.productType !== product.productType) {
+    await requireEnabledProductType(ctx, organizationId, args.productType);
+  }
+  const resolvedUnits = await resolveUnits(ctx, organizationId, args.units, {
+    type: effectiveProductType ?? null,
+    settings: unitSystem,
+  });
+  const units = effectiveProductType
+    ? await applyStandardUnits(
+        ctx,
+        organizationId,
+        effectiveProductType,
+        unitSystem,
+        resolvedUnits,
+      )
+    : resolvedUnits;
   const recipeYield = await resolveRecipeYield(
     ctx,
     organizationId,
@@ -2044,6 +2360,7 @@ export async function updateProductWithAuth(
     name,
     normalizedName,
     categoryId,
+    ...(args.productType ? { productType: args.productType } : {}),
     defaultUnitId,
     recipeYield,
     ...(args.maxTemperatureCelsius !== undefined
@@ -2154,6 +2471,7 @@ export const createProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
+    productType: v.optional(productTypeValidator),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {
@@ -2209,16 +2527,28 @@ export const importProduct = mutation({
       args.categories.map((name) => ({ kind: "new", name })),
     );
     const categoryId = categoryIds[0];
-    const units = await resolveUnits(
+    const productType = existing?.productType;
+    const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+    const resolvedUnits = await resolveUnits(
       ctx,
       organizationId,
       args.units.map((unit) => ({
         unit: { kind: "new" as const, name: unit.name },
         factorToDefault: unit.factorToDefault,
-        packagingWeight: unit.packagingWeight,
         isDefault: unit.isDefault,
       })),
+      productType ? { type: productType, settings: unitSystem } : undefined,
     );
+    // Overwriting a typed product keeps its standard units and default.
+    const units = productType
+      ? await applyStandardUnits(
+          ctx,
+          organizationId,
+          productType,
+          unitSystem,
+          resolvedUnits,
+        )
+      : resolvedUnits;
     const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
 
     if (existing) {
@@ -2592,6 +2922,7 @@ export const updateProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
+    productType: v.optional(productTypeValidator),
     unconvertedStock: v.optional(v.union(v.literal("keep"), v.literal("reset"))),
   },
   returns: v.id("products"),
@@ -2867,6 +3198,7 @@ export async function createUnitWithAuth(
   ctx: MutationCtx,
   auth: OrganizationAuth,
   nameInput: string,
+  pluralNameInput?: string,
 ): Promise<Id<"units">> {
   const { organizationId } = auth;
   const { name, normalizedName } = normalizeName(nameInput, "Enhedsnavnet");
@@ -2879,10 +3211,16 @@ export async function createUnitWithAuth(
     )
     .unique();
   if (existing) throw new ConvexError("Enheden findes allerede");
+  requireSensibleUnitName(
+    name,
+    null,
+    await getUnitSystemSettings(ctx, organizationId),
+  );
   const unitId = await ctx.db.insert("units", {
     organizationId,
     name,
     normalizedName,
+    pluralName: pluralUnitName(pluralNameInput),
   });
   await recordAudit(ctx, auth, {
     action: "catalog.unitCreated",
@@ -2893,15 +3231,23 @@ export async function createUnitWithAuth(
   return unitId;
 }
 
+// Blank input clears the plural name.
+function pluralUnitName(input: string | undefined) {
+  return input?.trim() ? normalizeName(input, "Flertalsnavnet").name : undefined;
+}
+
 export async function renameUnitWithAuth(
   ctx: MutationCtx,
   auth: OrganizationAuth,
-  args: { unitId: Id<"units">; name: string },
+  args: { unitId: Id<"units">; name: string; pluralName?: string },
 ): Promise<null> {
   const { organizationId } = auth;
   const unit = await ctx.db.get("units", args.unitId);
   if (!unit || unit.organizationId !== organizationId) {
     throw new ConvexError("Enheden blev ikke fundet");
+  }
+  if (unit.systemKey !== undefined) {
+    throw new ConvexError("Standardenheder kan ikke omdøbes");
   }
   const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
   const existing = await ctx.db
@@ -2915,7 +3261,20 @@ export async function renameUnitWithAuth(
   if (existing && existing._id !== unit._id) {
     throw new ConvexError("Enheden findes allerede");
   }
-  await ctx.db.patch("units", unit._id, { name, normalizedName });
+  if (normalizedName !== unit.normalizedName) {
+    requireSensibleUnitName(
+      name,
+      null,
+      await getUnitSystemSettings(ctx, organizationId),
+    );
+  }
+  await ctx.db.patch("units", unit._id, {
+    name,
+    normalizedName,
+    ...(args.pluralName !== undefined && {
+      pluralName: pluralUnitName(args.pluralName),
+    }),
+  });
   await recordAudit(ctx, auth, {
     action: "catalog.unitRenamed",
     entityTable: "units",
@@ -2946,6 +3305,9 @@ export async function mergeUnitsWithAuth(
     targetUnit.organizationId !== organizationId
   ) {
     throw new ConvexError("Enheden blev ikke fundet");
+  }
+  if (sourceUnit.systemKey !== undefined) {
+    throw new ConvexError("Standardenheder kan ikke flettes væk");
   }
 
   const sourceProductUnits = await ctx.db
@@ -3166,6 +3528,9 @@ export async function deleteUnitWithAuth(
   if (!unit || unit.organizationId !== organizationId) {
     throw new ConvexError("Enheden blev ikke fundet");
   }
+  if (unit.systemKey !== undefined) {
+    throw new ConvexError("Standardenheder kan ikke slettes");
+  }
   const productUnit = await ctx.db
     .query("productUnits")
     .withIndex("by_organizationId_and_unitId", (q) =>
@@ -3223,11 +3588,11 @@ export const deleteCategory = mutation({
 });
 
 export const createUnit = mutation({
-  args: { name: v.string() },
+  args: { name: v.string(), pluralName: v.optional(v.string()) },
   returns: v.id("units"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    return await createUnitWithAuth(ctx, auth, args.name);
+    return await createUnitWithAuth(ctx, auth, args.name, args.pluralName);
   },
 });
 
@@ -3264,6 +3629,13 @@ export const addProductUnit = mutation({
             .eq("normalizedName", normalizedName),
         )
         .unique();
+      if (!existing) {
+        requireSensibleUnitName(
+          args.unit.name,
+          product.productType ?? null,
+          await getUnitSystemSettings(ctx, organizationId),
+        );
+      }
       unitId =
         existing?._id ?? (await createUnitWithAuth(ctx, auth, args.unit.name));
     }
@@ -3303,7 +3675,11 @@ export const addProductUnit = mutation({
 });
 
 export const renameUnit = mutation({
-  args: { unitId: v.id("units"), name: v.string() },
+  args: {
+    unitId: v.id("units"),
+    name: v.string(),
+    pluralName: v.optional(v.string()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
@@ -3329,6 +3705,196 @@ export const deleteUnit = mutation({
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     return await deleteUnitWithAuth(ctx, auth, args.unitId);
+  },
+});
+
+const unitMigrationProductValidator = v.object({
+  productId: v.id("products"),
+  name: v.string(),
+  status: statusValidator,
+  defaultUnitName: v.union(v.string(), v.null()),
+  units: v.array(
+    v.object({
+      name: v.string(),
+      factorToDefault: v.number(),
+      isDefault: v.boolean(),
+    }),
+  ),
+  suggestedProductType: v.union(productTypeValidator, v.null()),
+  suggestedFactorToStandard: v.union(v.number(), v.null()),
+});
+
+export const listUnitMigration = query({
+  args: {},
+  returns: v.object({
+    unitSystem: unitSystemValidator,
+    disabledProductTypes: v.array(productTypeValidator),
+    products: v.array(unitMigrationProductValidator),
+  }),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    const settings = await getCatalogSettingsRow(ctx, organizationId);
+    const unitSystem = settings?.unitSystem ?? DEFAULT_UNIT_SYSTEM;
+    const disabledProductTypes = settings?.disabledProductTypes ?? [];
+    // Migrated products leave the list, so the next batch shows up reactively.
+    const unmigrated = await ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_productType", (q) =>
+        q.eq("organizationId", organizationId).eq("productType", undefined),
+      )
+      .take(200);
+    const rows = await Promise.all(
+      unmigrated.map(async (product) => {
+        const productUnits = await ctx.db
+          .query("productUnits")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", product._id),
+          )
+          .take(MAX_CHILD_ROWS);
+        const units = await Promise.all(
+          productUnits.map(async (row) => {
+            const unit = await ctx.db.get("units", row.unitId);
+            return unit?.organizationId === organizationId
+              ? {
+                  name: unit.name,
+                  factorToDefault: row.factorToDefault,
+                  isDefault: row.unitId === product.defaultUnitId,
+                }
+              : null;
+          }),
+        );
+        const defaultUnitName =
+          units.find((unit) => unit?.isDefault)?.name ?? null;
+        const measured = defaultUnitName
+          ? suggestMigration(defaultUnitName, unitSystem)
+          : null;
+        const suggestion =
+          measured && !disabledProductTypes.includes(measured.productType)
+            ? measured
+            : null;
+        return {
+          productId: product._id,
+          name: product.name,
+          status: product.status,
+          defaultUnitName,
+          units: units.filter((unit) => unit !== null),
+          suggestedProductType: suggestion?.productType ?? null,
+          suggestedFactorToStandard: suggestion?.factorToStandard ?? null,
+        };
+      }),
+    );
+    return { unitSystem, disabledProductTypes, products: rows };
+  },
+});
+
+// Re-bases one product on the standard unit for its type.
+// factorToStandard says how many standard units one old default unit contains.
+export const migrateProductUnit = mutation({
+  args: {
+    productId: v.id("products"),
+    productType: productTypeValidator,
+    factorToStandard: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (product.productType !== undefined) {
+      throw new ConvexError("Produktet bruger allerede standardenheder");
+    }
+    requirePositiveNumber(args.factorToStandard, "Omregningsfaktoren");
+    await requireEnabledProductType(ctx, organizationId, args.productType);
+
+    const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+    const standardRows = await ensureStandardUnitRows(
+      ctx,
+      organizationId,
+      args.productType,
+      unitSystem,
+    );
+    const standardUnitId = standardRows.find((row) => row.isStandard)!.unitId;
+    const standardByUnitId = new Map(
+      standardRows.map((row) => [row.unitId, row.factorToStandard]),
+    );
+
+    const productUnits = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1);
+    if (productUnits.length > MAX_CHILD_ROWS) {
+      throw new ConvexError("Produktet har for mange enheder");
+    }
+    for (const row of productUnits) {
+      const pinned = standardByUnitId.get(row.unitId);
+      const factorToDefault =
+        pinned ??
+        normalizeStock(row.factorToDefault * args.factorToStandard);
+      if (factorToDefault !== row.factorToDefault) {
+        await ctx.db.patch("productUnits", row._id, { factorToDefault });
+      }
+    }
+    for (const row of standardRows) {
+      if (!productUnits.some((unit) => unit.unitId === row.unitId)) {
+        await ctx.db.insert("productUnits", {
+          organizationId,
+          productId: product._id,
+          unitId: row.unitId,
+          factorToDefault: row.factorToStandard,
+        });
+      }
+    }
+
+    if (args.factorToStandard !== 1) {
+      const stockRows = await ctx.db
+        .query("locationStock")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("productId", product._id),
+        )
+        .take(MAX_CHILD_ROWS + 1);
+      if (stockRows.length > MAX_CHILD_ROWS) {
+        throw new ConvexError("Produktet har for mange lagerrelationer");
+      }
+      for (const row of stockRows) {
+        await ctx.db.patch("locationStock", row._id, {
+          quantity: normalizeStock(row.quantity * args.factorToStandard),
+          onlinePosSalesQuantity:
+            row.onlinePosSalesQuantity === undefined
+              ? undefined
+              : normalizeStock(
+                  row.onlinePosSalesQuantity * args.factorToStandard,
+                ),
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    if (standardUnitId !== product.defaultUnitId) {
+      await invalidateSalesStockMappings(ctx, organizationId);
+    }
+    await ctx.db.patch("products", product._id, {
+      productType: args.productType,
+      defaultUnitId: standardUnitId,
+      // An absent yield means one default unit; keep it one old default unit.
+      ...(!product.recipeYield && standardUnitId !== product.defaultUnitId
+        ? { recipeYield: { quantity: 1, unitId: product.defaultUnitId } }
+        : {}),
+      updatedAt: Math.max(Date.now(), product.updatedAt + 1),
+    });
+    await recordAudit(ctx, auth, {
+      action: "catalog.productUnitMigrated",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `${product.name} blev flyttet til standardenheder`,
+    });
+    return null;
   },
 });
 

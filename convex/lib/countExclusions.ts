@@ -17,7 +17,7 @@ export async function listCountExclusions(
     )
     .take(MAX_EXCLUDED_PRODUCTS + 1);
   if (rows.length > MAX_EXCLUDED_PRODUCTS) {
-    throw new ConvexError("Der er for mange Produkter udeladt fra Count");
+    throw new ConvexError("Der er for mange produkter udeladt fra Count");
   }
   return rows;
 }
@@ -86,7 +86,7 @@ export async function setCountExclusions(
         product.status !== "active",
     )
   ) {
-    throw new ConvexError("Et Produkt blev ikke fundet");
+    throw new ConvexError("Et produkt blev ikke fundet");
   }
 
   const nextIds = new Set(productIds);

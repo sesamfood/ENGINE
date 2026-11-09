@@ -16,6 +16,7 @@ import {
 } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
 import { fetchLinearTeams, type LinearTeam } from "./lib/linear";
+import { fetchNotionDatabases, type NotionDatabase } from "./lib/notion";
 import { rateLimiter } from "./lib/rateLimits";
 import { canReportFeedbackArea, isFeedbackType } from "../lib/feedback";
 
@@ -34,13 +35,23 @@ const IMAGE_TYPES = new Set([
   "image/avif",
 ]);
 
-const destinationValidator = v.union(v.literal("linear"), v.literal("email"));
+const destinationValidator = v.union(
+  v.literal("linear"),
+  v.literal("notion"),
+  v.literal("email"),
+);
 const typeValidator = v.union(v.literal("bug"), v.literal("feature"));
 const statusValidator = v.union(
   v.literal("pending"),
   v.literal("sent"),
   v.literal("failed"),
 );
+
+const projectValidator = v.object({
+  property: v.string(),
+  name: v.string(),
+  pageId: v.optional(v.string()),
+});
 
 const deliveryValidator = v.union(
   v.object({
@@ -60,9 +71,36 @@ const deliveryValidator = v.union(
     email: v.union(v.string(), v.null()),
     linearApiKey: v.union(v.string(), v.null()),
     linearTeamId: v.union(v.string(), v.null()),
+    notionToken: v.union(v.string(), v.null()),
+    notionDatabaseId: v.union(v.string(), v.null()),
+    notionProject: v.union(projectValidator, v.null()),
   }),
   v.null(),
 );
+
+function notionProject(
+  settings: {
+    notionProjectProperty?: string;
+    notionProjectName?: string;
+    notionProjectPageId?: string;
+  } | null,
+) {
+  return settings?.notionProjectProperty && settings.notionProjectName
+    ? {
+        property: settings.notionProjectProperty,
+        name: settings.notionProjectName,
+        ...(settings.notionProjectPageId
+          ? { pageId: settings.notionProjectPageId }
+          : {}),
+      }
+    : null;
+}
+
+const destinationLabels = {
+  linear: "Linear",
+  notion: "Notion",
+  email: "e-mail",
+} as const;
 
 function isPostHogReplayUrl(value: string) {
   if (value.length > MAX_REPLAY_URL_LENGTH) return false;
@@ -99,6 +137,10 @@ export const getSettings = query({
     linearTeamId: v.union(v.string(), v.null()),
     linearTeamName: v.union(v.string(), v.null()),
     linearKeyConfigured: v.boolean(),
+    notionDatabaseId: v.union(v.string(), v.null()),
+    notionDatabaseName: v.union(v.string(), v.null()),
+    notionTokenConfigured: v.boolean(),
+    notionProject: v.union(projectValidator, v.null()),
     recent: v.array(
       v.object({
         id: v.id("feedbackSubmissions"),
@@ -136,6 +178,10 @@ export const getSettings = query({
       linearTeamId: settings?.linearTeamId ?? null,
       linearTeamName: settings?.linearTeamName ?? null,
       linearKeyConfigured: Boolean(settings?.linearApiKey),
+      notionDatabaseId: settings?.notionDatabaseId ?? null,
+      notionDatabaseName: settings?.notionDatabaseName ?? null,
+      notionTokenConfigured: Boolean(settings?.notionToken),
+      notionProject: notionProject(settings),
       recent: recent.map((submission) => ({
         id: submission._id,
         userName: submission.userName,
@@ -173,6 +219,10 @@ export const saveSettings = mutation({
     linearApiKey: v.optional(v.string()),
     linearTeamId: v.optional(v.string()),
     linearTeamName: v.optional(v.string()),
+    notionToken: v.optional(v.string()),
+    notionDatabaseId: v.optional(v.string()),
+    notionDatabaseName: v.optional(v.string()),
+    notionProject: v.optional(v.union(projectValidator, v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -201,6 +251,31 @@ export const saveSettings = mutation({
     ) {
       throw new ConvexError("Teamnavnet er for langt");
     }
+    const notionToken = args.notionToken?.trim()
+      ? args.notionToken.trim()
+      : current?.notionToken;
+    if (notionToken && notionToken.length > MAX_API_KEY_LENGTH) {
+      throw new ConvexError("Notion-nøglen er for lang");
+    }
+    const notionDatabaseId = args.notionDatabaseId?.trim() || undefined;
+    const notionDatabaseName = args.notionDatabaseName?.trim() || undefined;
+    if (
+      (notionDatabaseId && notionDatabaseId.length > MAX_TEAM_LENGTH) ||
+      (notionDatabaseName && notionDatabaseName.length > MAX_TEAM_LENGTH)
+    ) {
+      throw new ConvexError("Databasenavnet er for langt");
+    }
+    const project = args.notionProject;
+    if (
+      project &&
+      (!project.property.trim() ||
+        !project.name.trim() ||
+        project.property.length > MAX_TEAM_LENGTH ||
+        project.name.length > MAX_TEAM_LENGTH ||
+        (project.pageId?.length ?? 0) > MAX_TEAM_LENGTH)
+    ) {
+      throw new ConvexError("Vælg et gyldigt projekt");
+    }
 
     if (args.enabled) {
       if (args.destination === "email" && !email) {
@@ -210,6 +285,12 @@ export const saveSettings = mutation({
       }
       if (args.destination === "linear" && (!linearApiKey || !linearTeamId)) {
         throw new ConvexError("Tilføj Linear API-nøgle, og vælg et team");
+      }
+      if (
+        args.destination === "notion" &&
+        (!notionToken || !notionDatabaseId)
+      ) {
+        throw new ConvexError("Tilføj Notion-nøgle, og vælg en database");
       }
     }
 
@@ -221,6 +302,17 @@ export const saveSettings = mutation({
       ...(linearApiKey ? { linearApiKey } : {}),
       ...(linearTeamId ? { linearTeamId } : {}),
       ...(linearTeamName ? { linearTeamName } : {}),
+      ...(notionToken ? { notionToken } : {}),
+      ...(notionDatabaseId ? { notionDatabaseId } : {}),
+      ...(notionDatabaseName ? { notionDatabaseName } : {}),
+      // Undefined clears the project when the patch removes it.
+      ...(project !== undefined
+        ? {
+            notionProjectProperty: project?.property,
+            notionProjectName: project?.name,
+            notionProjectPageId: project?.pageId,
+          }
+        : {}),
     };
     const settingsId = current
       ? current._id
@@ -240,9 +332,7 @@ export const saveSettings = mutation({
       entityTable: "feedbackSettings",
       entityId: settingsId,
       summary: args.enabled
-        ? `Feedback blev slået til med ${
-            args.destination === "linear" ? "Linear" : "e-mail"
-          }`
+        ? `Feedback blev slået til med ${destinationLabels[args.destination]}`
         : "Feedback blev slået fra",
     });
     return null;
@@ -275,6 +365,41 @@ export const listLinearTeams = action({
       (await ctx.runQuery(internal.feedback.getLinearKey, { organizationId }));
     if (!apiKey) throw new ConvexError("Indtast Linear API-nøglen");
     return await fetchLinearTeams(apiKey);
+  },
+});
+
+export const getNotionToken = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const settings = await ctx.db
+      .query("feedbackSettings")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .unique();
+    return settings?.notionToken ?? null;
+  },
+});
+
+export const listNotionDatabases = action({
+  args: { token: v.optional(v.string()) },
+  returns: v.array(
+    v.object({
+      id: v.string(),
+      name: v.string(),
+      projects: v.array(projectValidator),
+    }),
+  ),
+  handler: async (ctx, args): Promise<NotionDatabase[]> => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const token =
+      args.token?.trim() ||
+      (await ctx.runQuery(internal.feedback.getNotionToken, {
+        organizationId,
+      }));
+    if (!token) throw new ConvexError("Indtast Notion-nøglen");
+    return await fetchNotionDatabases(token);
   },
 });
 
@@ -329,7 +454,7 @@ export const submit = mutation({
       );
     }
 
-    // The link lands in Linear and e-mail, so only accept PostHog replay links.
+    // The link lands in Linear, Notion, and e-mail, so only accept PostHog replay links.
     const sessionReplayUrl = args.sessionReplayUrl?.trim();
     if (sessionReplayUrl && !isPostHogReplayUrl(sessionReplayUrl)) {
       throw new ConvexError("Ugyldigt link til sessionsoptagelse");
@@ -438,6 +563,9 @@ export const getDelivery = internalQuery({
       email: settings.email ?? null,
       linearApiKey: settings.linearApiKey ?? null,
       linearTeamId: settings.linearTeamId ?? null,
+      notionToken: settings.notionToken ?? null,
+      notionDatabaseId: settings.notionDatabaseId ?? null,
+      notionProject: notionProject(settings),
     };
   },
 });

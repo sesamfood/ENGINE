@@ -29,6 +29,7 @@ import {
   getOpenAdHocCount,
 } from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
+import { unitNameFor } from "../lib/unit-system";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
   getLocationProductAccess,
@@ -92,6 +93,18 @@ const countQuantityValidator = v.object({
   quantity: v.number(),
 });
 
+const changedCountItemValidator = v.object({
+  id: v.id("countItems"),
+  countAreaId: v.union(v.id("countAreas"), v.null()),
+  countAreaName: v.union(v.string(), v.null()),
+  productId: v.id("products"),
+  productName: v.string(),
+  unitName: v.string(),
+  quantity: v.number(),
+  defaultUnitId: v.union(v.id("units"), v.null()),
+  units: v.array(v.object({ id: v.id("units"), name: v.string() })),
+});
+
 const locationStockValidator = v.object({
   productId: v.id("products"),
   productName: v.string(),
@@ -103,6 +116,7 @@ const locationStockValidator = v.object({
     v.object({
       id: v.id("units"),
       name: v.string(),
+      pluralName: v.optional(v.string()),
       factorToDefault: v.number(),
     }),
   ),
@@ -214,6 +228,30 @@ async function getCountItems(
     throw new ConvexError("Count har for mange enhedslinjer");
   }
   return items;
+}
+
+async function requireChangedCountItem(
+  ctx: MutationCtx,
+  organizationId: string,
+  countId: Id<"counts">,
+  itemId: Id<"countItems">,
+) {
+  const item = await ctx.db.get("countItems", itemId);
+  if (
+    !item ||
+    item.organizationId !== organizationId ||
+    item.countId !== countId ||
+    (await toDefaultUnit(
+      ctx,
+      organizationId,
+      item.productId,
+      item.unitId,
+      item.quantity,
+    )) !== null
+  ) {
+    throw new ConvexError("Produktet er allerede tjekket");
+  }
+  return item;
 }
 
 async function listCountAreaProgress(
@@ -583,6 +621,71 @@ export const getCountQuantities = query({
   },
 });
 
+export const listChangedCountItems = query({
+  args: {
+    locationId: v.id("locations"),
+    countId: v.id("counts"),
+  },
+  returns: v.array(changedCountItemValidator),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const count = await ctx.db.get("counts", args.countId);
+    if (
+      !count ||
+      count.organizationId !== organizationId ||
+      count.locationId !== args.locationId
+    ) {
+      throw new ConvexError("Count blev ikke fundet");
+    }
+    const items = await getCountItems(ctx, organizationId, count._id);
+    const changedItems = [];
+    for (const item of items) {
+      const quantity = await toDefaultUnit(
+        ctx,
+        organizationId,
+        item.productId,
+        item.unitId,
+        item.quantity,
+      );
+      if (quantity !== null) continue;
+      const [product, unit, countArea, productUnits] = await Promise.all([
+        ctx.db.get("products", item.productId),
+        ctx.db.get("units", item.unitId),
+        item.countAreaId ? ctx.db.get("countAreas", item.countAreaId) : null,
+        ctx.db
+          .query("productUnits")
+          .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", item.productId),
+          )
+          .take(MAX_PRODUCT_UNITS),
+      ]);
+      const active = product?.status === "active";
+      const units = await Promise.all(
+        (active ? productUnits : []).map(async ({ unitId }) => ({
+          id: unitId,
+          name: (await ctx.db.get("units", unitId))?.name ?? "",
+        })),
+      );
+      changedItems.push({
+        id: item._id,
+        countAreaId: item.countAreaId ?? null,
+        countAreaName: countArea?.name ?? null,
+        productId: item.productId,
+        productName: product?.name ?? "Slettet produkt",
+        unitName: unit ? unitNameFor(unit, item.quantity) : "fjernet enhed",
+        quantity: item.quantity,
+        defaultUnitId: active ? product.defaultUnitId : null,
+        units,
+      });
+    }
+    return changedItems;
+  },
+});
+
 export const listCatalogPage = query({
   args: { locationId: v.id("locations"), paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(activeProductCatalogValidator),
@@ -634,6 +737,7 @@ export const setCountQuantity = mutation({
     productId: v.id("products"),
     unitId: v.id("units"),
     quantity: v.number(),
+    replacesCountItemId: v.optional(v.id("countItems")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -715,6 +819,22 @@ export const setCountQuantity = mutation({
     });
     if (!count) return null;
 
+    const replacedItem = args.replacesCountItemId
+      ? await requireChangedCountItem(
+          ctx,
+          organizationId,
+          count._id,
+          args.replacesCountItemId,
+        )
+      : null;
+    if (
+      replacedItem &&
+      (replacedItem.productId !== args.productId ||
+        (replacedItem.countAreaId ?? null) !== args.countAreaId)
+    ) {
+      throw new ConvexError("Mængden hører til et andet produkt");
+    }
+
     const itemCandidates = await ctx.db
       .query("countItems")
       .withIndex(
@@ -741,13 +861,14 @@ export const setCountQuantity = mutation({
       );
     }
     const item = matchingItems[0] ?? null;
+    // A replaced line was counted separately, so it adds to the line in this unit.
+    const quantity = args.quantity + (replacedItem ? (item?.quantity ?? 0) : 0);
 
-    if (args.quantity === 0) {
+    if (replacedItem) await ctx.db.delete("countItems", replacedItem._id);
+    if (quantity === 0) {
       if (item) await ctx.db.delete("countItems", item._id);
     } else if (item) {
-      await ctx.db.patch("countItems", item._id, {
-        quantity: args.quantity,
-      });
+      await ctx.db.patch("countItems", item._id, { quantity });
     } else {
       await ctx.db.insert("countItems", {
         organizationId,
@@ -755,7 +876,7 @@ export const setCountQuantity = mutation({
         countAreaId: args.countAreaId ?? undefined,
         productId: args.productId,
         unitId: args.unitId,
-        quantity: args.quantity,
+        quantity,
       });
     }
     if (args.countAreaId) {
@@ -777,6 +898,39 @@ export const setCountQuantity = mutation({
         ),
       });
     }
+    return null;
+  },
+});
+
+export const removeChangedCountItem = mutation({
+  args: {
+    locationId: v.id("locations"),
+    countItemId: v.id("countItems"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId, userIdentifier } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const count = await getWritableCount(ctx, {
+      organizationId,
+      userIdentifier,
+      location,
+      create: false,
+    });
+    if (!count) throw new ConvexError("Count blev ikke fundet");
+    await requireChangedCountItem(
+      ctx,
+      organizationId,
+      count._id,
+      args.countItemId,
+    );
+    await ctx.db.delete("countItems", args.countItemId);
     return null;
   },
 });
@@ -1002,7 +1156,7 @@ export const submitCount = mutation({
       );
       if (quantity === null) {
         throw new ConvexError(
-          "En produkt-enhed er ændret. Opdatér Count og prøv igen",
+          "Et produkt har fået ændret sine enheder. Tjek produktet, og prøv igen",
         );
       }
       totals.set(item.productId, (totals.get(item.productId) ?? 0) + quantity);
@@ -1544,6 +1698,7 @@ async function hydrateLocationStock(
                 {
                   id: unit._id,
                   name: unit.name,
+                  pluralName: unit.pluralName,
                   factorToDefault: row.factorToDefault,
                 },
               ]

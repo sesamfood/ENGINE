@@ -7,7 +7,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import schema from "./schema";
 import { recordAudit } from "./lib/audit";
-import { requireAllLocationAccess, requireHumanPrincipal, requireLocationAccess, requirePermission, type OrganizationAuth } from "./lib/auth";
+import { requireAllLocationAccess, requireHumanPrincipal, requireKioskDestination, requireLocationAccess, requirePermission, type OrganizationAuth } from "./lib/auth";
 import { validateBadDeliveryRecipients } from "./lib/badDeliverySettings";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { expenseCategoryOptionValidator, expenseCategoryValidator, expenseEconomicMappingValidator } from "./lib/expenseValidators";
@@ -24,7 +24,7 @@ const expenseIdArgs = { expenseId: v.id("expenses") };
 
 async function requireExpenseAccess(ctx: ReadCtx, permission: "expenses.create" | "expenses.view" | "expenses.exportEconomic") {
   const auth = requireHumanPrincipal(await requirePermission(ctx, permission));
-  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  await requireKioskDestination(ctx, auth, permission === "expenses.create" ? "expenses.new" : "expenses.history");
   if (auth.granularity !== "detail") throw new ConvexError("Udgifter kræver adgang til detaljerede data");
   return auth;
 }

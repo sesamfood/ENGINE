@@ -8,7 +8,11 @@ import {
 } from "../_generated/server";
 import { hasPermission } from "../../lib/auth-permissions";
 import { recordAudit } from "../lib/audit";
-import { requireLocationAccess, requirePermission } from "../lib/auth";
+import {
+  requireKioskDestination,
+  requireLocationAccess,
+  requirePermission,
+} from "../lib/auth";
 import { getProductCategoryIds } from "../lib/productCategories";
 import { createProductWithAuth } from "../catalog";
 import {
@@ -343,7 +347,7 @@ export function catalogLinkFunctions(provider: CatalogProvider) {
     handler: async (ctx, args) => {
       const auth = await requireCatalogManager(ctx, provider);
       if (!hasPermission(auth.role, auth.permissions, "catalog.manage")) {
-        throw new ConvexError("Du har ikke adgang til at oprette Produkter");
+        throw new ConvexError("Du har ikke adgang til at oprette produkter");
       }
       const { organizationId } = auth;
       if (
@@ -427,9 +431,7 @@ export function catalogLinkFunctions(provider: CatalogProvider) {
     ),
     handler: async (ctx, args) => {
       const auth = await requirePermission(ctx, "ordering.plan");
-      if (auth.kioskModeEnabled) {
-        throw new ConvexError("Du har ikke adgang til bestilling");
-      }
+      await requireKioskDestination(ctx, auth, "ordering.new");
       requireLocationAccess(auth, args.locationId);
       const supplierId = await getCatalogSupplierId(
         ctx,

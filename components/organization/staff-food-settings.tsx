@@ -50,12 +50,14 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
   FieldSet,
+  FieldTitle,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
@@ -67,7 +69,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
+import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -91,17 +94,19 @@ function formatDuration(minutes: number) {
   );
 }
 
-const afterShiftOptions = [0, 15, 30, 45, 60, 90, 120, 180, 240].map(
-  (minutes) => ({
+function afterShiftOptions(wholeDay: boolean) {
+  return [0, 15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => ({
     value: String(minutes),
     label:
       minutes === 0
-        ? "Kun under vagten"
+        ? wholeDay
+          ? "Kun vagtdagen"
+          : "Kun under vagten"
         : minutes < 60
           ? `${minutes} minutter`
           : `${formatDuration(minutes)} time${minutes === 60 ? "" : "r"}`,
-  }),
-);
+  }));
+}
 
 function categoryTreeIds(
   categories: SettingsCategory[],
@@ -128,12 +133,13 @@ export function StaffFoodSettings() {
   const settings = useQuery(api.staffFood.getSettings, canManage ? {} : "skip");
   const saveTier = useMutation(api.staffFood.saveTier);
   const deleteTier = useMutation(api.staffFood.deleteTier);
-  const setAfterShiftMinutes = useMutation(api.staffFood.setAfterShiftMinutes);
+  const setAvailability = useMutation(api.staffFood.setAvailability);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<Id<"staffFoodRuleTiers"> | null>(
     null,
   );
   const [minimumHours, setMinimumHours] = useState("4");
+  const [roleNames, setRoleNames] = useState<string[]>([]);
   const [allowances, setAllowances] = useState<AllowanceDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Tier | null>(null);
@@ -229,6 +235,7 @@ export function StaffFoodSettings() {
   function openEditor(tier?: Tier) {
     setEditingId(tier?.id ?? null);
     setMinimumHours(String((tier?.minimumShiftMinutes ?? 240) / 60));
+    setRoleNames(tier?.roleNames ?? []);
     setAllowances(
       tier?.allowances.map((allowance) => ({
         id: crypto.randomUUID(),
@@ -294,6 +301,7 @@ export function StaffFoodSettings() {
       await saveTier({
         ...(editingId ? { tierId: editingId } : {}),
         minimumShiftMinutes,
+        roleNames,
         allowances: allowances.map((allowance) => ({
           categoryId: allowance.categoryIds[0],
           categoryIds: allowance.categoryIds,
@@ -310,10 +318,13 @@ export function StaffFoodSettings() {
     }
   }
 
-  async function saveAfterShift(value: string) {
+  async function saveAvailability(
+    next: { afterShiftMinutes: number; wholeDay: boolean },
+    message: string,
+  ) {
     try {
-      await setAfterShiftMinutes({ afterShiftMinutes: Number(value) });
-      toast.success("Tiden efter vagten er gemt");
+      await setAvailability(next);
+      toast.success(message);
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Staff food-indstillingerne kunne ikke gemmes. Prøv igen."));
     }
@@ -340,44 +351,77 @@ export function StaffFoodSettings() {
       </Alert>
     );
   }
-  if (!settings) return <Skeleton className="h-96 max-w-5xl" />;
+  if (!settings) return <FormCardSkeleton className="max-w-5xl" />;
 
   return (
     <div className="flex max-w-5xl flex-col gap-8">
       <Card>
         <CardHeader>
-          <CardTitle appearance="compact">Registrering efter vagten</CardTitle>
+          <CardTitle appearance="compact">Registreringstid</CardTitle>
         </CardHeader>
         <CardContent>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="staff-food-after-shift">
-                Tid efter vagtens slut
-              </FieldLabel>
-              <HelpTooltip
-                label="Tid efter vagtens slut"
-                content="Så længe efter vagtens slut kan medarbejderen stadig findes og registrere Staff food."
-              />
-            </div>
-            <Select
-              items={afterShiftOptions}
-              value={String(settings.afterShiftMinutes)}
-              onValueChange={(value) => value && void saveAfterShift(value)}
-            >
-              <SelectTrigger id="staff-food-after-shift" className="h-11! w-full sm:max-w-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {afterShiftOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
+          <FieldGroup>
+            <FieldLabel htmlFor="staff-food-whole-day">
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>Hele dagen</FieldTitle>
+                  <FieldDescription>
+                    Medarbejdere med en vagt kan registrere Staff food hele
+                    vagtdagen, ikke kun under vagten.
+                  </FieldDescription>
+                </FieldContent>
+                <Switch
+                  id="staff-food-whole-day"
+                  checked={settings.wholeDay}
+                  onCheckedChange={(wholeDay) =>
+                    void saveAvailability(
+                      { afterShiftMinutes: settings.afterShiftMinutes, wholeDay },
+                      wholeDay ? "Hele dagen er slået til" : "Hele dagen er slået fra",
+                    )
+                  }
+                />
+              </Field>
+            </FieldLabel>
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="staff-food-after-shift">
+                  {settings.wholeDay ? "Tid før og efter dagen" : "Tid før og efter vagten"}
+                </FieldLabel>
+                <HelpTooltip
+                  label={settings.wholeDay ? "Tid før og efter dagen" : "Tid før og efter vagten"}
+                  content={
+                    settings.wholeDay
+                      ? "Så længe før vagtdagen starter og efter den slutter kan medarbejderen findes og registrere Staff food."
+                      : "Så længe før vagten starter og efter den slutter kan medarbejderen findes og registrere Staff food."
+                  }
+                />
+              </div>
+              <Select
+                items={afterShiftOptions(settings.wholeDay)}
+                value={String(settings.afterShiftMinutes)}
+                onValueChange={(value) =>
+                  value &&
+                  void saveAvailability(
+                    { afterShiftMinutes: Number(value), wholeDay: settings.wholeDay },
+                    "Tiden er gemt",
+                  )
+                }
+              >
+                <SelectTrigger id="staff-food-after-shift" className="h-11! w-full sm:max-w-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {afterShiftOptions(settings.wholeDay).map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
         </CardContent>
       </Card>
 
@@ -387,7 +431,7 @@ export function StaffFoodSettings() {
             Regler for Staff food
             <HelpTooltip
               label="Regler for Staff food"
-              content="Hvis flere regler passer til vagten, gælder reglen med den højeste vagtlængde. Reglerne lægges ikke sammen."
+              content="Hvis flere regler passer til vagten, gælder reglen med den højeste vagtlængde. Regler for medarbejderens eller vagtens roller går forud for regler for alle roller. Reglerne lægges ikke sammen."
             />
           </CardTitle>
           <CardDescription>
@@ -411,7 +455,10 @@ export function StaffFoodSettings() {
                 <Card key={tier.id} size="sm">
                   <CardHeader>
                     <CardTitle>
-                      Fra {formatDuration(tier.minimumShiftMinutes)} timer
+                      Fra {formatDuration(tier.minimumShiftMinutes)} timer ·{" "}
+                      {tier.roleNames.length
+                        ? tier.roleNames.join(", ")
+                        : "Alle roller"}
                     </CardTitle>
                     <CardDescription>
                       {tier.allowances.length} kategorigruppe
@@ -504,6 +551,51 @@ export function StaffFoodSettings() {
                 <FieldError>
                   Vælg hele eller halve timer mellem 0,5 og 24.
                 </FieldError>
+              ) : null}
+            </Field>
+
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="staff-food-roles">Roller</FieldLabel>
+                <HelpTooltip
+                  label="Roller"
+                  content="Reglen gælder, når vagtens rolle eller en af medarbejderens roller er valgt. Regler for en rolle går forud for regler for alle roller."
+                />
+              </div>
+              <Select
+                multiple
+                items={settings.roleNames.map((name) => ({
+                  value: name,
+                  label: name,
+                }))}
+                value={roleNames}
+                onValueChange={setRoleNames}
+                disabled={!settings.roleNames.length}
+              >
+                <SelectTrigger
+                  id="staff-food-roles"
+                  className="min-h-11 w-full min-w-0 sm:max-w-md"
+                >
+                  <SelectValue
+                    appearance="truncate"
+                    className="min-w-0"
+                    placeholder="Alle roller"
+                  />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {settings.roleNames.map((name) => (
+                      <SelectItem key={name} value={name} className="min-h-11">
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {!settings.roleNames.length ? (
+                <FieldDescription>
+                  Der er ingen roller endnu. Tildel roller under Medarbejdere.
+                </FieldDescription>
               ) : null}
             </Field>
 

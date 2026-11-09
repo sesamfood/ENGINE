@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/date-picker";
 import { usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -64,7 +65,7 @@ import {
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -807,7 +808,7 @@ export function ApiKeyManagement() {
   }
 
   if (!options || keys === null) {
-    return <Skeleton className="h-96 w-full" />;
+    return <FormCardSkeleton />;
   }
 
   return (
@@ -1017,13 +1018,12 @@ export function ApiKeyManagement() {
                     content="Standard er 90 dage. Nøglen kan højst være gyldig i ét år."
                   />
                 </div>
-                <Input
+                <DatePicker
                   id="new-api-key-expiry"
-                  type="date"
                   value={createExpiry}
                   min={addDays(1)}
                   max={addDays(364)}
-                  onChange={(event) => setCreateExpiry(event.target.value)}
+                  onValueChange={setCreateExpiry}
                   disabled={creating}
                 />
               </Field>
@@ -1111,13 +1111,12 @@ export function ApiKeyManagement() {
           </DialogHeader>
           <Field>
             <FieldLabel htmlFor="rotate-api-key-expiry">Ny udløbsdato</FieldLabel>
-            <Input
+            <DatePicker
               id="rotate-api-key-expiry"
-              type="date"
               value={rotationExpiry}
                 min={addDays(1)}
                 max={addDays(364)}
-              onChange={(event) => setRotationExpiry(event.target.value)}
+              onValueChange={setRotationExpiry}
               disabled={rotating}
             />
           </Field>

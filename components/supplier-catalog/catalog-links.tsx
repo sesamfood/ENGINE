@@ -196,7 +196,7 @@ export function SupplierCatalogLinks({
       <CardHeader className="flex flex-col sm:grid">
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
-          Vælg det Produkt, hvert {supplierName}-produkt svarer til, og den
+          Vælg det produkt, hvert {supplierName}-produkt svarer til, og den
           enhed én pakke fra {supplierName} svarer til.
         </CardDescription>
         <CardAction>
@@ -219,9 +219,9 @@ export function SupplierCatalogLinks({
         {options.limitReached ? (
           <Alert>
             <CircleAlertIcon />
-            <AlertTitle>Kun de første 500 Produkter kan vælges</AlertTitle>
+            <AlertTitle>Kun de første 500 produkter kan vælges</AlertTitle>
             <AlertDescription>
-              Arkivér ubrugte Produkter for at få hele listen med.
+              Arkivér ubrugte produkter for at få hele listen med.
             </AlertDescription>
           </Alert>
         ) : null}
@@ -445,7 +445,7 @@ function CatalogItemLinkEditor({
           }))}
           value={selected?.id ?? null}
           onValueChange={chooseProduct}
-          placeholder="Søg efter Produkt"
+          placeholder="Søg efter produkt"
           ariaLabel={`Produkt for ${catalog.name}-varenummer ${row.productNumber}`}
           disabled={saving}
         />
@@ -458,7 +458,7 @@ function CatalogItemLinkEditor({
             onClick={() => setCreatingProduct(true)}
           >
             <PlusIcon data-icon="inline-start" />
-            Opret som nyt Produkt
+            Opret som nyt produkt
           </Button>
         ) : null}
       </div>
@@ -617,7 +617,7 @@ function AddUnitDialog({
           <DialogHeader>
             <DialogTitle>Tilføj enhed til {product.name}</DialogTitle>
             <DialogDescription>
-              Enheden tilføjes til Produktet og bruges som én pakke fra{" "}
+              Enheden tilføjes til produktet og bruges som én pakke fra{" "}
               {supplierName}.
             </DialogDescription>
           </DialogHeader>
@@ -868,7 +868,7 @@ function CreateProductDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Opret Produkt fra {catalog.name}</DialogTitle>
+            <DialogTitle>Opret produkt fra {catalog.name}</DialogTitle>
             <div className="flex items-center gap-3">
               {pictureUrl ? (
                 <Avatar className="size-14 shrink-0">
@@ -880,7 +880,7 @@ function CreateProductDialog({
               ) : null}
               <DialogDescription>
                 {row.productNumber} · {row.name}
-                {pictureUrl ? ". Billedet bruges på Produktet." : ""}
+                {pictureUrl ? ". Billedet bruges på produktet." : ""}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -978,7 +978,7 @@ function CreateProductDialog({
             </Button>
             <Button type="submit" size="lg" disabled={saving || !ready}>
               {saving ? <Spinner data-icon="inline-start" /> : null}
-              Opret Produkt
+              Opret produkt
             </Button>
           </DialogFooter>
         </form>

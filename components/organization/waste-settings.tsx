@@ -42,7 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 
 import { Textarea } from "@/components/ui/textarea";
@@ -201,7 +201,6 @@ export function WasteSettings() {
   const canManage = usePermission("waste.settings");
   const settings = useQuery(api.waste.getSettings, canManage ? {} : "skip");
   const saveSettings = useMutation(api.waste.setSettings);
-  const [secondsDraft, setSecondsDraft] = useState<string | null>(null);
   const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
   const [historyScopeDraft, setHistoryScopeDraft] =
     useState<HistoryScope | null>(null);
@@ -214,7 +213,7 @@ export function WasteSettings() {
   const [bccDraft, setBccDraft] = useState<string[] | null>(null);
   const [saving, setSaving] = useState<"waste" | "badDelivery" | null>(null);
 
-  if (!access) return <Skeleton className="h-72 max-w-3xl" />;
+  if (!access) return <FormCardSkeleton className="max-w-3xl" />;
   if (!canManage) {
     return (
       <Alert variant="destructive">
@@ -225,9 +224,8 @@ export function WasteSettings() {
       </Alert>
     );
   }
-  if (settings === undefined) return <Skeleton className="h-72 max-w-3xl" />;
+  if (settings === undefined) return <FormCardSkeleton className="max-w-3xl" />;
 
-  const seconds = secondsDraft ?? String(settings.inactivitySeconds);
   const period = periodDraft ?? settings.popularityPeriod;
   const historyScope = historyScopeDraft ?? settings.historyScope;
   const deduct = deductDraft ?? settings.badDeliveryDeductFromStock;
@@ -239,14 +237,6 @@ export function WasteSettings() {
   const bcc = bccDraft ?? settings.badDeliveryBcc;
 
   function basePayload() {
-    const inactivitySeconds = Number(seconds);
-    if (
-      !Number.isInteger(inactivitySeconds) ||
-      inactivitySeconds < 5 ||
-      inactivitySeconds > 3600
-    ) {
-      throw new Error("Inaktivitet skal være mellem 5 og 3600 sekunder");
-    }
     const recipients = recipientLists(to, cc, bcc);
     const emailSubject = subject.trim();
     if (!emailSubject || emailSubject.length > MAX_SUBJECT_LENGTH) {
@@ -257,7 +247,6 @@ export function WasteSettings() {
       throw new Error("E-mailens indhold skal være mellem 1 og 5000 tegn");
     }
     return {
-      inactivitySeconds,
       popularityPeriod: period,
       historyScope,
       badDeliveryDeductFromStock: deduct,
@@ -276,7 +265,6 @@ export function WasteSettings() {
       setSaving(kind);
       await saveSettings(payload);
       if (kind === "waste") {
-        setSecondsDraft(null);
         setPeriodDraft(null);
         setHistoryScopeDraft(null);
       } else {
@@ -304,32 +292,6 @@ export function WasteSettings() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <div className="flex items-center gap-1">
-                  <FieldLabel htmlFor="waste-inactivity">
-                    Nulstil efter inaktivitet
-                  </FieldLabel>
-                  <HelpTooltip
-                    label="Nulstil efter inaktivitet"
-                    content="Efter denne tid åbnes Registrér med Alle produkter, tom søgning og lukkede dialoger."
-                  />
-                </div>
-              </FieldContent>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="waste-inactivity"
-                  className="w-28"
-                  type="number"
-                  min="5"
-                  max="3600"
-                  step="1"
-                  value={seconds}
-                  onChange={(event) => setSecondsDraft(event.target.value)}
-                />
-                <span className="text-sm text-muted-foreground">sekunder</span>
-              </div>
-            </Field>
             <Field orientation="horizontal">
               <FieldContent>
                 <FieldLabel htmlFor="waste-popularity-period">Popularitetsperiode</FieldLabel>

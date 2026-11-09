@@ -22,9 +22,11 @@ import { useHomeDestination, useKiosk, useKioskDay } from "@/components/app-shel
 import { KioskDayTaskIconView } from "@/components/kiosk/kiosk-day-task-icon";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { dateTimeFormatter } from "@/lib/date";
 import { kioskDestination } from "@/lib/kiosk";
 import type { KioskDayTask } from "@/lib/kiosk-day";
+import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 const copy = {
@@ -151,6 +153,7 @@ function Checklist({
   locationName,
   enabledPages,
   preview = false,
+  onLeave,
 }: {
   phase: keyof typeof copy;
   tasks: KioskDayTask[];
@@ -159,12 +162,16 @@ function Checklist({
   locationName: string | null;
   enabledPages: string[];
   preview?: boolean;
+  onLeave?: () => void;
 }) {
   const complete = useMutation(api.kioskDay.complete);
-  const [openedAt] = useState(Date.now);
-  const people = useQuery(
-    api.kioskDay.listResponsibleEmployees,
-    preview ? "skip" : { now: openedAt },
+  const day = useKioskDay();
+  const simulated = !preview && phase === "endOfDay" && Boolean(day?.endOfDaySimulated);
+  // The page can stay open overnight, so the date and shifts must follow the clock.
+  const now = useDashboardNow();
+  const people = useLastDefined(
+    useQuery(api.kioskDay.listResponsibleEmployees, preview ? "skip" : { now }),
+    "people",
   );
   const { checked, toggle, clear } = useStoredChecks(
     `engine.kiosk-day.${preview ? "preview." : ""}${phase}.${tasks.map((task) => task.title).join("\n")}`,
@@ -188,7 +195,9 @@ function Checklist({
         responsible: responsible.startsWith("new:")
           ? { name: responsible.slice(4) }
           : { employeeId: responsible as Id<"employees"> },
+        ...(simulated ? { simulateEndOfDay: true } : {}),
       });
+      if (simulated) day?.setEndOfDaySimulated(false);
       clear();
       toast.success(text.done);
     } catch (error) {
@@ -224,7 +233,7 @@ function Checklist({
                 month: "long",
                 year: "numeric",
                 timeZone: zone,
-              }).format(openedAt)}
+              }).format(now)}
             </p>
           </div>
         </div>
@@ -322,6 +331,11 @@ function Checklist({
                 disabled={preview || people === undefined}
               />
             </Field>
+            {onLeave ? (
+              <Button size="lg" variant="outline" onClick={onLeave}>
+                Senere
+              </Button>
+            ) : null}
             <Button
               size="lg"
               disabled={preview || !allDone || !responsible || pending}
@@ -395,6 +409,14 @@ export function KioskDayTasks() {
         timeZone={day.timeZone}
         locationName={kiosk?.locationName ?? null}
         enabledPages={kiosk?.settings?.enabledPages ?? []}
+        onLeave={
+          day.phase === "startOfDay" && day.leaveStartOfDay && home
+            ? () => {
+                day.leaveStartOfDay?.();
+                router.replace(home);
+              }
+            : undefined
+        }
       />
     </main>
   );

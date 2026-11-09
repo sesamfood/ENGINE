@@ -1,6 +1,7 @@
 "use client";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { metricRegistry } from "@/lib/dashboard/registry";
@@ -18,12 +19,13 @@ const statusLabels: Record<Exclude<LiveMetricResult["locations"][number]["state"
   unavailable: "Kunne ikke hente den aktuelle værdi. Prøv igen.",
 };
 
-export function LiveMetricContent({ widget, state, compact = false }: {
+export function LiveMetricContent({ widget, state, compact = false, onRetry }: {
   widget: WidgetInstance;
   state: LiveMetricState;
   compact?: boolean;
+  onRetry?: () => void;
 }) {
-  if (state.kind === "error") return <div className="h-full min-h-0 overflow-y-auto"><Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert></div>;
+  if (state.kind === "error") return <div className="h-full min-h-0 overflow-y-auto"><Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription>{onRetry ? <AlertAction><Button type="button" variant="outline" onClick={onRetry}>Prøv igen</Button></AlertAction> : null}</Alert></div>;
   if (state.kind === "loading") return <Skeleton className="size-full" />;
   const source = widget.metric.kind === "builtin" ? metricRegistry[widget.metric.id].live : undefined;
   const limit = source?.locationLimits[widget.visualization] ?? state.data.locations.length;

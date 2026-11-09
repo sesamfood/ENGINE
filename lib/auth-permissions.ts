@@ -147,6 +147,7 @@ export const permissionCatalog = [
       { id: "dashboard.viewSales", label: "Se salgstal" },
       { id: "dashboard.viewFinancials", label: "Se månedsrapport og lønestimater" },
       { id: "dashboard.manageBudgets", label: "Redigere månedsbudgetter" },
+      { id: "dashboard.syncData", label: "Opdatere dashboarddata fra integrationer" },
       { id: "sales.viewAggregate", label: "Se aggregerede salgstal" },
       { id: "sales.viewDetail", label: "Se detaljerede salgstal" },
     ],
@@ -214,6 +215,7 @@ export const defaultRolePermissions: Record<
       id !== "dashboard.viewSales" &&
       id !== "dashboard.viewFinancials" &&
       id !== "dashboard.manageBudgets" &&
+      id !== "dashboard.syncData" &&
       id !== "sales.viewAggregate" &&
       id !== "sales.viewDetail",
   ),
@@ -240,6 +242,16 @@ export function permissionsForRole(
 
 export function isPermissionId(value: string): value is PermissionId {
   return permissionIdSet.has(value);
+}
+
+// Integration managers keep sync access, so saved custom roles do not lose it.
+export function canSyncDashboardData(
+  permissions: ReadonlySet<string> | readonly string[] | undefined,
+) {
+  return (
+    hasPermission(null, permissions, "dashboard.syncData") ||
+    hasPermission(null, permissions, "integrations.manage")
+  );
 }
 
 export function hasPermission(

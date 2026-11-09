@@ -149,6 +149,42 @@ export function getOrganizationThemeError(theme: OrganizationTheme) {
   return null;
 }
 
+
+function rotateHue(hex: string, degrees: number) {
+  const [r, g, b] = [1, 3, 5].map((index) =>
+    Number.parseInt(hex.slice(index, index + 2), 16),
+  );
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lightness = (max + min) / 2 / 255;
+  const delta = max - min;
+  const saturation =
+    delta === 0 ? 0 : delta / (255 - Math.abs(max + min - 255));
+  let hue = 0;
+  if (delta !== 0) {
+    if (max === r) hue = 60 * (((g - b) / delta) % 6);
+    else if (max === g) hue = 60 * ((b - r) / delta + 2);
+    else hue = 60 * ((r - g) / delta + 4);
+  }
+  hue = (((hue + degrees) % 360) + 360) % 360;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const match = lightness - chroma / 2;
+  const [rr, gg, bb] =
+    hue < 60 ? [chroma, x, 0]
+    : hue < 120 ? [x, chroma, 0]
+    : hue < 180 ? [0, chroma, x]
+    : hue < 240 ? [0, x, chroma]
+    : hue < 300 ? [x, 0, chroma]
+    : [chroma, 0, x];
+  const channel = (value: number) =>
+    Math.round((value + match) * 255)
+      .toString(16)
+      .padStart(2, "0")
+      .toUpperCase();
+  return `#${channel(rr)}${channel(gg)}${channel(bb)}`;
+}
+
 export function resolveOrganizationTheme(theme: OrganizationTheme) {
   const primary = theme.primary;
   const foreground = theme.foreground;
@@ -192,13 +228,13 @@ export function resolveOrganizationTheme(theme: OrganizationTheme) {
     accent,
     accentForeground,
     border,
-    input: border,
+    input: mix(background, foreground, 0.45),
     ring: primary,
-    chart1: mix(primary, background, 0.48),
-    chart2: mix(primary, background, 0.26),
-    chart3: primary,
-    chart4: mix(primary, foreground, 0.18),
-    chart5: mix(primary, foreground, 0.34),
+    chart1: primary,
+    chart2: rotateHue(primary, 70),
+    chart3: rotateHue(primary, 145),
+    chart4: rotateHue(primary, 215),
+    chart5: rotateHue(primary, 290),
     sidebar,
     sidebarForeground: foreground,
     sidebarPrimary: primary,

@@ -2,7 +2,7 @@
 
 import { selectedLocationId } from "@/lib/location-preference";
 
-import { AppPageHeader } from "@/components/app-page-header";
+import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
 import { useLocationAccess } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
@@ -41,17 +41,14 @@ function HeaderContent({
   onLocationChange: (value: string) => void;
 }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+        <PageTitle>
           Varemodtagelse
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Varemodtagelse
-        </h1>
+        </PageTitle>
       </div>
       <Field>
-        <FieldLabel htmlFor={controlId}>Lokation</FieldLabel>
+        <FieldLabel htmlFor={controlId} className="sr-only">Lokation</FieldLabel>
         <LocationField
           id={controlId}
           locations={locations}

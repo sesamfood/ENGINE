@@ -1,4 +1,4 @@
-import { activeProductUnit } from "./lib/productUnits";
+import { activeProductUnit, listProductUnitOptions } from "./lib/productUnits";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -20,11 +20,11 @@ import {
 } from "./lib/dashboardSummaries";
 import { transferAggregates } from "./lib/transferAggregates";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
+import { settingsFor as goodsReceiptSettingsFor } from "./goodsReceipts";
 import { requireOpenOrder } from "./internalOrders";
 
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_COMMENT_LENGTH = 500;
-const MAX_PRODUCT_UNITS = 200;
 const EXPORT_PAGE_SIZE = 5;
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 const MAX_PUBLIC_PAGE_SIZE = 100;
@@ -401,8 +401,17 @@ async function prepareTransfer(
         temperatureCelsius: productTemperatures.get(item.productId),
         maxTemperatureCelsius: existingMaximumByProduct.get(item.productId),
       });
+    } else if (
+      product?.organizationId === organizationId &&
+      product.status === "active"
+    ) {
+      throw new ConvexError(
+        `${product.name} har ikke længere den valgte enhed. Vælg en anden enhed, og tjek mængden.`,
+      );
     } else {
-      throw new ConvexError("Produktet eller enheden blev ikke fundet");
+      throw new ConvexError(
+        "Et produkt er ikke længere aktivt. Fjern det fra transferen.",
+      );
     }
   }
 
@@ -549,6 +558,11 @@ export const createTransfer = mutation({
     );
     const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const aggregates = transferAggregates(resolvedItems);
+    // Internal-order transfers always wait for a goods receipt.
+    const receiptRequired =
+      order !== null ||
+      (await goodsReceiptSettingsFor(ctx, organizationId))
+        .transferReceiptRequired;
 
     const transferId = await ctx.db.insert("transfers", {
       organizationId,
@@ -559,8 +573,8 @@ export const createTransfer = mutation({
       comment,
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
-      stockApplied: false,
-      receiptStatus: "pending",
+      stockApplied: !receiptRequired,
+      ...(receiptRequired ? { receiptStatus: "pending" as const } : {}),
       ...aggregates,
       dashboardSummaryTimeZone: summaryTimeZone,
       ...(order ? { orderId: order._id } : {}),
@@ -570,6 +584,17 @@ export const createTransfer = mutation({
         fulfillmentStatus: "transferred",
         transferId,
       });
+    }
+
+    if (!receiptRequired) {
+      await applyTransferStock(
+        ctx,
+        organizationId,
+        args.fromLocationId,
+        args.toLocationId,
+        resolvedItems,
+        1,
+      );
     }
 
     for (const item of resolvedItems) {
@@ -952,21 +977,6 @@ export const getTransferProductOption = query({
       return null;
     }
 
-    const productUnits = await ctx.db
-      .query("productUnits")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", product._id),
-      )
-      .take(MAX_PRODUCT_UNITS + 1);
-    if (productUnits.length > MAX_PRODUCT_UNITS) {
-      throw new ConvexError("Produktet har for mange enheder");
-    }
-
-    const units = await Promise.all(
-      productUnits.map((productUnit) =>
-        ctx.db.get("units", productUnit.unitId),
-      ),
-    );
     const imageUrl = product.imageStorageId
       ? await ctx.storage.getUrl(product.imageStorageId)
       : null;
@@ -977,12 +987,7 @@ export const getTransferProductOption = query({
       imageUrl,
       defaultUnitId: product.defaultUnitId,
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
-      units: productUnits.flatMap((productUnit, index) => {
-        const unit = units[index];
-        return unit?.organizationId === organizationId
-          ? [{ id: unit._id, name: unit.name }]
-          : [];
-      }),
+      units: await listProductUnitOptions(ctx, product),
     };
   },
 });

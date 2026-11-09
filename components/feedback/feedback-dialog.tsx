@@ -97,7 +97,7 @@ function FeedbackForm({
     setSubmitting(true);
     try {
       // The link opens a minute before submitting to show what led up to it.
-      const sessionReplayUrl = posthog.sessionRecordingStarted()
+      const sessionReplayUrl = posthog.__loaded
         ? posthog.get_session_replay_url({
             withTimestamp: true,
             timestampLookBack: 60,
@@ -259,7 +259,7 @@ function FeedbackForm({
         </DialogClose>
         <Button type="submit" form="feedback-form" disabled={submitting}>
           {submitting ? <Spinner data-icon="inline-start" /> : null}
-          Send feedback
+          Giv feedback
         </Button>
       </DialogFooter>
     </>
@@ -298,13 +298,13 @@ export function FeedbackDialog({
               type="button"
               variant="ghost"
               size="icon-lg"
-              aria-label="Send feedback"
+              aria-label="Giv feedback"
             />
           ) : (
             <SidebarMenuButton
               size="lg"
-              aria-label="Send feedback"
-              tooltip="Send feedback"
+              aria-label="Giv feedback"
+              tooltip="Giv feedback"
               appearance="icon"
               className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
             />
@@ -314,14 +314,14 @@ export function FeedbackDialog({
         <MessageSquarePlusIcon aria-hidden="true" />
         {!compact ? (
           <span className="group-data-[collapsible=icon]:hidden">
-            Send feedback
+            Giv feedback
           </span>
         ) : null}
       </DialogTrigger>
 
       <DialogContent className="grid max-h-(--spacing-viewport-inset) min-h-0 grid-rows-(--grid-rows-panel) overflow-hidden sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Send feedback</DialogTitle>
+          <DialogTitle>Giv feedback</DialogTitle>
           <DialogDescription>
             Fortæl hvad der driller, eller hvad du savner. Vi læser det hele.
           </DialogDescription>

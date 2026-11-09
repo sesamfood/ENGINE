@@ -81,6 +81,8 @@ export async function kioskDayState(
   organizationId: string,
   locationId: Id<"locations">,
   now: number,
+  // Treats now as closing time. Only for preview deployments.
+  simulateEndOfDay = false,
 ) {
   const none = { phase: null, tasks: [], scheduledAt: null, timeZone: null };
   const tasks = await getKioskDayTasks(ctx, organizationId, locationId);
@@ -112,6 +114,7 @@ export async function kioskDayState(
     scheduledAt: closedAt,
     timeZone,
   };
+  if (simulateEndOfDay) return { ...endOfDay, nextTransitionAt: null };
   if (now < closedAt) return { ...none, nextTransitionAt: closedAt };
   const lastEnd =
     startOfDay.lastEnd ?? (await latestRun(ctx, organizationId, locationId, "endOfDay"));
