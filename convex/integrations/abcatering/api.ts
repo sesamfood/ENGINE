@@ -7,11 +7,13 @@ import {
   query,
   type ActionCtx,
 } from "../../_generated/server";
+import { hasPermission } from "../../../lib/auth-permissions";
 import { recordAudit } from "../../lib/audit";
 import {
   requireAllLocationAccess,
   requireHumanPrincipal,
   requireIntegrationManager,
+  requireOrganization,
 } from "../../lib/auth";
 import {
   decryptCredential,
@@ -30,6 +32,7 @@ import {
 import { catalogLinkFunctions } from "../supplierCatalogApi";
 import {
   AbTokenExpiredError,
+  fetchCatalogPicture,
   fetchCustomerProducts,
   requestAccessToken,
   validateLogin,
@@ -326,5 +329,23 @@ export const fetchCatalog = action({
   handler: async (ctx): Promise<CatalogItem[]> => {
     const auth = await requireCatalogReader(ctx, "abcatering");
     return withAccessToken(ctx, auth.organizationId, fetchCustomerProducts);
+  },
+});
+
+/** Downloads a catalog picture for a new product. */
+export const fetchCatalogImage = action({
+  args: { url: v.string() },
+  returns: v.object({ bytes: v.bytes(), contentType: v.string() }),
+  handler: async (ctx, args) => {
+    const auth = await requireOrganization(ctx);
+    if (
+      auth.kioskModeEnabled ||
+      !hasPermission(auth.role, auth.permissions, "integrations.manage") ||
+      !hasPermission(auth.role, auth.permissions, "catalog.manage")
+    ) {
+      throw new ConvexError("Du har ikke adgang til at hente billeder");
+    }
+    await requireIntegrationEnabled(ctx, auth.organizationId, "abcatering");
+    return fetchCatalogPicture(args.url);
   },
 });

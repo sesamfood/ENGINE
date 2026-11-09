@@ -4,6 +4,9 @@ import type { CatalogItem } from "../../supplierCatalog";
 const BASE_URL = "https://abcatering.dk/api/external";
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_PRODUCTS = 5000;
+// Product ids per gs1 request; longer URLs are rejected.
+const GS1_BATCH_SIZE = 50;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 /** The access token expired or was revoked; a new one fixes it. */
 export class AbTokenExpiredError extends Error {}
@@ -112,15 +115,19 @@ export async function requestAccessToken(apiKey: string, validationKey: string) 
   return { accessToken, expiresAt: Date.now() + expiresIn * 1000 };
 }
 
-async function authorizedPost(path: string, accessToken: string, body: unknown) {
+async function authorizedRequest(
+  path: string,
+  accessToken: string,
+  body?: unknown,
+) {
   const response = await request(path, {
-    method: "POST",
+    method: body === undefined ? "GET" : "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status === 401) {
     if (response.headers.get("www-authenticate")?.includes("invalid_token")) {
@@ -174,9 +181,51 @@ function parseProduct(value: unknown): CatalogItem[] {
   });
 }
 
+// GS1 pictures come from many supplier hosts; some still link over http.
+function pictureUrl(value: unknown) {
+  try {
+    const url = new URL(text(value));
+    if (url.protocol === "http:") url.protocol = "https:";
+    return url.protocol === "https:" && !url.username && !url.password
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Picture URLs by product id from AB's GS1 product data. */
+async function fetchPictures(accessToken: string, productIds: string[]) {
+  const batches = [];
+  for (let index = 0; index < productIds.length; index += GS1_BATCH_SIZE) {
+    batches.push(productIds.slice(index, index + GS1_BATCH_SIZE));
+  }
+  const pictures = new Map<string, string>();
+  await Promise.all(
+    batches.map(async (batch) => {
+      const response = await authorizedRequest(
+        `product/gs1?productIds=${batch.join(",")}`,
+        accessToken,
+      );
+      if (!response.ok) throw new Error(`gs1 status ${response.status}`);
+      const body = await json(response);
+      for (const row of Array.isArray(body) ? body : []) {
+        const record = (row ?? {}) as {
+          productId?: unknown;
+          gS1?: { produktinformation?: Record<string, unknown> | null } | null;
+        };
+        const info = record.gS1?.produktinformation;
+        const url = pictureUrl(info?.img_HiRes) ?? pictureUrl(info?.img_LowRes);
+        if (url) pictures.set(text(record.productId), url);
+      }
+    }),
+  );
+  return pictures;
+}
+
 /** The customer's assortment: latest purchases and favorites. */
 export async function fetchCustomerProducts(accessToken: string) {
-  const response = await authorizedPost(
+  const response = await authorizedRequest(
     "product/customerproducts",
     accessToken,
     {},
@@ -201,7 +250,58 @@ export async function fetchCustomerProducts(accessToken: string) {
   for (const item of rows.flatMap(parseProduct)) {
     if (!items.has(item.productNumber)) items.set(item.productNumber, item);
   }
-  return [...items.values()];
+  const productIds = [
+    ...new Set([...items.values()].map((item) => item.productNumber.split(" ")[0])),
+  ];
+  // Pictures are optional; the catalog still works without them.
+  const pictures = await fetchPictures(accessToken, productIds).catch(
+    (error: unknown) => {
+      if (error instanceof AbTokenExpiredError) throw error;
+      console.warn("AB Catering pictures could not be fetched", error);
+      return new Map<string, string>();
+    },
+  );
+  return [...items.values()].map((item) => ({
+    ...item,
+    pictureUrl: pictures.get(item.productNumber.split(" ")[0]) ?? null,
+  }));
+}
+
+/** Downloads a catalog picture so it can be stored on a product. */
+export async function fetchCatalogPicture(value: string) {
+  const url = pictureUrl(value);
+  const hostname = url ? new URL(url).hostname : "";
+  // Only public host names; IP literals and local hosts could reach internal services.
+  if (
+    !url ||
+    new URL(url).port ||
+    !hostname.includes(".") ||
+    /^[\d.]+$/.test(hostname) ||
+    hostname.startsWith("[") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal")
+  ) {
+    throw new ConvexError("Billedet kunne ikke hentes");
+  }
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { Accept: "image/*" },
+      redirect: "error",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    throw new ConvexError("Billedet kunne ikke hentes");
+  }
+  const contentType = response.headers.get("content-type")?.split(";")[0] ?? "";
+  if (!response.ok || !contentType.startsWith("image/")) {
+    throw new ConvexError("Billedet kunne ikke hentes");
+  }
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new ConvexError("Billedet er for stort");
+  }
+  return { bytes, contentType };
 }
 
 export type AbOrderLine = { productId: string; unit: string; quantity: number };
@@ -214,7 +314,7 @@ export function parseProductNumber(productNumber: string) {
 
 /** Places the order. Returns AB's response body for the order record. */
 export async function placeOrder(accessToken: string, lines: AbOrderLine[]) {
-  const response = await authorizedPost("order", accessToken, { lines });
+  const response = await authorizedRequest("order", accessToken, { lines });
   const body = await response.text();
   if (!response.ok) {
     let message = "";

@@ -92,6 +92,7 @@ import {
   useSupplierCatalog,
   type CatalogProduct,
 } from "@/components/supplier-catalog/catalog";
+import { CatalogPicture } from "@/components/supplier-catalog/catalog-picture";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -1589,12 +1590,7 @@ function CatalogItemsTable({
               <TableRow key={row.productNumber} className="h-20">
                 <TableCell appearance="spaced" className="whitespace-normal">
                   <div className="flex items-center gap-3">
-                    <Avatar className="size-14 shrink-0">
-                      <AvatarImage src={row.pictureUrl ?? undefined} alt="" />
-                      <AvatarFallback>
-                        <PackageOpenIcon className="size-6" />
-                      </AvatarFallback>
-                    </Avatar>
+                    <CatalogPicture src={row.pictureUrl} className="size-14" />
                     <div className="min-w-0">
                       <div className="font-medium">{row.name}</div>
                       <div className="text-sm text-muted-foreground">

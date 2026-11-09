@@ -85,6 +85,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { compressImage, productImageOptions } from "@/lib/compress-image";
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { useSupplierCatalog, type SupplierCatalog } from "./catalog";
+import { CatalogPicture } from "./catalog-picture";
 
 type EngineProduct = FunctionReturnType<
   SupplierCatalog["api"]["listLinks"]
@@ -303,12 +304,7 @@ export function SupplierCatalogLinks({
 function CatalogItem({ row }: { row: CatalogRow }) {
   return (
     <div className="flex items-center gap-3">
-      <Avatar className="size-12">
-        <AvatarImage src={row.pictureUrl ?? undefined} alt="" />
-        <AvatarFallback>
-          <PackageOpenIcon className="size-5" />
-        </AvatarFallback>
-      </Avatar>
+      <CatalogPicture src={row.pictureUrl} className="size-12" />
       <div className="min-w-0">
         <div className="font-medium">{row.name}</div>
         <div className="text-sm text-muted-foreground">
@@ -710,8 +706,7 @@ function CreateProductDialog({
   const categories = useQuery(api.catalog.listCategoryOptions);
   const units = useQuery(api.catalog.listUnits);
   const createProduct = useMutation(catalog.api.createProductFromCatalog);
-  const fetchCatalogImage = catalog.api.fetchCatalogImage;
-  const pictureUrl = fetchCatalogImage ? row.pictureUrl : null;
+  const pictureUrl = row.pictureUrl;
   const generateUploadUrl = useMutation(
     api.catalog.generateProductImageUploadUrl,
   );
@@ -791,8 +786,7 @@ function CreateProductDialog({
 
   // Compressed in the browser, like images added on the product form.
   async function addCatalogImage(productId: Id<"products">, url: string) {
-    if (!fetchCatalogImage) return;
-    const { bytes, contentType } = await convex.action(fetchCatalogImage, {
+    const { bytes, contentType } = await convex.action(catalog.api.fetchCatalogImage, {
       url,
     });
     const image = await compressImage(

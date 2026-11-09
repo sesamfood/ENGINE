@@ -25,8 +25,7 @@ export type SupplierCatalog = {
     setCatalogLink: typeof gsSupply.setCatalogLink;
     createProductFromCatalog: typeof gsSupply.createProductFromCatalog;
     listOrderingLinks: typeof gsSupply.listOrderingLinks;
-    // Only catalogs with product pictures.
-    fetchCatalogImage: typeof gsSupply.fetchCatalogImage | null;
+    fetchCatalogImage: typeof gsSupply.fetchCatalogImage;
   };
 };
 
@@ -45,7 +44,7 @@ export const supplierCatalogs: Record<SupplierCatalogId, SupplierCatalog> = {
       setCatalogLink: abCatering.setCatalogLink,
       createProductFromCatalog: abCatering.createProductFromCatalog,
       listOrderingLinks: abCatering.listOrderingLinks,
-      fetchCatalogImage: null,
+      fetchCatalogImage: abCatering.fetchCatalogImage,
     },
   },
 };
