@@ -16,6 +16,7 @@ import type * as auth from "../auth.js";
 import type * as badDeliveries from "../badDeliveries.js";
 import type * as badDeliveryNotices from "../badDeliveryNotices.js";
 import type * as catalog from "../catalog.js";
+import type * as catalogModifiers from "../catalogModifiers.js";
 import type * as containers from "../containers.js";
 import type * as count from "../count.js";
 import type * as countAreas from "../countAreas.js";
@@ -229,6 +230,7 @@ declare const fullApi: ApiFromModules<{
   badDeliveries: typeof badDeliveries;
   badDeliveryNotices: typeof badDeliveryNotices;
   catalog: typeof catalog;
+  catalogModifiers: typeof catalogModifiers;
   containers: typeof containers;
   count: typeof count;
   countAreas: typeof countAreas;

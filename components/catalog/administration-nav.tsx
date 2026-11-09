@@ -8,6 +8,7 @@ import {
   BookOpenIcon,
   ContainerIcon,
   LayoutGridIcon,
+  ListPlusIcon,
   PackageIcon,
   RulerIcon,
   ShieldCheckIcon,
@@ -28,6 +29,7 @@ type CatalogSection = {
 
 const catalogSections: CatalogSection[] = [
   { value: "products", label: "Produkter" },
+  { value: "modifiers", label: "Tilvalg og fravalg" },
   { value: "menus", label: "Menuer", permission: "integrations.manage" },
   { value: "categories", label: "Kategorier" },
   { value: "units", label: "Enheder" },
@@ -36,6 +38,7 @@ const catalogSections: CatalogSection[] = [
 
 const catalogIcons: Record<string, SectionNavItem["icon"]> = {
   products: PackageIcon,
+  modifiers: ListPlusIcon,
   menus: BookOpenIcon,
   categories: LayoutGridIcon,
   units: RulerIcon,

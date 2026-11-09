@@ -10,7 +10,11 @@ import {
 import { ConvexError, v } from "convex/values";
 import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
-import type { ActionCtx, MutationCtx } from "../../_generated/server";
+import type {
+  ActionCtx,
+  MutationCtx,
+  QueryCtx,
+} from "../../_generated/server";
 import {
   action,
   internalMutation,
@@ -31,12 +35,39 @@ import {
 } from "./lib/api";
 import { getProductCategoryIds } from "../../lib/productCategories";
 import { recordAudit } from "../../lib/audit";
-import { invalidateSalesStockMappings } from "../../lib/salesStock";
+import {
+  invalidateSalesStockMappings,
+  MAX_MODIFIER_DEFAULTS,
+} from "../../lib/salesStock";
 
 const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_INGREDIENTS = 200;
 const MAX_MENUS = 100;
+
+async function loadModifierMappings(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  integrationId: Id<"onlinePosIntegrations">,
+  kind: "removal" | "addition",
+) {
+  const rows = await ctx.db
+    .query("onlinePosModifierMappings")
+    .withIndex("by_organizationId_and_integrationId", (q) =>
+      q.eq("organizationId", organizationId).eq("integrationId", integrationId),
+    )
+    .take(MAX_MODIFIER_DEFAULTS + 1);
+  if (rows.length > MAX_MODIFIER_DEFAULTS) {
+    throw new ConvexError("Der er for mange tilvalg og fravalg");
+  }
+  return new Map(
+    rows.flatMap((row) =>
+      row.kind === kind
+        ? [[row.ingredientProductId, row.onlinePosProductId] as const]
+        : [],
+    ),
+  );
+}
 
 async function beginLocationSalesReset(
   ctx: MutationCtx,
@@ -879,6 +910,9 @@ export const getIngredientRemovalSettings = query({
     if (ingredients.length > MAX_PRODUCT_INGREDIENTS) {
       throw new ConvexError("Produktet har for mange ingredienser");
     }
+    const defaults = settings
+      ? await loadModifierMappings(ctx, organizationId, settings._id, "removal")
+      : new Map<Id<"products">, number>();
 
     return {
       connected: settings !== null,
@@ -895,7 +929,8 @@ export const getIngredientRemovalSettings = query({
                 (ingredient.onlinePosRemovalIntegrationId === settings._id &&
                 ingredient.onlinePosRemovalCompanyId === settings.companyId
                   ? ingredient.onlinePosRemovalProductId
-                  : undefined);
+                  : undefined) ??
+                defaults.get(ingredient.ingredientProductId);
               return ingredient.removable === true && id !== undefined
                 ? [
                     {
@@ -951,6 +986,9 @@ export const getIngredientAdditionSettings = query({
         "Produktet har for mange ingredienser, der kan tilføjes",
       );
     }
+    const defaults = settings
+      ? await loadModifierMappings(ctx, organizationId, settings._id, "addition")
+      : new Map<Id<"products">, number>();
 
     return {
       connected: settings !== null,
@@ -967,7 +1005,8 @@ export const getIngredientAdditionSettings = query({
                 (addition.onlinePosAdditionIntegrationId === settings._id &&
                 addition.onlinePosAdditionCompanyId === settings.companyId
                   ? addition.onlinePosAdditionProductId
-                  : undefined);
+                  : undefined) ??
+                defaults.get(addition.ingredientProductId);
               return id !== undefined
                 ? [
                     {
@@ -1219,11 +1258,19 @@ export const saveIngredientRemovalMappings = internalMutation({
       }
     }
 
+    // A mapping equal to the shared default is stored as no override.
+    const defaults = await loadModifierMappings(
+      ctx,
+      args.organizationId,
+      args.integrationId,
+      "removal",
+    );
     const mappingsByIngredientProductId = new Map(
-      args.mappings.map((mapping) => [
-        mapping.ingredientProductId,
-        mapping.onlinePosProductId,
-      ]),
+      args.mappings.flatMap((mapping) =>
+        defaults.get(mapping.ingredientProductId) === mapping.onlinePosProductId
+          ? []
+          : [[mapping.ingredientProductId, mapping.onlinePosProductId] as const],
+      ),
     );
     const activeMasters = await ctx.db.query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", args.organizationId))
@@ -1406,11 +1453,19 @@ export const saveIngredientAdditionMappings = internalMutation({
       }
     }
 
+    // A mapping equal to the shared default is stored as no override.
+    const defaults = await loadModifierMappings(
+      ctx,
+      args.organizationId,
+      args.integrationId,
+      "addition",
+    );
     const mappingsByIngredientProductId = new Map(
-      args.mappings.map((mapping) => [
-        mapping.ingredientProductId,
-        mapping.onlinePosProductId,
-      ]),
+      args.mappings.flatMap((mapping) =>
+        defaults.get(mapping.ingredientProductId) === mapping.onlinePosProductId
+          ? []
+          : [[mapping.ingredientProductId, mapping.onlinePosProductId] as const],
+      ),
     );
     const activeMasters = await ctx.db.query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", args.organizationId))
@@ -1520,6 +1575,184 @@ export const setIngredientAdditionMappings = action({
       companyId: settings.companyId,
       productId: args.productId,
       mappings: args.mappings,
+    });
+    return null;
+  },
+});
+
+const modifierKindValidator = v.union(
+  v.literal("removal"),
+  v.literal("addition"),
+);
+
+export const getModifierMappings = query({
+  args: { integrationId: v.optional(v.id("onlinePosIntegrations")) },
+  returns: v.object({
+    connected: v.boolean(),
+    enabled: v.boolean(),
+    integrationId: v.union(v.id("onlinePosIntegrations"), v.null()),
+    mappings: v.array(
+      v.object({
+        kind: modifierKindValidator,
+        ingredientProductId: v.id("products"),
+        onlinePosProductId: v.number(),
+      }),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
+    const settings = await getOnlinePosMaster(
+      ctx,
+      organizationId,
+      args.integrationId,
+    );
+    const rows = settings
+      ? await ctx.db
+          .query("onlinePosModifierMappings")
+          .withIndex("by_organizationId_and_integrationId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("integrationId", settings._id),
+          )
+          .take(MAX_MODIFIER_DEFAULTS)
+      : [];
+    return {
+      connected: settings !== null,
+      enabled: settings?.enabled === true,
+      integrationId: settings?._id ?? null,
+      mappings: rows.map((row) => ({
+        kind: row.kind,
+        ingredientProductId: row.ingredientProductId,
+        onlinePosProductId: row.onlinePosProductId,
+      })),
+    };
+  },
+});
+
+export const saveModifierMapping = internalMutation({
+  args: {
+    organizationId: v.string(),
+    integrationId: v.id("onlinePosIntegrations"),
+    companyId: v.number(),
+    kind: modifierKindValidator,
+    ingredientProductId: v.id("products"),
+    onlinePosProductId: v.union(v.number(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "onlinepos");
+    const [settings, ingredient, rows] = await Promise.all([
+      getOnlinePosMaster(ctx, args.organizationId, args.integrationId),
+      ctx.db.get("products", args.ingredientProductId),
+      ctx.db
+        .query("onlinePosModifierMappings")
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("integrationId", args.integrationId),
+        )
+        .take(MAX_MODIFIER_DEFAULTS + 1),
+    ]);
+    if (
+      !settings ||
+      !settings.enabled ||
+      settings._id !== args.integrationId ||
+      settings.companyId !== args.companyId
+    ) {
+      throw new ConvexError(
+        "OnlinePOS-forbindelsen blev ændret. Opdatér produktlisten og prøv igen.",
+      );
+    }
+    if (!ingredient || ingredient.organizationId !== args.organizationId) {
+      throw new ConvexError("Ingrediensen blev ikke fundet");
+    }
+    const current = rows.find(
+      (row) =>
+        row.kind === args.kind &&
+        row.ingredientProductId === args.ingredientProductId,
+    );
+    if ((current?.onlinePosProductId ?? null) === args.onlinePosProductId) {
+      return null;
+    }
+    if (args.onlinePosProductId === null) {
+      if (current) await ctx.db.delete(current._id);
+    } else {
+      if (
+        rows.some(
+          (row) =>
+            row !== current && row.onlinePosProductId === args.onlinePosProductId,
+        )
+      ) {
+        throw new ConvexError(
+          "OnlinePOS-produktet bruges allerede til et andet tilvalg eller fravalg",
+        );
+      }
+      if (current) {
+        await ctx.db.patch(current._id, {
+          onlinePosProductId: args.onlinePosProductId,
+        });
+      } else {
+        if (rows.length >= MAX_MODIFIER_DEFAULTS) {
+          throw new ConvexError("Der er for mange tilvalg og fravalg");
+        }
+        await ctx.db.insert("onlinePosModifierMappings", {
+          organizationId: args.organizationId,
+          integrationId: args.integrationId,
+          kind: args.kind,
+          ingredientProductId: args.ingredientProductId,
+          onlinePosProductId: args.onlinePosProductId,
+        });
+      }
+    }
+    await invalidateSalesStockMappings(ctx, args.organizationId);
+    return null;
+  },
+});
+
+export const setModifierMapping = action({
+  args: {
+    expectedIntegrationId: v.id("onlinePosIntegrations"),
+    kind: modifierKindValidator,
+    ingredientProductId: v.id("products"),
+    onlinePosProductId: v.union(v.number(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const onlinePosProductId = args.onlinePosProductId;
+    if (
+      onlinePosProductId !== null &&
+      (!Number.isSafeInteger(onlinePosProductId) || onlinePosProductId <= 0)
+    ) {
+      throw new ConvexError("OnlinePOS-produktet er ugyldigt");
+    }
+    const { organizationId, settings } = await requireConnectedSettings(
+      ctx,
+      args.expectedIntegrationId,
+    );
+    if (settings.integrationId !== args.expectedIntegrationId) {
+      throw new ConvexError(
+        "OnlinePOS-forbindelsen blev ændret. Opdatér produktlisten og prøv igen.",
+      );
+    }
+    if (!settings.enabled) {
+      throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
+    }
+    if (onlinePosProductId !== null) {
+      const onlinePosProducts = await requestProducts(settings);
+      if (!onlinePosProducts.some((product) => product.id === onlinePosProductId)) {
+        throw new ConvexError(
+          "Et valgt produkt findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",
+        );
+      }
+    }
+    await ctx.runMutation(internal.onlinePos.saveModifierMapping, {
+      organizationId,
+      integrationId: settings.integrationId,
+      companyId: settings.companyId,
+      kind: args.kind,
+      ingredientProductId: args.ingredientProductId,
+      onlinePosProductId,
     });
     return null;
   },

@@ -44,6 +44,7 @@ import { invalidateSalesStockMappings } from "./lib/salesStock";
 import { recordAudit } from "./lib/audit";
 import { claimStorageForOrganization, preserveStorageOwnership } from "./lib/storageOwnership";
 import { MAX_COUNT_AREAS } from "./lib/countAreas";
+import { deleteIngredientModifierDefaults } from "./catalogModifiers";
 import {
   activeProductCatalogValidator,
   catalogPaginationOptions,
@@ -1325,6 +1326,11 @@ async function permanentlyDeleteProduct(
   for (const row of ingredientAdditionReferences) {
     await ctx.db.delete("productIngredientAdditions", row._id);
   }
+  await deleteIngredientModifierDefaults(
+    ctx,
+    product.organizationId,
+    product._id,
+  );
   for (const row of stockRows) await ctx.db.delete("locationStock", row._id);
   for (const row of staffFoodRules) {
     await ctx.db.delete("staffFoodRuleProducts", row._id);

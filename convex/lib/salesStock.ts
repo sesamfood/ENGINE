@@ -11,6 +11,7 @@ import { salesOrderExternalId } from "./salesRollup";
 import { toDefaultUnit } from "./stock";
 
 type ReadCtx = QueryCtx | MutationCtx;
+export const MAX_MODIFIER_DEFAULTS = 500;
 export type StockSale = Pick<
   Doc<"salesStockApplications">["entries"][number],
   "externalId" | "occurredAt" | "productId" | "unitId" | "quantity" | "isRefund"
@@ -65,6 +66,53 @@ export function createSalesStockResolver(
   const menus = new Map<string, Doc<"onlinePosMenus"> | null>();
   let fullCatalogLoaded = false;
   let integration: ReturnType<typeof getOnlinePosMaster> | undefined;
+  let modifierDefaults:
+    | Promise<{
+        mappings: Map<string, number>;
+        quantities: Map<Id<"products">, Doc<"ingredientAdditionDefaults">>;
+      }>
+    | undefined;
+
+  async function loadModifierDefaults(
+    settings: Doc<"onlinePosIntegrations"> | null,
+  ) {
+    const [mappings, quantities] = await Promise.all([
+      settings
+        ? ctx.db
+            .query("onlinePosModifierMappings")
+            .withIndex("by_organizationId_and_integrationId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("integrationId", settings._id),
+            )
+            .take(MAX_MODIFIER_DEFAULTS + 1)
+        : Promise.resolve([]),
+      ctx.db
+        .query("ingredientAdditionDefaults")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_MODIFIER_DEFAULTS + 1),
+    ]);
+    if (
+      mappings.length > MAX_MODIFIER_DEFAULTS ||
+      quantities.length > MAX_MODIFIER_DEFAULTS
+    )
+      throw new ConvexError(
+        "Der er for mange tilvalg og fravalg til lagersynkronisering",
+      );
+    return {
+      mappings: new Map(
+        mappings.map((row) => [
+          `${row.kind}:${row.ingredientProductId}`,
+          row.onlinePosProductId,
+        ]),
+      ),
+      quantities: new Map(
+        quantities.map((row) => [row.ingredientProductId, row]),
+      ),
+    };
+  }
 
   async function loadCatalog(externalId: string) {
     const settings = await (integration ??= getOnlinePosMaster(ctx, organizationId, integrationId));
@@ -193,6 +241,7 @@ export function createSalesStockResolver(
         rules.push(rule);
       modifiers.set(String(externalId), rules);
     }
+    const defaults = await (modifierDefaults ??= loadModifierDefaults(settings));
     for (const id of soldIds) {
       const batchesPerSale = 1 / (await recipeYield(id));
       for (const ingredient of await recipe(id)) {
@@ -203,7 +252,8 @@ export function createSalesStockResolver(
             (ingredient.onlinePosRemovalIntegrationId === settings._id &&
             ingredient.onlinePosRemovalCompanyId === settings.companyId
               ? ingredient.onlinePosRemovalProductId
-              : undefined))
+              : undefined) ??
+            defaults.mappings.get(`removal:${ingredient.ingredientProductId}`))
           : undefined;
         if (ingredient.removable && removalId !== undefined) {
           addModifier(removalId, {
@@ -235,20 +285,25 @@ export function createSalesStockResolver(
             (row.onlinePosAdditionIntegrationId === settings._id &&
             row.onlinePosAdditionCompanyId === settings.companyId
               ? row.onlinePosAdditionProductId
-              : undefined))
+              : undefined) ??
+            defaults.mappings.get(`addition:${row.ingredientProductId}`))
           : undefined;
         if (
           additionId !== undefined &&
           lines.some((line) => line.externalProductId === String(additionId))
         ) {
-          if (row.quantity === undefined || row.unitId === undefined)
+          const amount =
+            row.quantity !== undefined && row.unitId !== undefined
+              ? { quantity: row.quantity, unitId: row.unitId }
+              : defaults.quantities.get(row.ingredientProductId);
+          if (!amount)
             throw new ConvexError(
               "Et OnlinePOS-tilvalg mangler mængde eller enhed",
             );
           addModifier(additionId, {
             productId: row.ingredientProductId,
-            quantity: row.quantity,
-            unitId: row.unitId,
+            quantity: amount.quantity,
+            unitId: amount.unitId,
           });
         }
       }

@@ -131,6 +131,11 @@ type UnitRow = {
 
 type IngredientRow = IngredientDraft & { removable: boolean };
 
+// An addable ingredient without an amount uses the shared standard amount.
+function usesStandardAmount(row: IngredientDraft) {
+  return row.quantity.trim() === "";
+}
+
 type AddableIngredientRow = IngredientDraft;
 
 type ProductOption = {
@@ -1123,6 +1128,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       nextErrors.recipeYield = "Indtast et udbytte større end nul";
     }
     validateIngredientRows(addableIngredientRows, nextErrors);
+    for (const row of addableIngredientRows.filter(usesStandardAmount)) {
+      delete nextErrors[`${row.key}-quantity`];
+      delete nextErrors[`${row.key}-unit`];
+    }
     if (imageFile) {
       const imageError = productImageError(imageFile);
       if (imageError) nextErrors.image = imageError;
@@ -1205,15 +1214,19 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           }
         : null;
     const addableIngredients = addableIngredientRows.flatMap((row) =>
-      row.productId !== null && row.unitId !== null
-        ? [
-            {
-              productId: row.productId,
-              quantity: Number(row.quantity),
-              unitId: row.unitId,
-            },
-          ]
-        : [],
+      row.productId === null
+        ? []
+        : usesStandardAmount(row)
+          ? [{ productId: row.productId }]
+          : row.unitId !== null
+            ? [
+                {
+                  productId: row.productId,
+                  quantity: Number(row.quantity),
+                  unitId: row.unitId,
+                },
+              ]
+            : [],
     );
 
     try {
@@ -2149,6 +2162,12 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         removeLabel="Fjern ingrediens, der kan tilføjes"
                         productChildren={
                           <>
+                            {usesStandardAmount(row) ? (
+                              <FieldDescription>
+                                Uden mængde bruges standardmængden fra Tilvalg
+                                og fravalg.
+                              </FieldDescription>
+                            ) : null}
                             {showAdditionMapping ? (
                               <Field>
                                 <FieldLabel>

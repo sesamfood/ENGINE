@@ -91,6 +91,23 @@ export const onlineposTables = {
       "onlinePosProductId",
     ]),
 
+  // Default POS product for removing or adding an ingredient on any product.
+  onlinePosModifierMappings: defineTable({
+    organizationId: v.string(),
+    integrationId: v.id("onlinePosIntegrations"),
+    kind: v.union(v.literal("removal"), v.literal("addition")),
+    ingredientProductId: v.id("products"),
+    onlinePosProductId: v.number(),
+  })
+    .index("by_organizationId_and_integrationId", [
+      "organizationId",
+      "integrationId",
+    ])
+    .index("by_organizationId_and_ingredientProductId", [
+      "organizationId",
+      "ingredientProductId",
+    ]),
+
   onlinePosMenus: defineTable({
     organizationId: v.string(),
     integrationId: v.optional(v.id("onlinePosIntegrations")),
