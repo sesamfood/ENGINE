@@ -80,7 +80,7 @@ function ConnectionCard({
   const [confirming, setConfirming] = useState(false);
   const showForm = !settings.connection || editing;
   const complete =
-    apiKey.trim() && username.trim() && password && (!customers || customerNo);
+    apiKey.trim() && username.trim() && password.trim() && (!customers || customerNo);
 
   function reset() {
     setApiKey("");
@@ -170,7 +170,7 @@ function ConnectionCard({
                 <Input
                   id="ab-catering-api-key"
                   type="password"
-                  autoComplete="off"
+                  autoComplete="new-password"
                   className="h-11"
                   value={apiKey}
                   disabled={saving}
@@ -203,7 +203,7 @@ function ConnectionCard({
                 </div>
                 <PasswordInput
                   id="ab-catering-password"
-                  autoComplete="off"
+                  autoComplete="new-password"
                   className="h-11"
                   value={password}
                   disabled={saving}

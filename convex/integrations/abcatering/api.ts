@@ -161,11 +161,14 @@ export const connect = action({
       throw new ConvexError("Organisationen er ændret. Prøv igen");
     }
     await requireIntegrationEnabled(ctx, auth.organizationId, "abcatering");
+    // Pasted credentials often carry stray whitespace.
     const apiKey = args.apiKey.trim();
-    if (!apiKey || !args.username.trim() || !args.password) {
+    const username = args.username.trim();
+    const password = args.password.trim();
+    if (!apiKey || !username || !password) {
       throw new ConvexError("Udfyld API-nøgle, brugernavn og adgangskode");
     }
-    const customers = await validateLogin(args.username.trim(), args.password);
+    const customers = await validateLogin(username, password);
     const customer =
       customers.find((row) => row.customerNo === args.customerNo) ??
       (customers.length === 1 ? customers[0] : undefined);
