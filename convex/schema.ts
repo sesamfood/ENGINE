@@ -951,6 +951,12 @@ export default defineSchema({
       "status",
       "normalizedName",
     ])
+    .index("by_organizationId_and_status", ["organizationId", "status"])
+    .index("by_organizationId_and_status_and_updatedAt", [
+      "organizationId",
+      "status",
+      "updatedAt",
+    ])
     .index("by_organizationId_and_status_and_categoryId_and_normalizedName", [
       "organizationId",
       "status",

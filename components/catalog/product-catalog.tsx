@@ -10,6 +10,7 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  ArrowUpDownIcon,
   BoxesIcon,
   LayoutGridIcon,
   ListIcon,
@@ -60,6 +61,14 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RowsSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -82,6 +91,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 type ProductStatus = "active" | "archived";
+const sortItems = [
+  { value: "name", label: "Navn (A-Å)" },
+  { value: "nameDesc", label: "Navn (Å-A)" },
+  { value: "created", label: "Senest tilføjet" },
+  { value: "updated", label: "Senest opdateret" },
+] as const;
+type ProductSort = (typeof sortItems)[number]["value"];
+function isProductSort(value: unknown): value is ProductSort {
+  return sortItems.some((item) => item.value === value);
+}
 const MAX_BULK_PRODUCT_SELECTION = 200;
 type CatalogProduct = FunctionReturnType<
   typeof api.catalog.listProducts
@@ -453,20 +472,26 @@ export function ProductCatalog() {
   const [catalogView, setCatalogView] = useState<"grid" | "list">("grid");
   useEffect(() => {
     const stored = window.localStorage.getItem("catalog-view");
-    const initial =
-      stored === "list" || stored === "grid"
-        ? stored
-        : window.matchMedia("(min-width: 768px)").matches
-          ? "list"
-          : null;
-    if (initial) {
-      const timer = window.setTimeout(() => setCatalogView(initial), 0);
+    if (stored === "list") {
+      const timer = window.setTimeout(() => setCatalogView(stored), 0);
       return () => window.clearTimeout(timer);
     }
   }, []);
   function changeCatalogView(next: "grid" | "list") {
     setCatalogView(next);
     window.localStorage.setItem("catalog-view", next);
+  }
+  const [sort, setSort] = useState<ProductSort>("name");
+  useEffect(() => {
+    const stored = window.localStorage.getItem("catalog-sort");
+    if (isProductSort(stored)) {
+      const timer = window.setTimeout(() => setSort(stored), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, []);
+  function changeSort(next: ProductSort) {
+    setSort(next);
+    window.localStorage.setItem("catalog-sort", next);
   }
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Id<"products">[]>([]);
@@ -496,6 +521,7 @@ export function ProductCatalog() {
     {
       status,
       search: querySearch,
+      sort,
     },
     { initialNumItems: 24 },
   );
@@ -713,6 +739,30 @@ export function ProductCatalog() {
             <ToggleGroupItem value="active" className="min-h-11">Aktive</ToggleGroupItem>
             <ToggleGroupItem value="archived" className="min-h-11">Arkiverede</ToggleGroupItem>
           </ToggleGroup>
+          <Select
+            items={sortItems}
+            value={sort}
+            onValueChange={(value) => {
+              if (isProductSort(value)) changeSort(value);
+            }}
+          >
+            <SelectTrigger
+              aria-label="Sortering"
+              className="h-11! w-full shrink-0 sm:w-auto"
+            >
+              <ArrowUpDownIcon />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {sortItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
           <ToggleGroup
             aria-label="Visning"
             variant="outline"
