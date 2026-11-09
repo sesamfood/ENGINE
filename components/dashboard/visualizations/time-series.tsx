@@ -219,12 +219,6 @@ export function TimeSeriesVisualization({
             stroke="var(--foreground)"
             strokeDasharray="6 4"
             strokeWidth={1.5}
-            label={compact ? undefined : {
-              value: `Mål ${formatMetricValue(targetValue, result)}`,
-              position: "insideTopRight",
-              fontSize: 12,
-              fill: "var(--muted-foreground)",
-            }}
           />
         ) : null}
       </ComposedChart>
