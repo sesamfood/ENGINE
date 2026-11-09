@@ -40,7 +40,7 @@ export const integrationRegistry = [
   {
     id: "abcatering",
     name: "AB Catering",
-    description: "Hent jeres sortiment og priser fra AB Catering, og send bestillinger af koblede Produkter direkte til AB Catering.",
+    description: "Hent jeres sortiment og priser fra AB Catering, og send bestillinger af koblede produkter direkte til AB Catering.",
     requiresAllLocations: true,
   },
 ] satisfies {

@@ -35,7 +35,18 @@ export const supplierCatalogs: Record<SupplierCatalogId, SupplierCatalog> = {
   abcatering: {
     id: "abcatering",
     name: "AB Catering",
-    api: { ...abCatering, fetchCatalogImage: null },
+    // `api` is a proxy without own keys, so each function is named instead of spread.
+    api: {
+      getSettings: abCatering.getSettings,
+      fetchCatalog: abCatering.fetchCatalog,
+      listLinks: abCatering.listLinks,
+      getProductLink: abCatering.getProductLink,
+      setProductLink: abCatering.setProductLink,
+      setCatalogLink: abCatering.setCatalogLink,
+      createProductFromCatalog: abCatering.createProductFromCatalog,
+      listOrderingLinks: abCatering.listOrderingLinks,
+      fetchCatalogImage: null,
+    },
   },
 };
 
