@@ -605,8 +605,13 @@ export function WidgetCard({
         {financial ? <CardDescription>Månedsrapport · {financialRange?.preset === "thisMonth" ? "Denne måned"
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
         {current !== null && result && visualizationHasYAxis(widget.visualization) ? (
-          <p className="text-2xl font-semibold tracking-tight">
-            {formatMetricValue(current, result)}
+          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <span className="text-2xl font-semibold tracking-tight">{formatMetricValue(current, result)}</span>
+            {chartTarget ? (
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {chartTarget.ceiling ? "maks." : "af"} {formatMetricValue(chartTarget.total, result)}
+              </span>
+            ) : null}
           </p>
         ) : null}
       </CardHeader>
