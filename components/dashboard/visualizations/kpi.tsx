@@ -21,11 +21,16 @@ export function KpiVisualization({
 }) {
   const value = total(result);
   const label = formatMetricValue(value, result);
-  const fontSize = `clamp(1rem, ${130 / Math.max(label.length, 1)}cqw, 2.25rem)`;
   const visibleSeries = result.series.slice(0, compact ? 2 : 3);
   const hiddenSeries = result.series.length - visibleSeries.length;
+  const seriesRows =
+    result.series.length > 1
+      ? visibleSeries.length + (hiddenSeries > 0 ? 1 : 0)
+      : 0;
+  // Fit the label to the card: width by character count, height minus the series rows.
+  const fontSize = `clamp(1rem, min(${170 / Math.max(label.length, 1)}cqw, max(2.25rem, (100cqh - ${seriesRows * 1.5}rem) * 0.8)), 8rem)`;
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto @container">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto @container-size">
       <p
         className="text-(length:--metric-font-size) mt-auto shrink-0 whitespace-nowrap font-semibold leading-tight tracking-tight tabular-nums"
         style={{ "--metric-font-size": fontSize } as CSSProperties}
