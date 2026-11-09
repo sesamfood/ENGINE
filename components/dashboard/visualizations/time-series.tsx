@@ -18,7 +18,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { cn } from "@/lib/utils";
 import type { ResolvedTarget } from "@/lib/dashboard/target";
 import { DEFAULT_CURRENCY, type MetricResult } from "@/lib/dashboard/types";
 import {
@@ -125,10 +124,12 @@ export function TimeSeriesVisualization({
     ? model.data.map((row) => row.target)
     : targetValue === undefined ? [] : [targetValue];
   const domain = chartValueDomain(model, yAxisMin, yAxisMax, extraValues);
-  const chart = (
+  return (
+    <>
+      <p className="sr-only">{seriesSummary(result)}</p>
     <ChartContainer
       config={model.config}
-      className={cn("min-h-0 w-full aspect-auto", targetChart && !compact ? "flex-1" : "h-full")}
+      className="h-full min-h-0 w-full aspect-auto"
     >
       <ComposedChart
         accessibilityLayer
@@ -228,16 +229,6 @@ export function TimeSeriesVisualization({
         ) : null}
       </ComposedChart>
     </ChartContainer>
-  );
-  return (
-    <>
-      <p className="sr-only">{seriesSummary(result)}</p>
-      {targetChart && !compact ? (
-        <div className="flex h-full min-h-0 flex-col gap-1">
-          <p className="shrink-0 truncate text-xs text-muted-foreground" title={targetChart.caption}>{targetChart.caption}</p>
-          {chart}
-        </div>
-      ) : chart}
     </>
   );
 }

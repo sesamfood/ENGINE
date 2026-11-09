@@ -13,6 +13,7 @@ import {
   MinusIcon,
   PencilIcon,
   Settings2Icon,
+  TargetIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type Comparison
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { TargetSettings } from "./target-settings";
-import { supportsTarget, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
+import { supportsTarget, targetReached, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
 import { comparisonPeriodText, formatMetricValue, previousTotal, total } from "./visualizations/utils";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
@@ -284,6 +285,9 @@ export function WidgetCard({
     : null;
 
   const comparisonLabel = financial ? "den foregående måned" : comparisonPeriodText(result, range);
+  // Charts keep the target details in a header pill; KPI and goal widgets show them in the body.
+  const chartTarget = target && current !== null && target.total > 0 && result?.series.length === 1
+    && visualizationHasYAxis(widget.visualization) ? target : null;
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [resizeActive, setResizeActive] = useState(false);
   const resizeSession = useRef<ResizeSession | null>(null);
@@ -366,7 +370,7 @@ export function WidgetCard({
                 <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal @max-xs/card-header:hidden">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
-            {change !== null || result?.truncated || hasFreshness || result?.warning ? (
+            {change !== null || chartTarget || result?.truncated || hasFreshness || result?.warning ? (
               <CardDescription appearance="inline" className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center overflow-hidden">
                 {change !== null ? (
                   <Popover>
@@ -392,6 +396,22 @@ export function WidgetCard({
                     </PopoverTrigger>
                     <PopoverContent align="end" className="w-auto max-w-64">
                       <p>Sammenlignet med {comparisonLabel}</p>
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
+                {chartTarget && current !== null && result ? (
+                  <Popover>
+                    <PopoverTrigger render={<button type="button" aria-label={`Mål: ${Math.round((current / chartTarget.total) * 100)} % af målet`} className="inline-flex min-h-11 min-w-0 items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" />}>
+                      <Badge variant="secondary" appearance={targetReached(current, chartTarget) ? "favorable" : undefined} className="max-w-full">
+                        <TargetIcon />
+                        <span className="truncate tabular-nums">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format((current / chartTarget.total) * 100)} %</span>
+                      </Badge>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-auto max-w-64">
+                      <p>{chartTarget.chart?.caption ?? chartTarget.description}</p>
+                      <p className="text-muted-foreground tabular-nums">
+                        {formatMetricValue(current, result)} {chartTarget.ceiling ? "– maks." : "af"} {formatMetricValue(chartTarget.total, result)}
+                      </p>
                     </PopoverContent>
                   </Popover>
                 ) : null}
