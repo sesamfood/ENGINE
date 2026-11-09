@@ -736,6 +736,11 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
     current?.phase &&
       current.tasks.some((task) => task.link && kioskDestinationMatches(task.link, pathname)),
   );
+  // Opening the closing page counts as dismissing the closing popup.
+  const endOfDayKey = current?.phase === "endOfDay" ? String(current.nextTransitionAt) : null;
+  if (endOfDayKey && pathname === KIOSK_DAY_PATH && dismissedKey !== endOfDayKey) {
+    setDismissedKey(endOfDayKey);
+  }
   const canLeaveStartOfDay = Boolean(kiosk?.settings?.allowLeavingStartOfDay);
   // In memory only, so the inactivity reload returns to start of day.
   const [startOfDayLeft, setStartOfDayLeft] = useState(false);
@@ -776,6 +781,13 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   }, [nextTransitionAt]);
 
   useEffect(() => {
+    if (!dismissedKey) return;
+    try {
+      window.sessionStorage.setItem(END_OF_DAY_DISMISSED_KEY, dismissedKey);
+    } catch {}
+  }, [dismissedKey]);
+
+  useEffect(() => {
     if (startOfDayDue && pathname !== KIOSK_DAY_PATH) router.replace(KIOSK_DAY_PATH);
   }, [pathname, router, startOfDayDue]);
 
@@ -803,13 +815,7 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
               ...current,
               // Dismissal lasts until the closed period ends.
               endOfDayDismissed: dismissedKey === String(current.nextTransitionAt),
-              dismissEndOfDay: () => {
-                const key = String(current.nextTransitionAt);
-                try {
-                  window.sessionStorage.setItem(END_OF_DAY_DISMISSED_KEY, key);
-                } catch {}
-                setDismissedKey(key);
-              },
+              dismissEndOfDay: () => setDismissedKey(String(current.nextTransitionAt)),
               startOfDayLeft: current.phase === "startOfDay" && leftStartOfDay,
               leaveStartOfDay: canLeaveStartOfDay ? () => setStartOfDayLeft(true) : null,
               endOfDaySimulated,
@@ -826,11 +832,9 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
 function KioskDayPrompts() {
   const day = useKioskDay();
   const pathname = usePathname();
-  const onLinkedPage = useOnLinkedDayTaskPage();
   const countLocked = useContext(FeatureLockContext);
   if (countLocked) return null;
   if (!day?.phase || pathname === KIOSK_DAY_PATH) return null;
-  if (onLinkedPage) return null;
   if (day.phase !== "endOfDay" || day.endOfDayDismissed) return null;
 
   function dismiss() {
