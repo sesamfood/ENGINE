@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceLine,
   XAxis,
   YAxis,
   useChartWidth,
@@ -17,6 +18,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import type { ResolvedTarget } from "@/lib/dashboard/target";
 import { DEFAULT_CURRENCY, type MetricResult } from "@/lib/dashboard/types";
 import {
   chartDateTicks,
@@ -36,6 +38,7 @@ export type TimeSeriesProps = {
   tooltipLabel?: string;
   yAxisMin?: number;
   yAxisMax?: number;
+  target?: ResolvedTarget | null;
 };
 
 function TimeSeriesAxes({
@@ -101,6 +104,7 @@ export function TimeSeriesVisualization({
   tooltipLabel,
   yAxisMin,
   yAxisMax,
+  target,
 }: TimeSeriesProps & { variant: "line" | "area" | "bar" }) {
   if (isMixedCurrency(result)) {
     return (
@@ -110,7 +114,9 @@ export function TimeSeriesVisualization({
     );
   }
   const model = chartModel(result);
-  const domain = chartValueDomain(model, yAxisMin, yAxisMax);
+  // A single target line only makes sense for one series.
+  const targetValue = target && result.series.length === 1 ? target.perPoint : undefined;
+  const domain = chartValueDomain(model, yAxisMin, yAxisMax, targetValue === undefined ? [] : [targetValue]);
   return (
     <>
       <p className="sr-only">{seriesSummary(result)}</p>
@@ -184,6 +190,20 @@ export function TimeSeriesVisualization({
             />
           ),
         )}
+        {targetValue !== undefined ? (
+          <ReferenceLine
+            y={targetValue}
+            stroke="var(--foreground)"
+            strokeDasharray="6 4"
+            strokeWidth={1.5}
+            label={compact ? undefined : {
+              value: `Mål ${formatMetricValue(targetValue, result)}`,
+              position: "insideTopRight",
+              fontSize: 12,
+              fill: "var(--muted-foreground)",
+            }}
+          />
+        ) : null}
       </ComposedChart>
     </ChartContainer>
     </>

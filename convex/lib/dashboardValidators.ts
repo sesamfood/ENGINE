@@ -140,6 +140,16 @@ export const customMetricSpecValidator = v.union(
   }),
 );
 
+export const widgetTargetValidator = v.union(
+  v.object({ kind: v.literal("comparison"), percent: v.number() }),
+  v.object({
+    kind: v.literal("manual"),
+    amount: v.number(),
+    period: v.union(v.literal("day"), v.literal("week"), v.literal("month")),
+  }),
+  v.object({ kind: v.literal("budget") }),
+);
+
 export const widgetValidator = v.object({
   key: v.string(),
   metric: widgetMetricValidator,
@@ -155,6 +165,7 @@ export const widgetValidator = v.object({
       yAxisMax: v.optional(v.number()),
       salesSource: v.optional(salesSourceValidator),
       goalPercent: v.optional(v.number()),
+      target: v.optional(widgetTargetValidator),
     }),
   ),
 });

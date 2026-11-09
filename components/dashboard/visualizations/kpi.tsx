@@ -9,26 +9,32 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { targetReached, type ResolvedTarget } from "@/lib/dashboard/target";
 import type { MetricResult } from "@/lib/dashboard/types";
+import { cn } from "@/lib/utils";
 import { formatMetricValue, total } from "./utils";
 
 export function KpiVisualization({
   result,
   compact = false,
+  target,
 }: {
   result: MetricResult;
   compact?: boolean;
+  target?: ResolvedTarget | null;
 }) {
   const value = total(result);
   const label = formatMetricValue(value, result);
+  const showTarget = target && value !== null && target.total > 0;
   const visibleSeries = result.series.slice(0, compact ? 2 : 3);
   const hiddenSeries = result.series.length - visibleSeries.length;
   const seriesRows =
     result.series.length > 1
       ? visibleSeries.length + (hiddenSeries > 0 ? 1 : 0)
       : 0;
+  const extraRows = seriesRows + (showTarget ? 1 : 0);
   // Fit the label to the card: width by character count, height minus the series rows.
-  const fontSize = `clamp(1rem, min(${170 / Math.max(label.length, 1)}cqw, max(2.25rem, (100cqh - ${seriesRows * 1.5}rem) * 0.8)), 8rem)`;
+  const fontSize = `clamp(1rem, min(${170 / Math.max(label.length, 1)}cqw, max(2.25rem, (100cqh - ${extraRows * 1.5}rem) * 0.8)), 8rem)`;
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto @container-size">
       <p
@@ -37,6 +43,18 @@ export function KpiVisualization({
       >
         {label}
       </p>
+      {showTarget ? (
+        <p
+          className={cn(
+            "shrink-0 truncate text-sm tabular-nums",
+            targetReached(value, target) ? "text-success" : "text-muted-foreground",
+          )}
+          title={target.description}
+        >
+          {target.ceiling ? "Maks." : "Mål"} {formatMetricValue(target.total, result)} ·{" "}
+          {new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format((value / target.total) * 100)} %
+        </p>
+      ) : null}
       {result.series.length > 1 ? (
         <div className="flex min-w-0 shrink-0 flex-col items-start gap-1 text-xs text-muted-foreground">
           <div className="flex min-w-0 max-w-full flex-col gap-1 overflow-hidden">

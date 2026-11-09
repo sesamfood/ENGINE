@@ -66,11 +66,13 @@ import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/das
 import { metricRegistry, metrics, sizeLabels, supportsSalesSource, visualizationLabels, widgetSizePresets } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
-import { comparisonPeriods, DEFAULT_GOAL_PERCENT, type ComparisonPeriod, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetRangePreset, type WidgetSize } from "@/lib/dashboard/types";
+import { comparisonPeriods, DEFAULT_GOAL_PERCENT, type ComparisonPeriod, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type WidgetTarget } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import type { CustomMetricDefinition } from "./custom-metric-definition";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
-import { GoalSettings } from "./goal-settings";
+import { TargetSettings } from "./target-settings";
+import { resolveTarget, supportsTarget } from "@/lib/dashboard/target";
+import { comparisonPeriodText, formatMetricValue, previousTotal } from "./visualizations/utils";
 import { widgetComparisonOptions, widgetRangeOptions } from "./widget-card";
 
 const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
@@ -151,8 +153,8 @@ export function AddWidgetDialog({
   const [yAxisMin, setYAxisMin] = useState<number | undefined>(0);
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
-  const [goalPercent, setGoalPercent] = useState(DEFAULT_GOAL_PERCENT);
-  const [goalValid, setGoalValid] = useState(true);
+  const [target, setTarget] = useState<WidgetTarget>();
+  const [targetValid, setTargetValid] = useState(true);
   const [goalRange, setGoalRange] = useState<WidgetRangePreset>();
   const [goalComparison, setGoalComparison] = useState<ComparisonPeriod>();
   const [previewResult, setPreviewResult] = useState<MetricResult>();
@@ -241,6 +243,9 @@ export function AddWidgetDialog({
         .filter((value) => Boolean(customMetric.spec.dimension) || (value !== "donut" && value !== "list" && value !== "table"))
     : [];
   const availableVisualizations = customMetricId ? customVisualizations : definition.visualizations;
+  const newMetric: WidgetInstance["metric"] = customMetric
+    ? { kind: "custom", id: customMetric.id }
+    : { kind: "builtin", id: metricId };
 
   function selectMetric(nextMetricId: MetricId) {
     const next = metricRegistry[nextMetricId];
@@ -253,6 +258,8 @@ export function AddWidgetDialog({
     setYAxisMin(0);
     setYAxisMax(undefined);
     setYAxisValid(true);
+    setTarget(undefined);
+    setTargetValid(true);
   }
 
   function selectCustomMetric(nextMetricId: Id<"customMetrics">) {
@@ -263,13 +270,15 @@ export function AddWidgetDialog({
     setYAxisMin(0);
     setYAxisMax(undefined);
     setYAxisValid(true);
+    setTarget(undefined);
+    setTargetValid(true);
   }
 
   function selectVisualization(nextVisualization: VisualizationId) {
     setVisualization(nextVisualization);
     if (nextVisualization === "goal") {
-      setGoalPercent(DEFAULT_GOAL_PERCENT);
-      setGoalValid(true);
+      setTarget((current) => current ?? { kind: "comparison", percent: DEFAULT_GOAL_PERCENT });
+      setTargetValid(true);
       setGoalRange(customMetric ? undefined : definition.defaultRange);
       setGoalComparison(undefined);
     }
@@ -278,18 +287,16 @@ export function AddWidgetDialog({
   function add() {
     if (!selectedMetricAvailable) return;
     const options = {
+      ...(target && supportsTarget({ metric: newMetric, visualization }) ? { target } : {}),
       ...(yAxisMin !== undefined ? { yAxisMin } : {}),
       ...(yAxisMax !== undefined ? { yAxisMax } : {}),
-      ...(visualization === "goal" ? { goalPercent } : {}),
       ...(!customMetric && (supportsSalesSource(metricId) || metricId === "woltCancellationRate")
         ? { salesSource }
         : {}),
     };
     onAdd({
       key: crypto.randomUUID(),
-      metric: customMetric
-        ? { kind: "custom", id: customMetric.id }
-        : { kind: "builtin", id: metricId },
+      metric: newMetric,
       visualization,
       size,
       range: visualization === "goal" ? goalRange : customMetric ? undefined : definition.defaultRange,
@@ -614,7 +621,18 @@ export function AddWidgetDialog({
                           ) : financialPreviewResult instanceof Error ? (
                             <Alert variant="destructive"><AlertDescription>{financialPreviewResult.message}</AlertDescription></Alert>
                           ) : displayedPreview ? (
-                            <Visualization result={displayedPreview} />
+                            <Visualization
+                              result={displayedPreview}
+                              target={resolveTarget({
+                                widget: { key: "preview", metric: newMetric, visualization: visualizationId, size, options: target ? { target } : undefined },
+                                result: displayedPreview,
+                                range,
+                                now,
+                                previous: previousTotal(displayedPreview),
+                                comparisonLabel: comparisonPeriodText(displayedPreview, range),
+                                formatValue: (value) => formatMetricValue(value, displayedPreview),
+                              })}
+                            />
                           ) : (
                             <Skeleton className="size-full" />
                           )}
@@ -695,14 +713,30 @@ export function AddWidgetDialog({
                   />
                 </div>
               ) : null}
-              {visualization === "goal" ? (
+              {supportsTarget({ metric: newMetric, visualization }) ? (
                 <div className="flex flex-col gap-3 border-t pt-4">
                   <div>
                     <h2 className="text-sm font-medium">Mål</h2>
-                    <p className="text-sm text-muted-foreground">Målet beregnes ud fra perioden og sammenligningen.</p>
+                    <p className="text-sm text-muted-foreground">{visualization === "goal" ? "Vælg, hvad målet skal beregnes ud fra." : "Vis eventuelt et mål på widgetten."}</p>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <GoalSettings id="new-widget-goal" value={goalPercent} onChange={setGoalPercent} onValidityChange={setGoalValid} />
+                  <TargetSettings
+                    key={`${newMetric.id}:${visualization === "goal"}`}
+                    id="new-widget-target"
+                    metric={newMetric}
+                    value={target}
+                    required={visualization === "goal"}
+                    onChange={setTarget}
+                    onValidityChange={setTargetValid}
+                  />
+                </div>
+              ) : null}
+              {visualization === "goal" ? (
+                <div className="flex flex-col gap-3 border-t pt-4">
+                  <div>
+                    <h2 className="text-sm font-medium">Periode</h2>
+                    <p className="text-sm text-muted-foreground">Målet beregnes for widgettens periode.</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <Select
                       items={widgetRangeOptions}
                       value={goalRange ?? "board"}
@@ -747,7 +781,7 @@ export function AddWidgetDialog({
               Næste <ChevronRightIcon data-icon="inline-end" />
             </Button>
           ) : (
-            <Button type="button" onClick={add} disabled={!yAxisValid || (visualization === "goal" && !goalValid) || !selectedMetricAvailable}>Tilføj widget</Button>
+            <Button type="button" onClick={add} disabled={!yAxisValid || (supportsTarget({ metric: newMetric, visualization }) && !targetValid) || !selectedMetricAvailable}>Tilføj widget</Button>
           )}
         </DialogFooter>
       </DialogContent>

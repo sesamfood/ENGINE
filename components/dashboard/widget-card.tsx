@@ -53,10 +53,11 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { defaultSalesSource, metricRegistry, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
-import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type ComparisonPeriod, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
+import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type ComparisonPeriod, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type WidgetTarget, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
-import { GoalSettings } from "./goal-settings";
+import { TargetSettings } from "./target-settings";
+import { supportsTarget, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
 import { comparisonPeriodText, formatMetricValue, previousTotal, total } from "./visualizations/utils";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
@@ -225,7 +226,8 @@ export function WidgetCard({
   onComparisonChange,
   onSalesSourceChange,
   onYAxisChange,
-  onGoalPercentChange,
+  target,
+  onTargetChange,
   onEditCustomMetric,
   onResize,
   onRemove,
@@ -244,7 +246,8 @@ export function WidgetCard({
   onComparisonChange?: (comparison: ComparisonPeriod | undefined) => void;
   onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
-  onGoalPercentChange?: (goalPercent: number) => void;
+  target?: ResolvedTarget | null;
+  onTargetChange?: (target: WidgetTarget | undefined) => void;
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
@@ -281,7 +284,6 @@ export function WidgetCard({
     : null;
 
   const comparisonLabel = financial ? "den foregående måned" : comparisonPeriodText(result, range);
-  const goalComparisonLabel = comparisonPeriodText(result, widget.range ? { preset: widget.range } : range);
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [resizeActive, setResizeActive] = useState(false);
   const resizeSession = useRef<ResizeSession | null>(null);
@@ -471,7 +473,7 @@ export function WidgetCard({
                                       }
                                     }}
                                   >
-                                    {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} goalPercent={widget.options?.goalPercent} comparisonLabel={goalComparisonLabel} /> : <Skeleton className="size-full" />}
+                                    {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} target={target} /> : <Skeleton className="size-full" />}
                                   </CardContent>
                                 </ToggleGroupItem>
                               );
@@ -558,9 +560,16 @@ export function WidgetCard({
                         </SelectGroup>
                       </SelectContent>
                     </Select> : null}
-                    {widget.visualization === "goal" && onGoalPercentChange ? (
+                    {supportsTarget(widget) && onTargetChange ? (
                       <div className="w-full">
-                        <GoalSettings id={`widget-${widget.key}-goal`} value={widget.options?.goalPercent} onChange={onGoalPercentChange} />
+                        <TargetSettings
+                          key={widget.visualization}
+                          id={`widget-${widget.key}-target`}
+                          metric={widget.metric}
+                          value={widgetTarget(widget)}
+                          required={widget.visualization === "goal"}
+                          onChange={onTargetChange}
+                        />
                       </div>
                     ) : null}
                     <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>

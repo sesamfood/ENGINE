@@ -136,6 +136,7 @@ export function chartValueDomain(
   model: ReturnType<typeof chartModel>,
   yAxisMin?: number,
   yAxisMax?: number,
+  extraValues: number[] = [],
 ) {
   const values = model.data.flatMap((row) =>
     model.keys.flatMap((key) => {
@@ -143,7 +144,7 @@ export function chartValueDomain(
       return typeof value === "number" && Number.isFinite(value) ? [value] : [];
     }),
   );
-  return valueDomain(values, yAxisMin, yAxisMax);
+  return valueDomain([...values, ...extraValues], yAxisMin, yAxisMax);
 }
 
 export function chartValueDomainFromValues(

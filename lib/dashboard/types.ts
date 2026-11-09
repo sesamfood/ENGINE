@@ -54,6 +54,13 @@ export const visualizationIds = [
 
 export const DEFAULT_GOAL_PERCENT = 10;
 
+export const targetPeriods = ["day", "week", "month"] as const;
+export type TargetPeriod = (typeof targetPeriods)[number];
+export type WidgetTarget =
+  | { kind: "comparison"; percent: number }
+  | { kind: "manual"; amount: number; period: TargetPeriod }
+  | { kind: "budget" };
+
 const widgetColumnSpans = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const widgetRowSpans = [1, 2, 3, 4] as const;
 
@@ -201,8 +208,9 @@ export type WidgetInstance = {
     yAxisMax?: number;
     /** Sales widgets default to OnlinePOS for backwards compatibility. */
     salesSource?: SalesSource;
-    /** Goal widgets aim this many percent above the comparison period. */
+    /** Legacy goal percentage, read only when `target` is missing. */
     goalPercent?: number;
+    target?: WidgetTarget;
   };
 };
 
