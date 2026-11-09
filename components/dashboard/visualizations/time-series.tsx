@@ -18,6 +18,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 import type { ResolvedTarget } from "@/lib/dashboard/target";
 import { DEFAULT_CURRENCY, type MetricResult } from "@/lib/dashboard/types";
 import {
@@ -28,6 +29,7 @@ import {
   chartYAxisWidth,
   formatMetricValue,
   isMixedCurrency,
+  paceChartModel,
   seriesSummary,
   shortDate,
 } from "./utils";
@@ -113,16 +115,19 @@ export function TimeSeriesVisualization({
       </div>
     );
   }
-  const model = chartModel(result);
   // A single target line only makes sense for one series.
-  const targetValue = target && result.series.length === 1 ? target.perPoint : undefined;
-  const domain = chartValueDomain(model, yAxisMin, yAxisMax, targetValue === undefined ? [] : [targetValue]);
-  return (
-    <>
-      <p className="sr-only">{seriesSummary(result)}</p>
+  const singleTarget = target && result.series.length === 1 ? target : undefined;
+  const pace = singleTarget?.pace;
+  const model = pace ? paceChartModel(chartModel(result), pace) : chartModel(result);
+  const targetValue = singleTarget && !pace ? singleTarget.perPoint : undefined;
+  const extraValues = pace
+    ? model.data.map((row) => row.paceTarget)
+    : targetValue === undefined ? [] : [targetValue];
+  const domain = chartValueDomain(model, yAxisMin, yAxisMax, extraValues);
+  const chart = (
     <ChartContainer
       config={model.config}
-      className="h-full min-h-0 w-full aspect-auto"
+      className={cn("min-h-0 w-full aspect-auto", pace && !compact ? "flex-1" : "h-full")}
     >
       <ComposedChart
         accessibilityLayer
@@ -190,6 +195,20 @@ export function TimeSeriesVisualization({
             />
           ),
         )}
+        {pace ? (
+          <>
+            <Line dataKey="daily" stroke="none" dot={false} activeDot={false} legendType="none" isAnimationActive={false} />
+            <Line
+              dataKey="paceTarget"
+              type="linear"
+              stroke="var(--foreground)"
+              strokeDasharray="6 4"
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </>
+        ) : null}
         {targetValue !== undefined ? (
           <ReferenceLine
             y={targetValue}
@@ -206,6 +225,16 @@ export function TimeSeriesVisualization({
         ) : null}
       </ComposedChart>
     </ChartContainer>
+  );
+  return (
+    <>
+      <p className="sr-only">{seriesSummary(result)}</p>
+      {pace && !compact ? (
+        <div className="flex h-full min-h-0 flex-col gap-1">
+          <p className="shrink-0 truncate text-xs text-muted-foreground">Løbende total mod {singleTarget.description}</p>
+          {chart}
+        </div>
+      ) : chart}
     </>
   );
 }

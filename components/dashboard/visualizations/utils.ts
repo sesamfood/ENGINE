@@ -107,11 +107,47 @@ export function chartModel(result: MetricResult) {
   };
 }
 
+/** Turns one daily series into a running total that restarts each target period, next to the target pace. */
+export function paceChartModel(
+  model: ReturnType<typeof chartModel>,
+  pace: { period: "week" | "month"; amount: number },
+) {
+  const [key] = model.keys;
+  let periodId = "";
+  let runningTotal = 0;
+  let firstDayIndex = 0;
+  const data = model.data.map((row) => {
+    // Noon keeps the calendar day stable when the browser and location time zones differ slightly.
+    const date = new Date(row.t + 12 * 60 * 60 * 1000);
+    const dayIndex = pace.period === "week" ? (date.getDay() + 6) % 7 : date.getDate() - 1;
+    const length = pace.period === "week" ? 7 : new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    const id = pace.period === "week"
+      ? new Date(date.getFullYear(), date.getMonth(), date.getDate() - dayIndex).toDateString()
+      : `${date.getFullYear()}-${date.getMonth()}`;
+    if (id !== periodId) {
+      periodId = id;
+      runningTotal = 0;
+      firstDayIndex = dayIndex;
+    }
+    runningTotal += row[key] ?? 0;
+    // A period cut off by the range start only expects its share for the days shown.
+    const paceTarget = (pace.amount * (dayIndex - firstDayIndex + 1)) / length;
+    return { ...row, daily: row[key] ?? 0, [key]: runningTotal, paceTarget };
+  });
+  const config: ChartConfig = {
+    ...model.config,
+    [key]: { ...model.config[key], label: "Løbende total" },
+    daily: { label: "Dag", color: "transparent" },
+    paceTarget: { label: "Mål", color: "var(--foreground)" },
+  };
+  return { config, data, keys: model.keys };
+}
+
 function niceCeil(value: number) {
   if (!Number.isFinite(value) || value <= 0) return value;
   const base = 10 ** Math.floor(Math.log10(value));
   const fraction = value / base;
-  const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 2.5 ? 2.5 : fraction <= 5 ? 5 : 10;
+  const nice = [1, 2, 2.5, 3, 4, 5, 6, 8, 10].find((step) => fraction <= step) ?? 10;
   return nice * base;
 }
 

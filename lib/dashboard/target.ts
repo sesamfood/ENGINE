@@ -21,6 +21,8 @@ export type ResolvedTarget = {
   /** Lower is better, so staying at or under the target counts as reached. */
   ceiling: boolean;
   description: string;
+  /** Weekly and monthly targets on daily charts show a running total against this pace. */
+  pace?: { period: "week" | "month"; amount: number };
 };
 
 export const targetVisualizations: readonly VisualizationId[] = ["kpi", "line", "bar", "area", "goal"];
@@ -132,10 +134,14 @@ export function resolveTarget({
   if (target.kind === "budget") {
     return fromTotal(metricId ? budgetValue(metricId, budget, result) : null, "Budget for perioden");
   }
-  const perDay = target.amount / targetPeriodDays[target.period];
-  return additive
-    ? fromTotal(perDay * days, `${formatValue(target.amount)} ${targetPeriodPhrases[target.period]}`)
-    : fromTotal(target.amount, `Fast mål: ${formatValue(target.amount)}`);
+  if (!additive) return fromTotal(target.amount, `Fast mål: ${formatValue(target.amount)}`);
+  const resolved = fromTotal(
+    (target.amount / targetPeriodDays[target.period]) * days,
+    `${formatValue(target.amount)} ${targetPeriodPhrases[target.period]}`,
+  );
+  return resolved && target.period !== "day" && bucketDays(result) === 1
+    ? { ...resolved, pace: { period: target.period, amount: target.amount } }
+    : resolved;
 }
 
 export function targetReached(current: number, target: ResolvedTarget) {
