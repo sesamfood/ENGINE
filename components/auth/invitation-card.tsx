@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import posthog from "posthog-js";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { LoginForm } from "@/components/auth/login-form";
+import { SignupForm } from "@/components/auth/signup-form";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
@@ -24,7 +25,15 @@ function isExistingMemberError(error: {
   );
 }
 
-export function InvitationCard({ invitationId }: { invitationId: string }) {
+export function InvitationCard({
+  invitationId,
+  email,
+  hasAccount,
+}: {
+  invitationId: string;
+  email: string;
+  hasAccount: boolean;
+}) {
   const router = useRouter();
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const acceptanceAttempted = useRef(false);
@@ -94,8 +103,8 @@ export function InvitationCard({ invitationId }: { invitationId: string }) {
         return;
       }
       posthog.reset();
-      router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
-      router.refresh();
+      // Reload so the page shows the form for the invited e-mail.
+      window.location.reload();
     } catch {
       setFailure({
         kind: "wrong-account",
@@ -119,21 +128,16 @@ export function InvitationCard({ invitationId }: { invitationId: string }) {
   }
 
   if (!session) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Link
-          href={`/login?redirect=${encodeURIComponent(redirect)}`}
-          className={buttonVariants({ size: "lg" })}
-        >
-          Log ind
-        </Link>
-        <Link
-          href={`/signup?redirect=${encodeURIComponent(redirect)}`}
-          className={buttonVariants({ variant: "outline", size: "lg" })}
-        >
-          Opret konto
-        </Link>
-      </div>
+    return hasAccount ? (
+      <LoginForm
+        redirectTo={redirect}
+        verified={false}
+        reset={false}
+        deleted={false}
+        email={email}
+      />
+    ) : (
+      <SignupForm redirectTo={redirect} email={email} />
     );
   }
 
