@@ -814,6 +814,16 @@ export default defineSchema({
     defaultUnitId: v.id("units"),
     defaultUnitName: v.string(),
     defaultQuantity: v.number(),
+    removals: v.optional(
+      v.array(v.object({ productId: v.id("products"), name: v.string() })),
+    ),
+    additions: v.optional(
+      v.array(v.object({ productId: v.id("products"), name: v.string() })),
+    ),
+    // Default-unit stock deducted. Missing on older rows, which deducted defaultQuantity of productId.
+    stockEntries: v.optional(
+      v.array(v.object({ productId: v.id("products"), quantity: v.number() })),
+    ),
     registeredAt: v.number(),
     registeredBy: v.string(),
     registeredByName: v.string(),

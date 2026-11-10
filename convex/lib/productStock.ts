@@ -102,3 +102,92 @@ export function createProductStockResolver(
 
   return { expand, recipe, recipeYield };
 }
+
+/**
+ * Stock to deduct when a product is consumed at a location. Product stock is
+ * used first; a priced product with a recipe covers the rest from its
+ * ingredients, minus removed ingredients. Additions are always deducted.
+ */
+export async function consumptionStock(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  product: Doc<"products">,
+  quantity: number,
+  removedIngredientIds: Id<"products">[],
+  additions: Array<{ productId: Id<"products">; unitId: Id<"units">; quantity: number }>,
+) {
+  const { expand, recipe, recipeYield } = createProductStockResolver(
+    ctx,
+    organizationId,
+  );
+  const totals = new Map<Id<"products">, number>();
+  const add = (
+    entries: Array<{ productId: Id<"products">; quantity: number }>,
+    sign = 1,
+  ) => {
+    for (const entry of entries)
+      totals.set(
+        entry.productId,
+        (totals.get(entry.productId) ?? 0) + sign * entry.quantity,
+      );
+  };
+  const convert = async (
+    productId: Id<"products">,
+    unitId: Id<"units">,
+    amount: number,
+  ) => {
+    const converted = await toDefaultUnit(
+      ctx,
+      organizationId,
+      productId,
+      unitId,
+      amount,
+    );
+    if (converted === null)
+      throw new ConvexError("En ingrediens mangler en gyldig enhedsomregning");
+    return converted;
+  };
+
+  const ingredients = await recipe(product._id);
+  let fromRecipe = 0;
+  if (ingredients.length && product.salesPrice !== undefined) {
+    const stock = await ctx.db
+      .query("locationStock")
+      .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", locationId)
+          .eq("productId", product._id),
+      )
+      .unique();
+    fromRecipe = Math.max(0, quantity - Math.max(0, stock?.quantity ?? 0));
+  }
+  if (quantity > fromRecipe)
+    add([{ productId: product._id, quantity: quantity - fromRecipe }]);
+  if (fromRecipe > 0) {
+    add(await expand(product._id, fromRecipe));
+    const batches = fromRecipe / (await recipeYield(product._id));
+    for (const row of ingredients) {
+      if (!removedIngredientIds.includes(row.ingredientProductId)) continue;
+      const amount = await convert(
+        row.ingredientProductId,
+        row.unitId,
+        row.quantity * batches,
+      );
+      add(await expand(row.ingredientProductId, amount), -1);
+    }
+  }
+  for (const addition of additions) {
+    const amount = await convert(
+      addition.productId,
+      addition.unitId,
+      addition.quantity,
+    );
+    add(await expand(addition.productId, amount));
+  }
+  return [...totals].flatMap(([productId, total]) => {
+    const value = normalizeStock(total);
+    return value ? [{ productId, quantity: value }] : [];
+  });
+}

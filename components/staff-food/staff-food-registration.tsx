@@ -71,6 +71,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useLastDefined } from "@/lib/use-last-defined";
@@ -108,6 +109,62 @@ type SessionState = NonNullable<
   ReturnType<typeof useQuery<typeof api.staffFood.getSessionState>>
 >;
 type Product = SessionState["products"][number];
+type Choices = { removals: Id<"products">[]; additions: Id<"products">[] };
+
+const noChoices: Choices = { removals: [], additions: [] };
+
+function hasModifiers(product: Product) {
+  return product.removals.length > 0 || product.additions.length > 0;
+}
+
+function ModifierChoices({
+  product,
+  value,
+  onChange,
+}: {
+  product: Product;
+  value: Choices;
+  onChange: (value: Choices) => void;
+}) {
+  const groups = [
+    { key: "removals", title: "Fravalg", prefix: "Uden" },
+    { key: "additions", title: "Tilvalg", prefix: "Ekstra" },
+  ] as const;
+  return (
+    <div className="flex flex-col gap-3">
+      {groups.map(({ key, title, prefix }) =>
+        product[key].length ? (
+          <div key={key} className="flex flex-col gap-2">
+            <span className="text-sm text-muted-foreground">{title}</span>
+            <div className="flex flex-wrap gap-2">
+              {product[key].map((option) => {
+                const selected = value[key].includes(option.id);
+                return (
+                  <Toggle
+                    key={option.id}
+                    variant="outline"
+                    pressed={selected}
+                    onPressedChange={(pressed) =>
+                      onChange({
+                        ...value,
+                        [key]: pressed
+                          ? [...value[key], option.id]
+                          : value[key].filter((id) => id !== option.id),
+                      })
+                    }
+                  >
+                    {selected ? <CheckIcon data-icon="inline-start" /> : null}
+                    {prefix} {option.name}
+                  </Toggle>
+                );
+              })}
+            </div>
+          </div>
+        ) : null,
+      )}
+    </div>
+  );
+}
 
 function formatDuration(minutes: number) {
   const hours = Math.floor(minutes / 60);
@@ -272,6 +329,14 @@ export function StaffFoodRegistration() {
   const [manualDuration, setManualDuration] = useState("240");
   const [starting, setStarting] = useState(false);
   const [basket, setBasket] = useState<Record<string, number>>({});
+  const [choices, setChoices] = useState<Record<string, Choices>>({});
+  const [pendingProduct, setPendingProduct] = useState<{
+    product: Product;
+    add: () => void;
+  } | null>(null);
+  const [draftChoices, setDraftChoices] = useState<Choices>(noChoices);
+  // Kept apart from pendingProduct so the dialog keeps its content while closing.
+  const [modifiersOpen, setModifiersOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("all");
   const [submitting, setSubmitting] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -457,11 +522,20 @@ export function StaffFoodRegistration() {
     });
   }
 
+  // Products with tilvalg or fravalg ask for them before entering the basket.
+  function selectProduct(product: Product, add: () => void) {
+    if (!hasModifiers(product)) return add();
+    setDraftChoices(noChoices);
+    setPendingProduct({ product, add });
+    setModifiersOpen(true);
+  }
+
   async function submit() {
     if (!sessionId) return;
     const items = Object.entries(basket).map(([productId, quantity]) => ({
       productId: productId as Id<"products">,
       quantity,
+      ...(choices[productId] ?? noChoices),
     }));
     if (!items.length) return;
     setSubmitting(true);
@@ -469,6 +543,7 @@ export function StaffFoodRegistration() {
       const result = await register({ sessionId, items });
       setConfirming(false);
       setBasket({});
+      setChoices({});
       setCategoryId("all");
       setManualEmployee(null);
       setSearch("");
@@ -747,7 +822,11 @@ export function StaffFoodRegistration() {
                                         className="h-12 w-full"
                                         disabled={!canAdd && !quantity}
                                         onClick={() =>
-                                          toggleSingleProduct(product)
+                                          quantity
+                                            ? toggleSingleProduct(product)
+                                            : selectProduct(product, () =>
+                                                toggleSingleProduct(product),
+                                              )
                                         }
                                       >
                                         {quantity ? (
@@ -779,7 +858,13 @@ export function StaffFoodRegistration() {
                                         className="size-11"
                                         aria-label={`Tilføj én ${product.name}`}
                                         disabled={!canAdd}
-                                        onClick={() => changeProduct(product, 1)}
+                                        onClick={() =>
+                                          quantity
+                                            ? changeProduct(product, 1)
+                                            : selectProduct(product, () =>
+                                                changeProduct(product, 1),
+                                              )
+                                        }
                                       >
                                         <PlusIcon />
                                       </Button>
@@ -846,6 +931,44 @@ export function StaffFoodRegistration() {
                 }
               />
               <Dialog
+                open={modifiersOpen}
+                onOpenChange={setModifiersOpen}
+              >
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>{pendingProduct?.product.name}</DialogTitle>
+                    <DialogDescription>
+                      Vælg tilvalg og fravalg, eller tilføj produktet som det er.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {pendingProduct ? (
+                    <ModifierChoices
+                      product={pendingProduct.product}
+                      value={draftChoices}
+                      onChange={setDraftChoices}
+                    />
+                  ) : null}
+                  <DialogFooter>
+                    <DialogClose render={<Button variant="outline" />}>
+                      Annullér
+                    </DialogClose>
+                    <Button
+                      onClick={() => {
+                        if (!pendingProduct) return;
+                        pendingProduct.add();
+                        setChoices((current) => ({
+                          ...current,
+                          [pendingProduct.product.id]: draftChoices,
+                        }));
+                        setModifiersOpen(false);
+                      }}
+                    >
+                      Tilføj
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Dialog
                 open={confirming}
                 onOpenChange={(open) => {
                   if (!submitting) setConfirming(open);
@@ -882,16 +1005,27 @@ export function StaffFoodRegistration() {
                     </CardHeader>
                     <CardContent appearance="dense" className="flex flex-col">
                       {basketProducts.map(({ product, quantity }) => (
-                        <div
-                          key={product.id}
-                          className="flex items-center justify-between gap-3"
-                        >
-                          <span className="min-w-0 truncate font-medium">
-                            {product.name}
-                          </span>
-                          <Badge variant="secondary" className="shrink-0">
-                            {quantity} stk.
-                          </Badge>
+                        <div key={product.id} className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="min-w-0 truncate font-medium">
+                              {product.name}
+                            </span>
+                            <Badge variant="secondary" className="shrink-0">
+                              {quantity} stk.
+                            </Badge>
+                          </div>
+                          {hasModifiers(product) ? (
+                            <ModifierChoices
+                              product={product}
+                              value={choices[product.id] ?? noChoices}
+                              onChange={(value) =>
+                                setChoices((current) => ({
+                                  ...current,
+                                  [product.id]: value,
+                                }))
+                              }
+                            />
+                          ) : null}
                         </div>
                       ))}
                     </CardContent>
