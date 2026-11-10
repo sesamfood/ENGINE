@@ -1,5 +1,16 @@
+import { v, type Infer } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+
+export const ownCheckPageValidator = v.union(
+  v.literal("ownChecks.today"),
+  v.literal("ownChecks.overview"),
+  v.literal("ownChecks.documentation"),
+  v.literal("ownChecks.allergens"),
+  v.literal("ownChecks.guidance"),
+);
+
+export type OwnCheckPage = Infer<typeof ownCheckPageValidator>;
 
 export const DEFAULT_OWN_CHECK_CONFIGURATION = {
   lateSubmissionDays: 7,
@@ -11,10 +22,11 @@ export type OwnCheckConfiguration = {
   lateSubmissionDays: number;
   requireSecondPersonApproval: boolean;
   blockDuringCount: boolean;
+  hiddenPages: OwnCheckPage[];
 };
 
 export function configurationFrom(
-  row: Pick<Doc<"ownCheckSettings">, "lateSubmissionDays" | "requireSecondPersonApproval" | "blockDuringCount"> | null,
+  row: Pick<Doc<"ownCheckSettings">, "lateSubmissionDays" | "requireSecondPersonApproval" | "blockDuringCount" | "hiddenPages"> | null,
 ): OwnCheckConfiguration {
   return {
     lateSubmissionDays:
@@ -23,6 +35,7 @@ export function configurationFrom(
       row?.requireSecondPersonApproval ?? DEFAULT_OWN_CHECK_CONFIGURATION.requireSecondPersonApproval,
     blockDuringCount:
       row?.blockDuringCount ?? DEFAULT_OWN_CHECK_CONFIGURATION.blockDuringCount,
+    hiddenPages: row?.hiddenPages ?? [],
   };
 }
 

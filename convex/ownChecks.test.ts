@@ -291,7 +291,7 @@ test("indstillinger uden række bruger standarderne og kan lukke for sene regist
   const { org, asUser } = await setupAuthOrg(t);
   const { north } = await seedLocations(t, org._id);
   const settings = await asUser.query(api.ownCheckTemplates.getSettings, {});
-  expect(settings).toEqual({ lateSubmissionDays: 7, requireSecondPersonApproval: true, blockDuringCount: false });
+  expect(settings).toEqual({ lateSubmissionDays: 7, requireSecondPersonApproval: true, blockDuringCount: false, hiddenPages: [] });
   const member = await createUser(t, org._id, "member", 5);
   const template = await seedTemplate(t, org._id, north, { name: "Gammel temperatur" });
   const yesterday = addDateKey(today(), -1);

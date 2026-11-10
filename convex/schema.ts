@@ -8,6 +8,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { allergenValidator } from "./lib/allergens";
+import { ownCheckPageValidator } from "./lib/ownCheckSettings";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
 import { featureIdValidator, unavailableDisplayValidator } from "./lib/features";
 import { expenseCategoryOptionValidator, expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
@@ -2450,6 +2451,7 @@ export default defineSchema({
     lateSubmissionDays: v.optional(v.number()),
     requireSecondPersonApproval: v.optional(v.boolean()),
     blockDuringCount: v.optional(v.boolean()),
+    hiddenPages: v.optional(v.array(ownCheckPageValidator)),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
