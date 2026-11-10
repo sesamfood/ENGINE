@@ -70,7 +70,7 @@ export const permissionCatalog = [
       { id: "count.export", label: "Eksportere Count-data" },
       {
         id: "count.manage",
-        label: "Åbne ekstra Counts og tilføje glemte Produkter",
+        label: "Åbne ekstra Counts, tilføje glemte produkter og udligne lager med ingredienser",
       },
     ],
   },

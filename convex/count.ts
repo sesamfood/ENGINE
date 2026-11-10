@@ -28,7 +28,8 @@ import {
   getCurrentCount,
   getOpenAdHocCount,
 } from "./lib/countWindow";
-import { setStock, toDefaultUnit } from "./lib/stock";
+import { addStock, setStock, toDefaultUnit } from "./lib/stock";
+import { createProductStockResolver } from "./lib/productStock";
 import { unitNameFor } from "../lib/unit-system";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
@@ -121,6 +122,7 @@ const locationStockValidator = v.object({
     }),
   ),
   lastCountedAt: v.union(v.number(), v.null()),
+  hasIngredients: v.boolean(),
 });
 
 const reconciliationRowValidator = v.object({
@@ -1487,6 +1489,67 @@ export const addProductToLatestCount = mutation({
   },
 });
 
+// Brings negative stock of a recipe product to zero by consuming its ingredients one level down.
+export const deductIngredientsForNegativeStock = mutation({
+  args: { locationId: v.id("locations"), productId: v.id("products") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(ctx, organizationId, args.locationId);
+    const product = await ctx.db.get("products", args.productId);
+    if (
+      !product ||
+      product.organizationId !== organizationId ||
+      product.status !== "active"
+    ) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    const stock = await ctx.db
+      .query("locationStock")
+      .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", location._id)
+          .eq("productId", product._id),
+      )
+      .unique();
+    const missing = -(stock?.quantity ?? 0);
+    if (missing <= 0) throw new ConvexError("Produktets lager er ikke i minus");
+    const { recipe, recipeYield } = createProductStockResolver(ctx, organizationId);
+    const ingredients = await recipe(product._id);
+    if (!ingredients.length) throw new ConvexError("Produktet har ingen ingredienser");
+    const batches = missing / (await recipeYield(product._id));
+    const deltas = [];
+    for (const ingredient of ingredients) {
+      const quantity = await toDefaultUnit(
+        ctx,
+        organizationId,
+        ingredient.ingredientProductId,
+        ingredient.unitId,
+        ingredient.quantity * batches,
+      );
+      if (quantity === null) {
+        throw new ConvexError("En ingrediens mangler en gyldig enhedsomregning");
+      }
+      deltas.push({ productId: ingredient.ingredientProductId, quantity });
+    }
+    await addStock(ctx, organizationId, location._id, product._id, missing);
+    for (const delta of deltas) {
+      await addStock(ctx, organizationId, location._id, delta.productId, -delta.quantity);
+    }
+    await recordAudit(ctx, auth, {
+      action: "count.ingredientsDeducted",
+      entityTable: "products",
+      entityId: product._id,
+      locationId: location._id,
+      summary: `Ingredienser trukket fra lageret, så ${product.name} står på nul`,
+    });
+    return null;
+  },
+});
+
 export const getWasteReportContext = internalQuery({
   args: { countId: v.id("counts") },
   returns: v.object({
@@ -1658,7 +1721,7 @@ async function hydrateLocationStock(
   return await Promise.all(
     products.map(async (product) => {
       const stock = stockByProductId.get(product._id);
-      const [category, defaultUnit, imageUrl, productUnits] =
+      const [category, defaultUnit, imageUrl, productUnits, ingredient] =
         await Promise.all([
           loadCategory(product.categoryId),
           loadUnit(product.defaultUnitId),
@@ -1673,6 +1736,14 @@ async function hydrateLocationStock(
                 .eq("productId", product._id),
             )
             .take(MAX_PRODUCT_UNITS + 1),
+          ctx.db
+            .query("productIngredients")
+            .withIndex("by_organizationId_and_productId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", product._id),
+            )
+            .first(),
         ]);
       if (!defaultUnit || defaultUnit.organizationId !== organizationId) {
         throw new ConvexError("Produktets standardenhed blev ikke fundet");
@@ -1705,6 +1776,7 @@ async function hydrateLocationStock(
             : [];
         }),
         lastCountedAt: stock?.lastCountedAt ?? null,
+        hasIngredients: ingredient !== null,
       };
     }),
   );
