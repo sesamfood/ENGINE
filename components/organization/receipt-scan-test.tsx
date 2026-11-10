@@ -64,6 +64,7 @@ export function ReceiptScanTest() {
   const [teachField, setTeachField] = useState<ReceiptField>("total");
   const [scanner, setScanner] = useState<"camera" | ImageBitmap | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraFileRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const result = useMemo(() => scan && extractReceipt(scan.boxes, learned), [scan, learned]);
 
@@ -121,9 +122,15 @@ export function ReceiptScanTest() {
     }
   }
 
+  function openPicture(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) createImageBitmap(file).then(setScanner, () => toast.error("Billedet kunne ikke åbnes. Prøv et andet."));
+  }
+
   function takePhoto() {
     if (window.isSecureContext && "mediaDevices" in navigator) setScanner("camera");
-    else fileRef.current?.click();
+    else cameraFileRef.current?.click();
   }
 
   function selectBox(event: React.MouseEvent<HTMLCanvasElement>) {
@@ -188,18 +195,9 @@ export function ReceiptScanTest() {
               <ImageIcon data-icon="inline-start" />
               Vælg billede
             </Button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) createImageBitmap(file).then(setScanner, () => toast.error("Billedet kunne ikke åbnes. Prøv et andet."));
-              }}
-            />
+            {/* Without `capture` the phone offers its photo library; with it, the camera opens directly. */}
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={openPicture} />
+            <input ref={cameraFileRef} type="file" accept="image/*" capture="environment" hidden onChange={openPicture} />
           </div>
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
             {(engine === "loading" || busy) && <Spinner />}
