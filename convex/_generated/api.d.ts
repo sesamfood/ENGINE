@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as allergens from "../allergens.js";
 import type * as apiIdempotency from "../apiIdempotency.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as audit from "../audit.js";
@@ -98,6 +99,7 @@ import type * as invitations from "../invitations.js";
 import type * as invoices from "../invoices.js";
 import type * as kiosk from "../kiosk.js";
 import type * as kioskDay from "../kioskDay.js";
+import type * as lib_allergens from "../lib/allergens.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authEmail from "../lib/authEmail.js";
@@ -224,6 +226,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  allergens: typeof allergens;
   apiIdempotency: typeof apiIdempotency;
   apiKeys: typeof apiKeys;
   audit: typeof audit;
@@ -313,6 +316,7 @@ declare const fullApi: ApiFromModules<{
   invoices: typeof invoices;
   kiosk: typeof kiosk;
   kioskDay: typeof kioskDay;
+  "lib/allergens": typeof lib_allergens;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
   "lib/authEmail": typeof lib_authEmail;

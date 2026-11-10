@@ -18,6 +18,8 @@ import {
 } from "./integrations/supplierCatalog";
 import type { Expiry } from "../lib/expiry";
 import { expiryValidator, requireValidExpiry } from "./lib/expiry";
+import { allergenValidator, createAllergenResolver } from "./lib/allergens";
+import { sortAllergens, type AllergenId } from "../lib/allergens";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -137,6 +139,9 @@ const productDetailValidator = v.object({
   maxTemperatureCelsius: v.union(v.number(), v.null()),
   expiry: v.union(expiryValidator, v.null()),
   salesPrice: v.union(v.number(), v.null()),
+  allergens: v.array(allergenValidator),
+  // Allergens added by ingredients, excluding the product's own.
+  inheritedAllergens: v.array(allergenValidator),
   category: v.union(
     productCategoryValidator,
     v.null(),
@@ -1761,6 +1766,10 @@ export const getProduct = query({
         : [],
     );
     const category = categories.find((item) => item.id === product.categoryId);
+    const ownAllergens = new Set(product.allergens ?? []);
+    const inheritedAllergens = (
+      await createAllergenResolver(ctx, organizationId)(product._id)
+    ).filter((allergen) => !ownAllergens.has(allergen));
 
     const units = await Promise.all(
       unitRows.map(async (row) => {
@@ -1825,6 +1834,8 @@ export const getProduct = query({
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
       expiry: product.expiry ?? null,
       salesPrice: product.salesPrice ?? null,
+      allergens: product.allergens ?? [],
+      inheritedAllergens,
       category: category ?? null,
       categories,
       imageUrl,
@@ -2097,6 +2108,7 @@ export async function createProductWithAuth(
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
+    allergens?: AllergenId[];
     productType?: ProductType;
   },
 ): Promise<Id<"products">> {
@@ -2162,6 +2174,9 @@ export async function createProductWithAuth(
     ...(typeof args.salesPrice === "number"
       ? { salesPrice: args.salesPrice }
       : {}),
+    ...(args.allergens?.length
+      ? { allergens: sortAllergens(args.allergens) }
+      : {}),
     updatedAt: Date.now(),
   });
   await replaceProductChildren(
@@ -2206,6 +2221,7 @@ export async function updateProductWithAuth(
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
+    allergens?: AllergenId[];
     productType?: ProductType;
     // How to handle stock when the old default unit was removed. Either value
     // keeps recipe quantities that use a removed unit.
@@ -2388,6 +2404,13 @@ export async function updateProductWithAuth(
     ...(args.salesPrice !== undefined
       ? { salesPrice: args.salesPrice ?? undefined }
       : {}),
+    ...(args.allergens !== undefined
+      ? {
+          allergens: args.allergens.length
+            ? sortAllergens(args.allergens)
+            : undefined,
+        }
+      : {}),
     name,
     normalizedName,
     categoryId,
@@ -2502,6 +2525,7 @@ export const createProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
+    allergens: v.optional(v.array(allergenValidator)),
     productType: v.optional(productTypeValidator),
   },
   returns: v.id("products"),
@@ -2953,6 +2977,7 @@ export const updateProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
+    allergens: v.optional(v.array(allergenValidator)),
     productType: v.optional(productTypeValidator),
     unconvertedStock: v.optional(v.union(v.literal("keep"), v.literal("reset"))),
   },

@@ -847,6 +847,20 @@ export async function requireOwnCheckAttachmentUploader(ctx: AuthContext) {
   return auth;
 }
 
+export async function requireAllergenViewer(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "ownChecks");
+  if (await requireKioskDestination(ctx, auth, "ownChecks.allergens")) return auth;
+  if (
+    !(["ownChecks.perform", "ownChecks.view", "ownChecks.export"] as const).some(
+      (permission) => hasPermission(auth.role, auth.permissions, permission),
+    )
+  ) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
 export async function requireOwnCheckExporter(
   ctx: AuthContext,
   page: KioskDestinationId | readonly KioskDestinationId[] = "ownChecks.documentation",

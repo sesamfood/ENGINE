@@ -30,6 +30,7 @@ import {
 } from "@/lib/unit-system";
 import {
   ArrowLeftIcon,
+  ChevronDownIcon,
   ImageIcon,
   PackageOpenIcon,
   PlusIcon,
@@ -63,6 +64,13 @@ import {
 import { ProductImageCropDialog } from "@/components/catalog/product-image-crop-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { allergens, type AllergenId } from "@/lib/allergens";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -478,6 +486,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [name, setName] = useState("");
   const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
   const [salesPrice, setSalesPrice] = useState("");
+  const [productAllergens, setProductAllergens] = useState<AllergenId[]>([]);
   const [expiryValue, setExpiryValue] = useState("");
   const [expiryUnit, setExpiryUnit] = useState<Expiry["unit"]>("days");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
@@ -551,6 +560,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         ? ""
         : (product.salesPrice / 100).toFixed(2).replace(".", ","),
     );
+    setProductAllergens(product.allergens);
     setCategoryValues(
       product.categories.map((category) => `existing:${category.id}`),
     );
@@ -1247,6 +1257,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
             salesPrice: parseSalesPrice(salesPrice),
+            allergens: productAllergens,
             expiry: expiryValue.trim()
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
@@ -1268,6 +1279,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
             salesPrice: parseSalesPrice(salesPrice),
+            allergens: productAllergens,
             expiry: expiryValue.trim()
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
@@ -1537,6 +1549,74 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 error={errors.expiry}
                 disabled={isSaving}
               />
+
+              <Collapsible render={<FieldSet />}>
+                <FieldLegend variant="label">Allergener</FieldLegend>
+                <CollapsibleTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="group min-h-11 w-full max-w-xl justify-between"
+                    />
+                  }
+                >
+                  <span className="truncate">
+                    {allergens
+                      .filter(
+                        (allergen) =>
+                          productAllergens.includes(allergen.id) ||
+                          product?.inheritedAllergens.includes(allergen.id),
+                      )
+                      .map((allergen) => allergen.label)
+                      .join(", ") || "Ingen allergener"}
+                  </span>
+                  <ChevronDownIcon
+                    className="transition-transform group-aria-expanded:rotate-180"
+                    aria-hidden="true"
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <FieldDescription>
+                      Allergener fra ingredienser kommer automatisk med.
+                    </FieldDescription>
+                    <div className="grid gap-x-4 sm:grid-cols-2">
+                      {allergens.map((allergen) => {
+                        const inherited =
+                          product?.inheritedAllergens.includes(allergen.id) ??
+                          false;
+                        return (
+                          <label
+                            key={allergen.id}
+                            className="flex min-h-11 cursor-pointer items-center gap-3 has-disabled:cursor-default"
+                          >
+                            <Checkbox
+                              checked={
+                                inherited || productAllergens.includes(allergen.id)
+                              }
+                              disabled={inherited || isSaving}
+                              onCheckedChange={(checked) =>
+                                setProductAllergens((current) =>
+                                  checked
+                                    ? [...current, allergen.id]
+                                    : current.filter((id) => id !== allergen.id),
+                                )
+                              }
+                            />
+                            <span className="flex-1">{allergen.label}</span>
+                            {inherited ? (
+                              <span className="text-xs text-muted-foreground">
+                                Fra ingredienser
+                              </span>
+                            ) : null}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               {productId ? (
                 <OnlinePosProductMappingField

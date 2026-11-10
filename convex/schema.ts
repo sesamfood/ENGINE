@@ -7,6 +7,7 @@ import { abcateringTables } from "./integrations/abcatering/schema";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
+import { allergenValidator } from "./lib/allergens";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
 import { featureIdValidator, unavailableDisplayValidator } from "./lib/features";
 import { expenseCategoryOptionValidator, expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
@@ -935,6 +936,8 @@ export default defineSchema({
     expiry: v.optional(expiryValidator),
     // Including VAT, in integer minor units.
     salesPrice: v.optional(v.number()),
+    // Own allergens; ingredients add theirs when read.
+    allergens: v.optional(v.array(allergenValidator)),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdBy: v.string(),
     updatedAt: v.number(),

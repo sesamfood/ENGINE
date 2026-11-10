@@ -20,6 +20,7 @@ export const kioskDestinations = [
   { id: "ownChecks.today", route: "/own-checks", label: "Dagens egenkontrol", feature: "ownChecks" },
   { id: "ownChecks.overview", route: "/own-checks/overview", label: "Egenkontroloversigt", feature: "ownChecks" },
   { id: "ownChecks.documentation", route: "/own-checks/documentation", label: "Kontroldokumentation", feature: "ownChecks" },
+  { id: "ownChecks.allergens", route: "/own-checks/allergens", label: "Allergener", feature: "ownChecks" },
   { id: "ownChecks.guidance", route: "/own-checks/guidance", label: "Vejledning", feature: "ownChecks" },
   { id: "staffFood.register", route: "/staff-food", label: "Staff food", feature: "staffFood" },
   { id: "staffFood.report", route: "/staff-food/report", label: "Staff food-rapport", feature: "staffFood" },
