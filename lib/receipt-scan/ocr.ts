@@ -32,12 +32,16 @@ export const loadOcr = () => call<OcrEngine>({ type: "load" });
 
 export type Region = { x: number; y: number; w: number; h: number };
 
-// Text regions in video pixels, optionally only within a region. The browser crops and scales the frame while
+// Text regions in frame pixels, optionally only within a region. The browser crops and scales the frame while
 // the main thread stays free; detection time grows with the pixel count.
-export async function detectText(video: HTMLVideoElement, scale: number, region: Region = { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight }) {
+export async function detectText(
+  frame: HTMLVideoElement | HTMLCanvasElement,
+  scale: number,
+  region: Region = frame instanceof HTMLVideoElement ? { x: 0, y: 0, w: frame.videoWidth, h: frame.videoHeight } : { x: 0, y: 0, w: frame.width, h: frame.height },
+) {
   const W = Math.max(32, Math.round((region.w * scale) / 32) * 32);
   const H = Math.max(32, Math.round((region.h * scale) / 32) * 32);
-  const bitmap = await createImageBitmap(video, region.x, region.y, region.w, region.h, { resizeWidth: W, resizeHeight: H, resizeQuality: "low" });
+  const bitmap = await createImageBitmap(frame, region.x, region.y, region.w, region.h, { resizeWidth: W, resizeHeight: H, resizeQuality: "low" });
   const sx = region.w / bitmap.width, sy = region.h / bitmap.height;
   const rects = await call<Rect[]>({ type: "detect", bitmap, maxSide: Math.max(W, H) });
   return rects.map((r) => ({ ...r, cx: region.x + r.cx * sx, cy: region.y + r.cy * sy, w: r.w * sx, h: r.h * sy }));

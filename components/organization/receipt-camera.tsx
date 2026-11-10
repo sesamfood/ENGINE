@@ -10,10 +10,13 @@ import { detectText, type Region } from "@/lib/receipt-scan/ocr";
 
 const LIVE_SCALE = 0.6; // live detection size relative to the frame; smaller misses text that is still readable
 const MIN_LINE_HEIGHT = 28; // video pixels; below this rows start to pair wrongly
+const LOST_LINE_HEIGHT = 26.5; // a readable receipt stays readable down to here, so the state doesn't flicker
+const SHRINK_AFTER = 3; // detections in a row before a smaller or lost outline is believed
 const STABLE_MS = 1000;
 const FULL_FRAME_EVERY = 15;
 const ZOOM_MS = 800;
 const MIN_PROCESSING_MS = 1700; // the loading animation shows for a moment even when reading is quick
+const UPLOAD_DETECT_SIDE = 1600; // uploads are often full-size photos; finding the receipt doesn't need every pixel
 const MESSAGE_MS = 1800;
 const MESSAGES = [
   "Kigger nærmere på kasserapporten…",
@@ -221,13 +224,16 @@ function drawScanLine(ctx: CanvasRenderingContext2D, quad: Point[], time: number
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 // Live camera with light trails circling the receipt. Captures by itself once the text is readable and steady,
-// then zooms into the receipt and keeps it on screen while it is read.
+// then zooms into the receipt and keeps it on screen while it is read. Given an uploaded image instead, it skips
+// the camera: the picture is shown while the receipt is found, then zoomed into and read the same way.
 export function ReceiptCamera({
+  image,
   onCapture,
   onDone,
   onCancel,
   onUnavailable,
 }: {
+  image?: ImageBitmap;
   onCapture: (frame: HTMLCanvasElement) => Promise<void>;
   onDone: () => void;
   onCancel: () => void;
@@ -237,7 +243,7 @@ export function ReceiptCamera({
   const stageRef = useRef<HTMLCanvasElement>(null);
   const captureRef = useRef<() => void>(() => {});
   const [hint, setHint] = useState("Starter kamera…");
-  const [processing, setProcessing] = useState(false);
+  const [processing, setProcessing] = useState(!!image);
   const [message, setMessage] = useState(0);
   const capture = useEffectEvent(onCapture);
   const done = useEffectEvent(onDone);
@@ -263,7 +269,10 @@ export function ReceiptCamera({
     let live = true;
     let running = true;
     let last = null as TextOutline | null;
+    let lastText: Point[] = []; // corners of all text in the last detection, receipt or not
+    let anchor = null as TextOutline | null; // where the receipt was when holding still began
     let stableSince = 0;
+    let shrinks = 0;
     let readable = false;
     let shown: Rect | null = null;
     let opacity = 0;
@@ -336,7 +345,7 @@ export function ReceiptCamera({
       const k = Math.min(cw / frame.width, ch / frame.height);
       const top = 32 * dpr, side = 24 * dpr, bottom = 32 * dpr;
       const k1 = Math.min((cw - 2 * side) / paper.w, (ch - top - bottom) / paper.h);
-      const t = Math.min(1, (time - start) / ZOOM_MS);
+      const t = Math.min(1, Math.max(0, (time - start) / ZOOM_MS));
       const e = 1 - (1 - t) ** 3;
       const cx = lerp((cw - frame.width * k) / 2 + paper.cx * k, cw / 2, e);
       const cy = lerp((ch - frame.height * k) / 2 + paper.cy * k, top + (ch - top - bottom) / 2, e);
@@ -387,20 +396,48 @@ export function ReceiptCamera({
       requestAnimationFrame(render);
     };
 
-    const update = (outline: TextOutline | null, W: number, H: number) => {
+    const update = (found: TextOutline | null, W: number, H: number) => {
       const now = performance.now();
+      // A detection that misses part of the receipt, or all of it, is usually noise: a smaller outline only counts
+      // once it shows up a few times in a row. A larger one counts straight away.
+      const shrank = last && (!found || found.w < last.w * 0.9 || found.h < last.h * 0.9);
+      shrinks = shrank ? shrinks + 1 : 0;
+      const outline = shrank && shrinks < SHRINK_AFTER ? last : found;
+      // Compared with where holding still began, so small shakes and detection noise don't restart the count.
       const moved =
         !outline ||
-        !last ||
-        Math.hypot(outline.cx - last.cx, outline.cy - last.cy) > 0.02 * Math.max(W, H) ||
-        Math.abs(outline.area / last.area - 1) > 0.1;
-      if (moved) stableSince = now;
+        !anchor ||
+        Math.hypot(outline.cx - anchor.cx, outline.cy - anchor.cy) > 0.03 * Math.max(W, H) ||
+        Math.abs(outline.area / anchor.area - 1) > 0.15;
+      if (moved) [anchor, stableSince] = [outline, now];
       last = outline;
-      readable = !!outline && outline.lineHeight >= MIN_LINE_HEIGHT;
+      readable = !!outline && outline.lineHeight >= (readable ? LOST_LINE_HEIGHT : MIN_LINE_HEIGHT);
       const ready = readable && now - stableSince >= STABLE_MS;
       setHint(!outline ? "Hold kameraet tæt på kasserapporten" : !readable ? "Kom tættere på" : "Hold stille");
       if (ready) captureRef.current();
     };
+
+    if (image) {
+      const frame = document.createElement("canvas");
+      frame.width = image.width;
+      frame.height = image.height;
+      frame.getContext("2d")?.drawImage(image, 0, 0);
+      const whole: Rect = { cx: frame.width / 2, cy: frame.height / 2, w: frame.width, h: frame.height, angle: 0 };
+      zoom = { frame, crop: frame, paper: whole, start: Infinity }; // held at the start pose until the receipt is found
+      requestAnimationFrame(render);
+      detectText(frame, Math.min(1, UPLOAD_DETECT_SIDE / Math.max(frame.width, frame.height)))
+        .then((rects) => (rects.length >= 8 ? textOutline(rects) : null), () => null)
+        .then((outline) => {
+          if (!running) return;
+          const paper = outline ? paperOf(outline) : whole;
+          const crop = outline ? cropPaper(frame, paper) : frame;
+          zoom = { frame, crop, paper, start: performance.now() };
+          return Promise.all([capture(crop), new Promise((resolve) => setTimeout(resolve, MIN_PROCESSING_MS))]).then(() => done());
+        });
+      return () => {
+        running = false;
+      };
+    }
 
     (async () => {
       try {
@@ -426,11 +463,13 @@ export function ReceiptCamera({
             continue;
           }
           const n = next++;
-          // Track around the last outline; scan the whole frame now and then to catch a receipt that moved.
-          const region = last && n % FULL_FRAME_EVERY ? around(last.corners, W, H) : undefined;
+          // Track around the receipt and all other text from the last detection, so a detection that misses part of
+          // the receipt can't shrink the next one. The whole frame is scanned now and then to catch a receipt that moved.
+          const region = last && n % FULL_FRAME_EVERY ? around([...last.corners, ...lastText], W, H) : undefined;
           const rects = (await detectText(video, LIVE_SCALE, region)).filter((r) => Math.min(r.w, r.h) < Math.min(W, H) / 10);
           if (!live || n < applied) continue;
           applied = n;
+          lastText = rects.flatMap(corners);
           update(rects.length >= 8 ? textOutline(rects) : null, W, H);
         }
       };
@@ -441,7 +480,7 @@ export function ReceiptCamera({
       stop();
       running = false;
     };
-  }, []);
+  }, [image]);
 
   return createPortal(
     <div className="dark fixed inset-0 z-50 bg-background text-foreground" role="dialog" aria-modal="true" aria-label="Kamera">

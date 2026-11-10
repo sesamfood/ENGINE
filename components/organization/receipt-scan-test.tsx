@@ -62,7 +62,7 @@ export function ReceiptScanTest() {
   const [learned, setLearned] = useState<LearnedLabels>(() => (typeof window === "undefined" ? {} : readLearned()));
   const [selected, setSelected] = useState<OcrBox | null>(null);
   const [teachField, setTeachField] = useState<ReceiptField>("total");
-  const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanner, setScanner] = useState<"camera" | ImageBitmap | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const result = useMemo(() => scan && extractReceipt(scan.boxes, learned), [scan, learned]);
@@ -103,7 +103,7 @@ export function ReceiptScanTest() {
     if (selected) strokePolygon(ctx, selected.box, themeColor("--warning"), 0.25);
   }, [scan, result, selected]);
 
-  async function runScan(source: Blob | HTMLCanvasElement) {
+  async function runScan(source: HTMLCanvasElement) {
     setBusy(true);
     setSelected(null);
     setStatus("Læser kasserapporten…");
@@ -122,7 +122,7 @@ export function ReceiptScanTest() {
   }
 
   function takePhoto() {
-    if (window.isSecureContext && "mediaDevices" in navigator) setCameraOpen(true);
+    if (window.isSecureContext && "mediaDevices" in navigator) setScanner("camera");
     else fileRef.current?.click();
   }
 
@@ -197,7 +197,7 @@ export function ReceiptScanTest() {
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
-                if (file) runScan(file);
+                if (file) createImageBitmap(file).then(setScanner, () => toast.error("Billedet kunne ikke åbnes. Prøv et andet."));
               }}
             />
           </div>
@@ -308,13 +308,14 @@ export function ReceiptScanTest() {
         </div>
       )}
 
-      {cameraOpen && (
+      {scanner && (
         <ReceiptCamera
+          image={scanner === "camera" ? undefined : scanner}
           onCapture={runScan}
-          onDone={() => setCameraOpen(false)}
-          onCancel={() => setCameraOpen(false)}
+          onDone={() => setScanner(null)}
+          onCancel={() => setScanner(null)}
           onUnavailable={() => {
-            setCameraOpen(false);
+            setScanner(null);
             toast.error("Kameraet er ikke tilgængeligt. Brug Vælg billede.");
           }}
         />
