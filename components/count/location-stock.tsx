@@ -2,7 +2,9 @@
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
+import { useMutation } from "convex/react";
 import { BoxesIcon, Grid2X2Icon, ListIcon } from "lucide-react";
+import { toast } from "sonner";
 import {
   ProductCardMedia,
   productGridClassName,
@@ -10,6 +12,17 @@ import {
 import { useCountState } from "./count-state-provider";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -36,6 +49,8 @@ import {
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useKiosk, usePermission } from "@/components/app-shell";
 import { dateTimeFormatter, DEFAULT_TIME_ZONE } from "@/lib/date";
 import { unitNameFor } from "@/lib/unit-system";
@@ -93,6 +108,59 @@ export function LocationStock() {
     api.count.listLocationStockPage,
     canView && locationId ? { locationId } : "skip",
   );
+  const canManage = usePermission("count.manage");
+  const deductIngredients = useMutation(
+    api.count.deductIngredientsForNegativeStock,
+  );
+  const [pending, setPending] = useState<{
+    productId: Id<"products">;
+    productName: string;
+    quantity: string;
+  } | null>(null);
+  const [isDeducting, setIsDeducting] = useState(false);
+
+  async function confirmDeduct() {
+    if (!pending || !locationId) return;
+    setIsDeducting(true);
+    try {
+      await deductIngredients({ locationId, productId: pending.productId });
+      toast.success(`${pending.productName} står nu på nul`);
+      setPending(null);
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Ingredienserne kunne ikke trækkes. Prøv igen."),
+      );
+    } finally {
+      setIsDeducting(false);
+    }
+  }
+
+  type StockRow = NonNullable<typeof stock>[number];
+  const canDeduct = (row: StockRow) =>
+    canManage && row.hasIngredients && row.quantity < 0;
+
+  function deductButton(row: StockRow) {
+    if (!canDeduct(row)) return null;
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() =>
+          setPending({
+            productId: row.productId,
+            productName: row.productName,
+            quantity: formatStockQuantity(
+              -row.quantity,
+              row.defaultUnitName,
+              row.units ?? [],
+            ),
+          })
+        }
+      >
+        Træk ingredienser
+      </Button>
+    );
+  }
 
   if (!canView) {
     return (
@@ -215,6 +283,9 @@ export function LocationStock() {
                     ? `Senest talt ${dateFormatter.format(row.lastCountedAt)}`
                     : "Ikke talt endnu"}
                 </p>
+                {canDeduct(row) ? (
+                  <div className="mt-2">{deductButton(row)}</div>
+                ) : null}
               </CardContent>
             </Card>
           ))}
@@ -228,6 +299,11 @@ export function LocationStock() {
                 <TableHead>Kategori</TableHead>
                 <TableHead className="text-right">Beholdning</TableHead>
                 <TableHead>Senest talt</TableHead>
+                {canManage ? (
+                  <TableHead>
+                    <span className="sr-only">Handlinger</span>
+                  </TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -249,12 +325,41 @@ export function LocationStock() {
                       ? dateFormatter.format(row.lastCountedAt)
                       : "Ikke talt endnu"}
                   </TableCell>
+                  {canManage ? (
+                    <TableCell className="text-right">
+                      {deductButton(row)}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
       )}
+
+      <AlertDialog
+        open={Boolean(pending)}
+        onOpenChange={(open) => {
+          if (!open && !isDeducting) setPending(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Træk ingredienser fra lageret?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pending
+                ? `${pending.productName} står på minus ${pending.quantity}. Ingredienserne til den mængde trækkes fra lageret, og ${pending.productName} sættes til nul.`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeducting}>Annullér</AlertDialogCancel>
+            <AlertDialogAction disabled={isDeducting} onClick={confirmDeduct}>
+              Træk ingredienser
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
