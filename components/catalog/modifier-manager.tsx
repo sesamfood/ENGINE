@@ -495,6 +495,7 @@ function ModifierSheet({
   const [additions, setAdditions] = useState(
     new Map<Id<"products">, AdditionDraft>(),
   );
+  const [extraIds, setExtraIds] = useState<Id<"products">[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -502,6 +503,7 @@ function ModifierSheet({
     const timer = window.setTimeout(() => {
       setRemovals(new Map());
       setAdditions(new Map());
+      setExtraIds([]);
     }, 0);
     return () => window.clearTimeout(timer);
   }, [open]);
@@ -537,14 +539,43 @@ function ModifierSheet({
       ),
     );
 
-  const additionRows = [
-    ...new Set([
-      ...defaults.map((row) => row.ingredientProductId),
-      ...products.flatMap((product) =>
-        product.additions.map((row) => row.ingredientProductId),
-      ),
-    ]),
-  ]
+  const additionIds = new Set([
+    ...removalRows.map((row) => row.ingredientProductId),
+    ...defaults.map((row) => row.ingredientProductId),
+    ...products.flatMap((product) =>
+      product.additions.map((row) => row.ingredientProductId),
+    ),
+    ...extraIds,
+  ]);
+  const productIds = new Set(products.map((product) => product.id));
+  const extraOptions = [...catalogById.values()]
+    .filter((item) => !additionIds.has(item.id) && !productIds.has(item.id))
+    .map((item) => ({ value: item.id, label: item.name, searchName: item.name }));
+
+  // Without a standard amount, start from the existing or recipe amount.
+  function startAmount(
+    ingredientProductId: Id<"products">,
+    first?: { quantity?: number; unitId?: Id<"units"> },
+  ): Amount | null {
+    if (defaultsById.has(ingredientProductId)) return null;
+    const source =
+      first?.quantity !== undefined && first.unitId
+        ? first
+        : products
+            .flatMap((product) => product.ingredients)
+            .find((row) => row.ingredientProductId === ingredientProductId);
+    return source?.quantity !== undefined && source.unitId
+      ? {
+          quantity: source.quantity.toLocaleString("da-DK"),
+          unitId: source.unitId,
+        }
+      : {
+          quantity: "",
+          unitId: catalogById.get(ingredientProductId)?.defaultUnitId ?? null,
+        };
+  }
+
+  const additionRows = [...additionIds]
     .map((ingredientProductId) => {
       const rows = products.flatMap((product) =>
         product.additions.filter(
@@ -687,11 +718,7 @@ function ModifierSheet({
 
           <FieldSet>
             <FieldLegend>Kan tilføjes</FieldLegend>
-            {additionRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Opret standardtilvalg for at kunne tilføje dem her.
-              </p>
-            ) : (
+            {additionRows.length === 0 ? null : (
               <div className="flex flex-col divide-y rounded-lg border">
                 {additionRows.map((row) => {
                   const draft = additions.get(row.ingredientProductId);
@@ -731,9 +758,10 @@ function ModifierSheet({
                                 enabled: next,
                                 amount: next
                                   ? (draft?.amount ??
-                                    (standard
-                                      ? null
-                                      : { quantity: "", unitId: null }))
+                                    startAmount(
+                                      row.ingredientProductId,
+                                      row.first,
+                                    ))
                                   : null,
                               }),
                             )
@@ -833,6 +861,25 @@ function ModifierSheet({
                 })}
               </div>
             )}
+            <CreatableCombobox
+              key={extraIds.length}
+              options={extraOptions}
+              value={null}
+              onValueChange={(value) => {
+                if (!value) return;
+                const id = value as Id<"products">;
+                setExtraIds((current) => [...current, id]);
+                setAdditions((current) =>
+                  new Map(current).set(id, {
+                    enabled: true,
+                    amount: startAmount(id),
+                  }),
+                );
+              }}
+              placeholder="Tilføj andet produkt"
+              ariaLabel="Tilføj andet produkt"
+              productSearch
+            />
           </FieldSet>
         </div>
 
