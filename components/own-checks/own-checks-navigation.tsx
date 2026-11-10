@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon } from "lucide-react";
+import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon, WheatIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppBottomBar } from "@/components/app-bottom-bar";
@@ -27,10 +27,15 @@ export function OwnChecksNavigation() {
   const showGuidance = kioskMode
     ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.guidance"))
     : canToday || canOverview || canDocumentation;
+  const showAllergens = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.allergens"))
+    : canToday || canOverview || canDocumentation;
   const sectionCount =
-    Number(showToday) + Number(showOverview) + Number(showDocumentation) + Number(showGuidance);
+    Number(showToday) + Number(showOverview) + Number(showDocumentation) + Number(showAllergens) + Number(showGuidance);
   const value = pathname.startsWith("/own-checks/guidance") && showGuidance
     ? "guidance"
+    : pathname.startsWith("/own-checks/allergens") && showAllergens
+    ? "allergens"
     : pathname.startsWith("/own-checks/documentation") && showDocumentation
     ? "documentation"
     : pathname.startsWith("/own-checks/overview") && showOverview
@@ -45,12 +50,14 @@ export function OwnChecksNavigation() {
     if (showToday) router.prefetch("/own-checks");
     if (showOverview) router.prefetch("/own-checks/overview");
     if (showDocumentation) router.prefetch("/own-checks/documentation");
+    if (showAllergens) router.prefetch("/own-checks/allergens");
     if (showGuidance) router.prefetch("/own-checks/guidance");
-  }, [router, showDocumentation, showGuidance, showOverview, showToday]);
+  }, [router, showAllergens, showDocumentation, showGuidance, showOverview, showToday]);
 
   useEffect(() => {
     if (value === "today" && pathname.startsWith("/own-checks/check/")) return;
     if (value === "guidance" && pathname.startsWith("/own-checks/guidance")) return;
+    if (value === "allergens" && pathname.startsWith("/own-checks/allergens")) return;
     if ((value === "today" && pathname === "/own-checks") || (value === "overview" && pathname.startsWith("/own-checks/overview")) || (value === "documentation" && pathname.startsWith("/own-checks/documentation"))) return;
     const href = value === "today" ? "/own-checks" : value === "overview" ? "/own-checks/overview" : "/own-checks/documentation";
     router.replace(href, { scroll: false });
@@ -62,6 +69,7 @@ export function OwnChecksNavigation() {
     ...(showToday ? [{ href: "/own-checks", label: "I dag", icon: ClipboardCheckIcon, active: value === "today" }] : []),
     ...(showOverview ? [{ href: "/own-checks/overview", label: "Oversigt", icon: ListChecksIcon, active: value === "overview" }] : []),
     ...(showDocumentation ? [{ href: "/own-checks/documentation", label: "Dokumentation", icon: FileCheck2Icon, active: value === "documentation" }] : []),
+    ...(showAllergens ? [{ href: "/own-checks/allergens", label: "Allergener", icon: WheatIcon, active: value === "allergens" }] : []),
     ...(showGuidance ? [{ href: "/own-checks/guidance", label: "Vejledning", icon: BookOpenIcon, active: value === "guidance" }] : []),
   ];
 
