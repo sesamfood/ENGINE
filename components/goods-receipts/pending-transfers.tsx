@@ -187,18 +187,9 @@ export function PendingTransfers() {
           aria-labelledby="quick-transfers-heading"
           className="flex flex-col gap-3"
         >
-          <div>
-            <h3
-              id="quick-transfers-heading"
-              className="text-base font-semibold"
-            >
-              Hurtig modtagelse
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              Transfers uden bestilling. Acceptér dem, som de blev sendt, eller
-              åbn dem for at rette mængderne.
-            </p>
-          </div>
+          <h3 id="quick-transfers-heading" className="text-base font-semibold">
+            Hurtig modtagelse
+          </h3>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {quickTransfers.map((transfer) => (
               <QuickTransferCard key={transfer.id} transfer={transfer} />
