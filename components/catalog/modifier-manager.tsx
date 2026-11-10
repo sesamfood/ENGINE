@@ -4,6 +4,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   CheckIcon,
+  LinkIcon,
   ListPlusIcon,
   PackageOpenIcon,
   PencilIcon,
@@ -209,6 +210,7 @@ export function ModifierManager() {
   const [selectedIds, setSelectedIds] = useState<Id<"products">[]>([]);
   const [editing, setEditing] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [posOpen, setPosOpen] = useState(false);
 
   const catalogById = useMemo(
     () => new Map((catalog ?? []).map((item) => [item.id, item])),
@@ -348,6 +350,18 @@ export function ModifierManager() {
             <ListPlusIcon data-icon="inline-start" />
             Standardtilvalg
           </Button>
+          {canManagePos && posSettings?.enabled ? (
+            <Button
+              type="button"
+              variant="outline"
+              appearance="compact"
+              className="min-h-11"
+              onClick={() => setPosOpen(true)}
+            >
+              <LinkIcon data-icon="inline-start" />
+              OnlinePOS-koblinger
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="lg"
@@ -465,8 +479,16 @@ export function ModifierManager() {
             catalog={catalog}
             catalogById={catalogById}
             name={name}
-            posSettings={canManagePos ? posSettings : undefined}
           />
+          {canManagePos && posSettings?.enabled ? (
+            <PosMappingDialog
+              open={posOpen}
+              onOpenChange={setPosOpen}
+              overview={overview}
+              name={name}
+              posSettings={posSettings}
+            />
+          ) : null}
         </>
       ) : null}
     </div>
@@ -921,7 +943,6 @@ function LibraryDialog({
   catalog,
   catalogById,
   name,
-  posSettings,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -929,17 +950,9 @@ function LibraryDialog({
   catalog: CatalogItem[];
   catalogById: ReadonlyMap<Id<"products">, CatalogItem>;
   name: (productId: Id<"products">) => string;
-  posSettings:
-    FunctionReturnType<typeof api.onlinePos.getModifierMappings> | undefined;
 }) {
   const saveDefault = useMutation(api.catalogModifiers.saveAdditionDefault);
   const deleteDefault = useMutation(api.catalogModifiers.deleteAdditionDefault);
-  const setMapping = useAction(api.onlinePos.setModifierMapping);
-  const listPosProducts = useAction(api.onlinePos.listProducts);
-  const [posProducts, setPosProducts] = useState<
-    OnlinePosProducts | null | undefined
-  >(undefined);
-  const posOptions = useOnlinePosProductOptions(posProducts);
   const [newIngredient, setNewIngredient] = useState<Id<"products"> | null>(
     null,
   );
@@ -952,51 +965,6 @@ function LibraryDialog({
     null,
   );
   const [busy, setBusy] = useState(false);
-  const posEnabled = posSettings?.enabled === true && posSettings.integrationId;
-
-  useEffect(() => {
-    if (!open || !posEnabled || posProducts !== undefined) return;
-    let active = true;
-    void listPosProducts({})
-      .then((products) => {
-        if (active) setPosProducts(products);
-      })
-      .catch(() => {
-        if (active) setPosProducts(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [listPosProducts, open, posEnabled, posProducts]);
-
-  const mappingFor = (kind: "removal" | "addition", id: Id<"products">) =>
-    posSettings?.mappings.find(
-      (row) => row.kind === kind && row.ingredientProductId === id,
-    )?.onlinePosProductId ?? null;
-
-  async function changeMapping(
-    kind: "removal" | "addition",
-    ingredientProductId: Id<"products">,
-    onlinePosProductId: number | null,
-  ) {
-    if (!posSettings?.integrationId) return;
-    try {
-      await setMapping({
-        expectedIntegrationId: posSettings.integrationId,
-        kind,
-        ingredientProductId,
-        onlinePosProductId,
-      });
-      toast.success("OnlinePOS-koblingen er gemt");
-    } catch (error) {
-      toast.error(
-        getUserErrorMessage(
-          error,
-          "OnlinePOS-koblingen kunne ikke gemmes. Prøv igen.",
-        ),
-      );
-    }
-  }
 
   async function storeDefault(
     ingredientProductId: Id<"products">,
@@ -1048,15 +1016,6 @@ function LibraryDialog({
       label: item.name,
       searchName: item.name,
     }));
-  const removable = [
-    ...new Set(
-      overview.products.flatMap((product) =>
-        product.ingredients
-          .filter((row) => row.removable)
-          .map((row) => row.ingredientProductId),
-      ),
-    ),
-  ].sort((a, b) => name(a).localeCompare(name(b), "da"));
   const usage = (id: Id<"products">) =>
     overview.products.filter((product) =>
       product.additions.some((row) => row.ingredientProductId === id),
@@ -1109,8 +1068,7 @@ function LibraryDialog({
                       <Trash2Icon />
                     </Button>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field>
+                  <Field>
                       <FieldLabel>Standardmængde</FieldLabel>
                       <div className="flex gap-2">
                         <div className="flex-1">
@@ -1145,22 +1103,6 @@ function LibraryDialog({
                         ) : null}
                       </div>
                     </Field>
-                    {posEnabled ? (
-                      <Field>
-                        <FieldLabel>OnlinePOS-produkt</FieldLabel>
-                        <OnlinePosProductSelect
-                          options={posOptions}
-                          productName={name(id)}
-                          value={mappingFor("addition", id)}
-                          onValueChange={(value) =>
-                            void changeMapping("addition", id, value)
-                          }
-                          ariaLabel={`OnlinePOS-produkt for tilvalg af ${name(id)}`}
-                          onRetry={() => setPosProducts(undefined)}
-                        />
-                      </Field>
-                    ) : null}
-                  </div>
                 </div>
               );
             })}
@@ -1222,38 +1164,6 @@ function LibraryDialog({
             </div>
           </div>
 
-          {posEnabled ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-1">
-                <h3 className="font-medium">OnlinePOS-koblinger for fravalg</h3>
-                <HelpTooltip
-                  label="Om fravalg"
-                  content="Mængden, der trækkes fra lageret, kommer fra hvert produkts opskrift."
-                />
-              </div>
-              {removable.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Markér ingredienser som fravalg på produkterne først.
-                </p>
-              ) : (
-                removable.map((id) => (
-                  <Field key={id} orientation="responsive">
-                    <FieldLabel className="sm:w-48">{name(id)}</FieldLabel>
-                    <OnlinePosProductSelect
-                      options={posOptions}
-                      productName={`Uden ${name(id)}`}
-                      value={mappingFor("removal", id)}
-                      onValueChange={(value) =>
-                        void changeMapping("removal", id, value)
-                      }
-                      ariaLabel={`OnlinePOS-produkt for fravalg af ${name(id)}`}
-                      onRetry={() => setPosProducts(undefined)}
-                    />
-                  </Field>
-                ))
-              )}
-            </div>
-          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -1286,5 +1196,150 @@ function LibraryDialog({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function PosMappingDialog({
+  open,
+  onOpenChange,
+  overview,
+  name,
+  posSettings,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  overview: Overview;
+  name: (productId: Id<"products">) => string;
+  posSettings: FunctionReturnType<typeof api.onlinePos.getModifierMappings>;
+}) {
+  const setMapping = useAction(api.onlinePos.setModifierMapping);
+  const listPosProducts = useAction(api.onlinePos.listProducts);
+  const [posProducts, setPosProducts] = useState<
+    OnlinePosProducts | null | undefined
+  >(undefined);
+  const posOptions = useOnlinePosProductOptions(posProducts);
+
+  useEffect(() => {
+    if (!open || posProducts !== undefined) return;
+    let active = true;
+    void listPosProducts({})
+      .then((products) => {
+        if (active) setPosProducts(products);
+      })
+      .catch(() => {
+        if (active) setPosProducts(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [listPosProducts, open, posProducts]);
+
+  const byName = (ids: Iterable<Id<"products">>) =>
+    [...new Set(ids)].sort((a, b) => name(a).localeCompare(name(b), "da"));
+  const additions = byName([
+    ...overview.defaults.map((row) => row.ingredientProductId),
+    ...overview.products.flatMap((product) =>
+      product.additions.map((row) => row.ingredientProductId),
+    ),
+  ]);
+  const removals = byName(
+    overview.products.flatMap((product) =>
+      product.ingredients
+        .filter((row) => row.removable)
+        .map((row) => row.ingredientProductId),
+    ),
+  );
+
+  async function changeMapping(
+    kind: "removal" | "addition",
+    ingredientProductId: Id<"products">,
+    onlinePosProductId: number | null,
+  ) {
+    if (!posSettings.integrationId) return;
+    try {
+      await setMapping({
+        expectedIntegrationId: posSettings.integrationId,
+        kind,
+        ingredientProductId,
+        onlinePosProductId,
+      });
+      toast.success("OnlinePOS-koblingen er gemt");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "OnlinePOS-koblingen kunne ikke gemmes. Prøv igen.",
+        ),
+      );
+    }
+  }
+
+  const sections = [
+    {
+      kind: "addition" as const,
+      title: "Tilvalg",
+      ids: additions,
+      empty: "Markér ingredienser som tilvalg på produkterne først.",
+      productName: (id: Id<"products">) => `Ekstra ${name(id)}`,
+      help: "Mængden, der trækkes fra lageret, er tilvalgets mængde på produktet.",
+    },
+    {
+      kind: "removal" as const,
+      title: "Fravalg",
+      ids: removals,
+      empty: "Markér ingredienser som fravalg på produkterne først.",
+      productName: (id: Id<"products">) => `Uden ${name(id)}`,
+      help: "Mængden, der lægges tilbage på lageret, kommer fra hvert produkts opskrift.",
+    },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>OnlinePOS-koblinger</DialogTitle>
+          <DialogDescription>
+            Vælg det OnlinePOS-produkt, der svarer til hvert tilvalg og
+            fravalg. Koblingen gælder for alle produkter.
+          </DialogDescription>
+        </DialogHeader>
+        {sections.map((section) => (
+          <div key={section.kind} className="flex flex-col gap-3">
+            <div className="flex items-center gap-1">
+              <h3 className="font-medium">{section.title}</h3>
+              <HelpTooltip
+                label={`Om ${section.title.toLowerCase()}`}
+                content={section.help}
+              />
+            </div>
+            {section.ids.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{section.empty}</p>
+            ) : (
+              section.ids.map((id) => (
+                <Field key={id} orientation="responsive">
+                  <FieldLabel className="sm:w-48">{name(id)}</FieldLabel>
+                  <OnlinePosProductSelect
+                    options={posOptions}
+                    productName={section.productName(id)}
+                    value={
+                      posSettings.mappings.find(
+                        (row) =>
+                          row.kind === section.kind &&
+                          row.ingredientProductId === id,
+                      )?.onlinePosProductId ?? null
+                    }
+                    onValueChange={(value) =>
+                      void changeMapping(section.kind, id, value)
+                    }
+                    ariaLabel={`OnlinePOS-produkt for ${section.title.toLowerCase()} af ${name(id)}`}
+                    onRetry={() => setPosProducts(undefined)}
+                  />
+                </Field>
+              ))
+            )}
+          </div>
+        ))}
+      </DialogContent>
+    </Dialog>
   );
 }
