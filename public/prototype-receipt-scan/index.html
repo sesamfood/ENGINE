@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE – Scan kasserapport</title>
+<style>
+  body { font: 16px/1.4 system-ui, sans-serif; margin: 0 auto; padding: 16px; max-width: 900px; color: #111; background: #fff; }
+  .warn { background: #fff4cc; padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0; }
+  .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: 10px; background: #111; color: #fff; font-weight: 600; border: 0; font-size: 16px; cursor: pointer; }
+  .btn.secondary { background: #e8e8e8; color: #111; }
+  select { min-height: 48px; font-size: 16px; padding: 0 8px; border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 8px 4px; border-bottom: 1px solid #ddd; }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .missing { color: #b00; }
+  .ok { color: #070; } .bad { color: #b00; }
+  canvas { width: 100%; height: auto; touch-action: manipulation; border-radius: 8px; margin-top: 16px; }
+  #teach { position: sticky; bottom: 0; background: #f4f4f4; padding: 12px; border-radius: 10px; margin-top: 12px; }
+  pre { white-space: pre-wrap; font-size: 13px; }
+  #camera { position: fixed; inset: 0; z-index: 10; background: #000; }
+  #camera video, #camera canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; margin: 0; border-radius: 0; }
+  #hint { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); margin: 0; padding: 8px 16px; border-radius: 999px; background: rgba(0,0,0,.65); color: #fff; font-weight: 600; white-space: nowrap; }
+  .camBar { position: absolute; left: 0; right: 0; bottom: max(24px, env(safe-area-inset-bottom)); display: flex; justify-content: center; align-items: center; gap: 32px; }
+  .shutter { width: 76px; height: 76px; border-radius: 50%; border: 6px solid rgba(255,255,255,.5); background: #fff; background-clip: padding-box; cursor: pointer; }
+  .shutter:focus-visible, .btn:focus-visible { outline: 3px solid #f59e0b; outline-offset: 3px; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.webgpu.min.js"></script>
+</head>
+<body>
+<p class="warn">Prototype. Billedet behandles kun på denne enhed. Første indlæsning henter ca. 31 MB modeller.</p>
+<h1>Scan kasserapport</h1>
+<div class="bar">
+  <button class="btn" id="take">Tag billede</button>
+  <input id="file" type="file" accept="image/*" capture="environment" hidden>
+  <label class="btn secondary">Vælg billede<input id="pick" type="file" accept="image/*" hidden></label>
+  <select id="ep"><option value="wasm">WASM</option><option value="webgpu">WebGPU</option></select>
+</div>
+<p id="status">Indlæser modeller…</p>
+<table id="fields"></table>
+<div id="checks"></div>
+<div id="teach" hidden>
+  <div id="teachText"></div>
+  <div class="bar">
+    <select id="teachField"></select>
+    <button class="btn" id="teachSave">Gem</button>
+    <button class="btn secondary" id="teachCancel">Annullér</button>
+  </div>
+</div>
+<p>Tryk på en label i billedet for at lære den et felt.</p>
+<canvas id="canvas"></canvas>
+<div class="bar"><button class="btn secondary" id="reset">Nulstil indlærte labels</button></div>
+<details><summary>Rå OCR og tider</summary><pre id="raw"></pre></details>
+<div id="camera" hidden>
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="overlay"></canvas>
+  <p id="hint">Starter kamera…</p>
+  <div class="camBar">
+    <button class="btn secondary" id="camCancel">Annullér</button>
+    <button class="shutter" id="shutter" aria-label="Tag billede"></button>
+  </div>
+</div>
+
+<script type="module">
+import * as ocr from "./ocr.js";
+import { FIELDS, extract, norm } from "./extract.js";
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const ep = params.get("ep") ?? (navigator.gpu ? "webgpu" : "wasm");
+$("ep").value = ep;
+$("ep").onchange = (e) => { params.set("ep", e.target.value); location.search = params; };
+
+const LEARNED_KEY = "prototype-receipt-scan-learned";
+const learned = () => { try { return JSON.parse(localStorage.getItem(LEARNED_KEY)) ?? {}; } catch { return {}; } };
+const fmt = (n) => n.toLocaleString("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+let bitmap, boxes = [], result, selected;
+
+function render() {
+  result = extract(boxes, learned());
+  $("fields").innerHTML = Object.entries(FIELDS).map(([key, { label }]) => {
+    const f = result.fields[key];
+    const value = f ? (key === "transactions" ? String(f.value) : fmt(f.value)) : "Ikke fundet";
+    return `<tr><td>${label}</td><td class="${f ? "" : "missing"}">${value}</td></tr>`;
+  }).join("");
+  $("checks").innerHTML = Object.entries(result.checks).map(([name, ok]) => `<p class="${ok ? "ok" : "bad"}">${ok ? "✓" : "✗"} ${name}</p>`).join("");
+  draw();
+}
+
+function draw() {
+  const c = $("canvas");
+  c.width = bitmap.width; c.height = bitmap.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+  const used = new Map();
+  for (const f of Object.values(result.fields)) if (f) { used.set(f.label, "#16a34a"); used.set(f.amount, "#2563eb"); }
+  ctx.lineWidth = Math.max(2, bitmap.width / 500);
+  for (const b of boxes) {
+    ctx.strokeStyle = b === selected ? "#f59e0b" : used.get(b) ?? "rgba(220,38,38,.5)";
+    ctx.beginPath();
+    b.box.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.stroke();
+  }
+}
+
+async function scan(source) {
+  bitmap = await createImageBitmap(source);
+  $("status").textContent = "Læser kvittering…";
+  const { boxes: found, timings } = await ocr.run(bitmap, (i, n) => { $("status").textContent = `Læser tekst ${i} af ${n}…`; });
+  boxes = found;
+  $("status").textContent = `Færdig på ${((timings.detMs + timings.recMs) / 1000).toFixed(1)} s (${ep}).`;
+  $("raw").textContent = JSON.stringify(timings) + "\n\n" + boxes.map((b) => `${b.text}  (${b.score.toFixed(2)})`).join("\n");
+  render();
+}
+
+$("canvas").onclick = (e) => {
+  if (!bitmap) return;
+  const r = e.target.getBoundingClientRect();
+  const x = ((e.clientX - r.left) / r.width) * bitmap.width, y = ((e.clientY - r.top) / r.height) * bitmap.height;
+  selected = boxes.find((b) => {
+    const xs = b.box.map((p) => p[0]), ys = b.box.map((p) => p[1]);
+    return x >= Math.min(...xs) && x <= Math.max(...xs) && y >= Math.min(...ys) && y <= Math.max(...ys);
+  });
+  $("teach").hidden = !selected;
+  if (selected) $("teachText").textContent = `Label: “${selected.text}”`;
+  draw();
+};
+$("teachField").innerHTML = Object.entries(FIELDS).map(([k, { label }]) => `<option value="${k}">${label}</option>`).join("");
+$("teachSave").onclick = () => {
+  const all = learned();
+  const field = $("teachField").value;
+  all[field] = [...new Set([...(all[field] ?? []), norm(selected.text)])];
+  try { localStorage.setItem(LEARNED_KEY, JSON.stringify(all)); } catch {}
+  selected = null; $("teach").hidden = true;
+  render();
+};
+$("teachCancel").onclick = () => { selected = null; $("teach").hidden = true; draw(); };
+$("reset").onclick = () => { try { localStorage.removeItem(LEARNED_KEY); } catch {} if (bitmap) render(); };
+
+const showError = (err) => { $("status").textContent = `Fejl: ${err.message}`; };
+for (const id of ["file", "pick"]) $(id).onchange = (e) => e.target.files[0] && scan(e.target.files[0]).catch(showError);
+
+// Live camera with a text outline when the browser allows it; otherwise the native camera via the file input.
+const LIVE_SCALE = 0.6;      // detection size relative to the frame; smaller misses text that is still readable
+const MIN_LINE_HEIGHT = 28;  // video pixels; below this rows start to pair wrongly
+const STABLE_MS = 1000;
+const video = $("video"), overlay = $("overlay");
+let stream, live = false, pending = Promise.resolve(), last = null, stableSince = 0;
+
+$("take").onclick = async () => {
+  if (!navigator.mediaDevices?.getUserMedia || !isSecureContext) return $("file").click();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    video.srcObject = stream;
+    await video.play();
+    $("camera").hidden = false;
+    live = true;
+    last = null;
+    overlay.width = 0;
+    track();
+  } catch {
+    closeCamera();
+    $("status").textContent = "Kameraet er ikke tilgængeligt. Brug Vælg billede.";
+    $("file").click();
+  }
+};
+
+async function track() {
+  while (live) {
+    if (video.readyState >= 2) {
+      const W = video.videoWidth, H = video.videoHeight;
+      pending = ocr.detect(video, Math.max(W, H) * LIVE_SCALE);
+      const rects = (await pending).filter((r) => Math.min(r.w, r.h) < Math.min(W, H) / 10);
+      if (!live) break;
+      showOutline(rects.length >= 8 ? ocr.outline(rects) : null, W, H);
+    }
+    await new Promise((r) => setTimeout(r, 80));
+  }
+}
+
+function showOutline(o, W, H) {
+  const now = performance.now();
+  const moved = !o || !last || Math.hypot(o.cx - last.cx, o.cy - last.cy) > 0.02 * Math.max(W, H) || Math.abs(o.area / last.area - 1) > 0.1;
+  if (moved) stableSince = now;
+  last = o;
+  const readable = o && o.lineHeight >= MIN_LINE_HEIGHT;
+  const ready = readable && now - stableSince >= STABLE_MS;
+  $("hint").textContent = !o ? "Hold kameraet tæt på kasserapporten" : !readable ? "Kom tættere på" : ready ? "Tager billede…" : "Hold stille";
+
+  overlay.width = W; overlay.height = H;
+  const ctx = overlay.getContext("2d");
+  if (!o) return;
+  const color = readable ? "22,163,74" : "245,158,11";
+  ctx.lineWidth = Math.max(W, H) / 150;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = `rgb(${color})`;
+  ctx.fillStyle = `rgba(${color},${readable ? 0.18 : 0.1})`;
+  ctx.beginPath();
+  o.corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  if (ready) capture();
+}
+
+async function capture() {
+  const frame = document.createElement("canvas");
+  frame.width = video.videoWidth; frame.height = video.videoHeight;
+  frame.getContext("2d").drawImage(video, 0, 0);
+  closeCamera();
+  await pending.catch(() => {}); // one inference at a time per session
+  scan(frame).catch(showError);
+}
+
+function closeCamera() {
+  live = false;
+  stream?.getTracks().forEach((t) => t.stop());
+  stream = null;
+  $("camera").hidden = true;
+}
+$("shutter").onclick = () => live && capture();
+$("camCancel").onclick = closeCamera;
+
+const t = performance.now();
+await ocr.load(ep).catch((err) => { $("status").textContent = `Kunne ikke indlæse modeller: ${err.message}`; throw err; });
+$("status").textContent = `Modeller klar på ${((performance.now() - t) / 1000).toFixed(1)} s. Tag et billede af kasserapporten.`;
+const src = params.get("src");
+if (src) scan(await (await fetch(src)).blob());
+</script>
+</body>
+</html>
