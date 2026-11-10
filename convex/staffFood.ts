@@ -19,6 +19,7 @@ import {
   resolveLocationFilter,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
+import { consumptionStock } from "./lib/productStock";
 import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
@@ -39,6 +40,7 @@ const MAX_SESSION_REGISTRATIONS = 500;
 const MAX_BASKET_ITEMS = 50;
 const MAX_SEARCH_RESULTS = 20;
 const MAX_SETTINGS_PRODUCTS = 500;
+const MAX_MODIFIER_ROWS = 200;
 const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 // Whole-day mode opens shifts that start later in the day.
 const SHIFT_LOOKAHEAD_MS = 30 * 60 * 60 * 1000;
@@ -142,6 +144,84 @@ const registrationRowValidator = v.object({
 });
 
 type StaffFoodContext = QueryCtx | MutationCtx;
+
+const modifierOptionValidator = v.object({
+  id: v.id("products"),
+  name: v.string(),
+});
+
+// Fravalg and tilvalg a product offers, matching the catalog setup.
+async function productModifiers(
+  ctx: StaffFoodContext,
+  organizationId: string,
+  productId: Id<"products">,
+) {
+  const [ingredients, additionRows] = await Promise.all([
+    ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", productId),
+      )
+      .take(MAX_MODIFIER_ROWS),
+    ctx.db
+      .query("productIngredientAdditions")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", productId),
+      )
+      .take(MAX_MODIFIER_ROWS),
+  ]);
+  const removable = ingredients.filter((row) => row.removable && !row.packaging);
+  const amounts = await Promise.all(
+    additionRows.map(async (row) =>
+      row.quantity !== undefined && row.unitId !== undefined
+        ? { quantity: row.quantity, unitId: row.unitId }
+        : await ctx.db
+            .query("ingredientAdditionDefaults")
+            .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("ingredientProductId", row.ingredientProductId),
+            )
+            .first(),
+    ),
+  );
+  const ids = [
+    ...new Set([
+      ...removable.map((row) => row.ingredientProductId),
+      ...additionRows.map((row) => row.ingredientProductId),
+    ]),
+  ];
+  const names = new Map(
+    (await Promise.all(ids.map((id) => ctx.db.get("products", id)))).flatMap(
+      (row) =>
+        row?.organizationId === organizationId && row.status === "active"
+          ? [[row._id, row.name] as const]
+          : [],
+    ),
+  );
+  const removals = new Map<Id<"products">, { id: Id<"products">; name: string }>();
+  for (const row of removable) {
+    const name = names.get(row.ingredientProductId);
+    if (name) removals.set(row.ingredientProductId, { id: row.ingredientProductId, name });
+  }
+  return {
+    removals: [...removals.values()],
+    additions: additionRows.flatMap((row, index) => {
+      const name = names.get(row.ingredientProductId);
+      const amount = amounts[index];
+      return name && amount
+        ? [
+            {
+              id: row.ingredientProductId,
+              name,
+              quantity: amount.quantity,
+              unitId: amount.unitId,
+            },
+          ]
+        : [];
+    }),
+  };
+}
 
 function requireNow(now: number) {
   if (!Number.isFinite(now) || now <= 0) {
@@ -648,6 +728,8 @@ export const getSessionState = query({
         categoryName: v.string(),
         imageUrl: v.union(v.string(), v.null()),
         defaultUnitName: v.string(),
+        removals: v.array(modifierOptionValidator),
+        additions: v.array(modifierOptionValidator),
       }),
     ),
     registrations: v.array(registrationRowValidator),
@@ -834,6 +916,11 @@ export const getSessionState = query({
             allowanceByProductId.set(product._id, allowance);
             const unit = defaultUnitsById.get(product.defaultUnitId);
             if (!unit || unit.organizationId !== organizationId) return null;
+            const modifiers = await productModifiers(
+              ctx,
+              organizationId,
+              product._id,
+            );
             return {
               id: product._id,
               name: product.name,
@@ -844,6 +931,11 @@ export const getSessionState = query({
                 ? await ctx.storage.getUrl(product.imageStorageId)
                 : null,
               defaultUnitName: unit.name,
+              removals: modifiers.removals,
+              additions: modifiers.additions.map(({ id, name }) => ({
+                id,
+                name,
+              })),
             };
           }),
         ),
@@ -906,7 +998,12 @@ export const register = mutation({
   args: {
     sessionId: v.id("staffFoodSessions"),
     items: v.array(
-      v.object({ productId: v.id("products"), quantity: v.number() }),
+      v.object({
+        productId: v.id("products"),
+        quantity: v.number(),
+        removals: v.optional(v.array(v.id("products"))),
+        additions: v.optional(v.array(v.id("products"))),
+      }),
     ),
   },
   returns: v.object({
@@ -1094,6 +1191,39 @@ export const register = mutation({
         throw new ConvexError("Produktets kategori eller enhed mangler");
       }
       const defaultQuantity = normalizeStock(item.quantity);
+      const modifiers = await productModifiers(ctx, organizationId, product._id);
+      const pick = <T extends { id: Id<"products"> }>(
+        ids: Id<"products">[] | undefined,
+        options: T[],
+      ) => {
+        if (new Set(ids).size !== (ids ?? []).length) {
+          throw new ConvexError("Et tilvalg eller fravalg er valgt flere gange");
+        }
+        return (ids ?? []).map((id) => {
+          const option = options.find((candidate) => candidate.id === id);
+          if (!option) {
+            throw new ConvexError(
+              `Et tilvalg eller fravalg findes ikke længere på ${product.name}`,
+            );
+          }
+          return option;
+        });
+      };
+      const removals = pick(item.removals, modifiers.removals);
+      const additions = pick(item.additions, modifiers.additions);
+      const stockEntries = await consumptionStock(
+        ctx,
+        organizationId,
+        location._id,
+        product,
+        defaultQuantity,
+        removals.map((row) => row.id),
+        additions.map((row) => ({
+          productId: row.id,
+          unitId: row.unitId,
+          quantity: row.quantity * item.quantity,
+        })),
+      );
       const registrationId = await ctx.db.insert("staffFoodRegistrations", {
         organizationId,
         checkoutId,
@@ -1115,6 +1245,13 @@ export const register = mutation({
         defaultUnitId: unit._id,
         defaultUnitName: unit.name,
         defaultQuantity,
+        removals: removals.length
+          ? removals.map((row) => ({ productId: row.id, name: row.name }))
+          : undefined,
+        additions: additions.length
+          ? additions.map((row) => ({ productId: row.id, name: row.name }))
+          : undefined,
+        stockEntries,
         registeredAt: now,
         registeredBy: userIdentifier,
         registeredByName: userName,
@@ -1130,13 +1267,15 @@ export const register = mutation({
           ...staffFoodSummaryContribution(registration, summaryTimeZone),
         );
       }
-      await addStock(
-        ctx,
-        organizationId,
-        location._id,
-        product._id,
-        -defaultQuantity,
-      );
+      for (const entry of stockEntries) {
+        await addStock(
+          ctx,
+          organizationId,
+          location._id,
+          entry.productId,
+          -entry.quantity,
+        );
+      }
     }
     await reconcileDashboardSummaryContributions(ctx, [], summaryContributions);
     return {
@@ -1199,13 +1338,17 @@ export const voidCheckout = mutation({
         voidedByName: userName,
         dashboardSummaryTimeZone: summaryTimeZone,
       });
-      await addStock(
-        ctx,
-        organizationId,
-        row.locationId,
-        row.productId,
-        row.defaultQuantity,
-      );
+      for (const entry of row.stockEntries ?? [
+        { productId: row.productId, quantity: row.defaultQuantity },
+      ]) {
+        await addStock(
+          ctx,
+          organizationId,
+          row.locationId,
+          entry.productId,
+          entry.quantity,
+        );
+      }
     }
     await reconcileDashboardSummaryContributions(
       ctx,
