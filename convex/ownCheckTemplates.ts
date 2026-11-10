@@ -650,7 +650,8 @@ export const saveSettings = mutation({
     requireSecondPersonApproval: v.boolean(),
     blockDuringCount: v.boolean(),
     hiddenPages: v.optional(v.array(ownCheckPageValidator)),
-    reason: v.string(),
+    // Accepted from older clients; settings changes no longer ask for a reason.
+    reason: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -662,7 +663,6 @@ export const saveSettings = mutation({
     if (hiddenPages && hiddenPages.length >= 5) {
       throw new ConvexError("Mindst én side skal være slået til");
     }
-    const reason = requireAuditReason(args.reason);
     const existing = await ctx.db
       .query("ownCheckSettings")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId))
@@ -693,7 +693,6 @@ export const saveSettings = mutation({
       entityTable: "ownCheckSettings",
       entityId: settingsId,
       summary: "Egenkontrolindstillingerne blev ændret",
-      reason,
     });
     return null;
   },

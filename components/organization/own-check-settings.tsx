@@ -60,7 +60,6 @@ export function OwnCheckSettings() {
     null,
   );
   const [hiddenPagesDraft, setHiddenPages] = useState<OwnCheckPage[] | null>(null);
-  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
 
@@ -84,10 +83,6 @@ export function OwnCheckSettings() {
   const hiddenPages = hiddenPagesDraft ?? settings.hiddenPages;
 
   async function save() {
-    if (!reason.trim()) {
-      toast.error("Angiv en begrundelse");
-      return;
-    }
     setSaving(true);
     try {
       await saveSettings({
@@ -95,10 +90,8 @@ export function OwnCheckSettings() {
         requireSecondPersonApproval: secondPerson,
         blockDuringCount: blockCount,
         hiddenPages,
-        reason,
       });
       toast.success("Egenkontrolindstillingerne er gemt");
-      setReason("");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Egenkontrolindstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
@@ -170,11 +163,6 @@ export function OwnCheckSettings() {
                 );
               })}
             </FieldSet>
-            <Field>
-              <FieldLabel htmlFor="own-check-settings-reason">Begrundelse for ændringer</FieldLabel>
-              <FieldDescription>Begrund ændringen. Teksten gemmes i ændringshistorikken.</FieldDescription>
-              <Input id="own-check-settings-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Fx ændrede krav til efterregistrering" maxLength={1_000} />
-            </Field>
           </FieldGroup>
         </CardContent>
         <CardFooter className="justify-end">
