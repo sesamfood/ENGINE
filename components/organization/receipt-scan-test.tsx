@@ -20,7 +20,8 @@ import {
   type LearnedLabels,
   type ReceiptField,
 } from "@/lib/receipt-scan/extract";
-import { detectText, loadOcr, readText, textOutline, type OcrBox, type OcrEngine, type TextOutline } from "@/lib/receipt-scan/ocr";
+import { textOutline, type Point, type TextOutline } from "@/lib/receipt-scan/geometry";
+import { detectText, loadOcr, readText, type OcrBox, type OcrEngine } from "@/lib/receipt-scan/ocr";
 
 const LEARNED_KEY = "receipt-scan-learned-labels";
 const LIVE_SCALE = 0.6; // live detection size relative to the frame; smaller misses text that is still readable
@@ -373,7 +374,33 @@ function ReceiptCamera({
       capture(frame);
     };
 
-    const show = (outline: TextOutline | null, W: number, H: number) => {
+    const colors = { readable: themeColor("--success"), far: themeColor("--warning") };
+    let readable = false;
+    let shown: Point[] | null = null;
+
+    // Detection runs a few times a second in the worker; the outline eases toward it on every frame.
+    const render = () => {
+      if (!live) return;
+      const W = video.videoWidth, H = video.videoHeight;
+      const ctx = overlay.getContext("2d");
+      if (W && ctx) {
+        if (overlay.width !== W || overlay.height !== H) {
+          overlay.width = W;
+          overlay.height = H;
+        }
+        const target = last?.corners;
+        shown = target ? (shown ? shown.map(([x, y], i) => [x + (target[i][0] - x) * 0.35, y + (target[i][1] - y) * 0.35]) : target) : null;
+        ctx.clearRect(0, 0, W, H);
+        if (shown) {
+          ctx.lineWidth = Math.max(W, H) / 150;
+          ctx.lineJoin = "round";
+          strokePolygon(ctx, shown, readable ? colors.readable : colors.far, 0.15);
+        }
+      }
+      requestAnimationFrame(render);
+    };
+
+    const update = (outline: TextOutline | null, W: number, H: number) => {
       const now = performance.now();
       const moved =
         !outline ||
@@ -382,17 +409,9 @@ function ReceiptCamera({
         Math.abs(outline.area / last.area - 1) > 0.1;
       if (moved) stableSince = now;
       last = outline;
-      const readable = !!outline && outline.lineHeight >= MIN_LINE_HEIGHT;
+      readable = !!outline && outline.lineHeight >= MIN_LINE_HEIGHT;
       const ready = readable && now - stableSince >= STABLE_MS;
       setHint(!outline ? "Hold kameraet tæt på kasserapporten" : !readable ? "Kom tættere på" : ready ? "Tager billede…" : "Hold stille");
-      overlay.width = W;
-      overlay.height = H;
-      const ctx = overlay.getContext("2d");
-      if (ctx && outline) {
-        ctx.lineWidth = Math.max(W, H) / 150;
-        ctx.lineJoin = "round";
-        strokePolygon(ctx, outline.corners, themeColor(readable ? "--success" : "--warning"), 0.15);
-      }
       if (ready) captureRef.current();
     };
 
@@ -400,7 +419,7 @@ function ReceiptCamera({
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
         });
         if (!live) return stop();
         video.srcObject = stream;
@@ -409,14 +428,15 @@ function ReceiptCamera({
         if (live) unavailable();
         return;
       }
+      requestAnimationFrame(render);
       while (live) {
-        if (video.readyState >= 2) {
-          const W = video.videoWidth, H = video.videoHeight;
-          const rects = (await detectText(video, Math.max(W, H) * LIVE_SCALE)).filter((r) => Math.min(r.w, r.h) < Math.min(W, H) / 10);
-          if (!live) break;
-          show(rects.length >= 8 ? textOutline(rects) : null, W, H);
+        const W = video.videoWidth, H = video.videoHeight;
+        if (!W) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
         }
-        await new Promise((resolve) => setTimeout(resolve, 80));
+        const rects = (await detectText(video, Math.max(W, H) * LIVE_SCALE)).filter((r) => Math.min(r.w, r.h) < Math.min(W, H) / 10);
+        if (live) update(rects.length >= 8 ? textOutline(rects) : null, W, H);
       }
     })();
     return stop;
