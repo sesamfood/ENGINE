@@ -1,7 +1,7 @@
 // Rotated-rectangle geometry shared by the OCR worker and the camera overlay.
 export type Point = [number, number];
 export type Rect = { cx: number; cy: number; w: number; h: number; angle: number };
-export type TextOutline = { corners: Point[]; cx: number; cy: number; area: number; lineHeight: number };
+export type TextOutline = Rect & { corners: Point[]; area: number; lineHeight: number };
 
 export function convexHull(points: Point[]) {
   points.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -56,5 +56,5 @@ export function textOutline(rects: Rect[]): TextOutline | null {
   const rect = minAreaRect(convexHull(rects.flatMap(corners)));
   const lines = rects.filter((r) => Math.max(r.w, r.h) >= 3 * Math.min(r.w, r.h));
   const heights = (lines.length ? lines : rects).map((r) => Math.min(r.w, r.h)).sort((a, b) => a - b);
-  return rect && { corners: corners(rect), cx: rect.cx, cy: rect.cy, area: rect.w * rect.h, lineHeight: heights[heights.length >> 1] };
+  return rect && { ...rect, corners: corners(rect), lineHeight: heights[heights.length >> 1] };
 }

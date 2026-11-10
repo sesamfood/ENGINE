@@ -37,6 +37,89 @@ function around(points: Point[], W: number, H: number): Region {
   return { x, y, w: Math.min(W, Math.ceil(Math.max(...xs) + mx)) - x, h: Math.min(H, Math.ceil(Math.max(...ys) + my)) - y };
 }
 
+// Cuts the outline's rotated rectangle out of the frame and turns it upright, with a margin for the paper
+// around the text. Without an outline the whole frame is kept.
+function cropToOutline(video: HTMLVideoElement, outline: TextOutline | null) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !outline) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx?.drawImage(video, 0, 0);
+    return canvas;
+  }
+  const margin = outline.lineHeight * 1.5;
+  canvas.width = Math.round(outline.w + 2 * margin);
+  canvas.height = Math.round(outline.h + 2 * margin);
+  ctx.fillStyle = "#fff"; // paper colour where the margin leaves the frame
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-outline.angle);
+  ctx.translate(-outline.cx, -outline.cy);
+  ctx.drawImage(video, 0, 0);
+  return canvas;
+}
+
+// Viewfinder: dims the camera image outside the receipt, draws rounded corner brackets with a soft glow, and
+// runs a line around the edge while the receipt is held still. `unit` is a line width in video pixels.
+function drawViewfinder(
+  ctx: CanvasRenderingContext2D,
+  quad: Point[],
+  { color, progress, opacity, unit }: { color: string; progress: number; opacity: number; unit: number },
+) {
+  const corner = (i: number) => quad[(i + 4) % 4];
+  const edges = quad.map((p, i) => Math.hypot(corner(i + 1)[0] - p[0], corner(i + 1)[1] - p[1]));
+  const radius = Math.min(unit * 4, Math.min(...edges) / 4);
+  const outline = () => {
+    ctx.beginPath();
+    ctx.moveTo((quad[0][0] + quad[1][0]) / 2, (quad[0][1] + quad[1][1]) / 2);
+    for (let i = 1; i <= 4; i++) ctx.arcTo(corner(i)[0], corner(i)[1], corner(i + 1)[0], corner(i + 1)[1], radius);
+    ctx.closePath();
+  };
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  outline();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = ctx.strokeStyle = color;
+  ctx.globalAlpha = opacity * 0.08;
+  ctx.fill();
+  ctx.globalAlpha = opacity * 0.5;
+  ctx.lineWidth = unit * 0.4;
+  ctx.stroke();
+
+  ctx.globalAlpha = opacity;
+  ctx.lineCap = ctx.lineJoin = "round";
+  if (progress > 0) {
+    const perimeter = edges.reduce((a, b) => a + b);
+    ctx.lineWidth = unit;
+    ctx.setLineDash([perimeter * progress, perimeter]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.lineWidth = unit * 1.8;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = unit * 3;
+  const length = Math.min(...edges) * 0.18 + radius;
+  quad.forEach((c, i) => {
+    const toward = (p: Point): Point => {
+      const d = Math.hypot(p[0] - c[0], p[1] - c[1]);
+      return [c[0] + ((p[0] - c[0]) / d) * length, c[1] + ((p[1] - c[1]) / d) * length];
+    };
+    const [a, b] = [toward(corner(i - 1)), toward(corner(i + 1))];
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.arcTo(c[0], c[1], b[0], b[1], radius);
+    ctx.lineTo(b[0], b[1]);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
 const fieldOptions = Object.entries(receiptFields).map(([value, { label }]) => ({ value: value as ReceiptField, label }));
 const amountFormatter = new Intl.NumberFormat("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -375,10 +458,7 @@ function ReceiptCamera({
     };
     captureRef.current = () => {
       if (!live) return;
-      const frame = document.createElement("canvas");
-      frame.width = video.videoWidth;
-      frame.height = video.videoHeight;
-      frame.getContext("2d")?.drawImage(video, 0, 0);
+      const frame = cropToOutline(video, last);
       stop();
       capture(frame);
     };
@@ -386,6 +466,7 @@ function ReceiptCamera({
     const colors = { readable: themeColor("--success"), far: themeColor("--warning") };
     let readable = false;
     let shown: Point[] | null = null;
+    let opacity = 0;
     let lastFrame = performance.now();
 
     // Detection runs in the worker; the outline eases toward the latest result on every display frame.
@@ -401,13 +482,17 @@ function ReceiptCamera({
           overlay.height = H;
         }
         const target = last?.corners;
-        shown = target ? (shown ? shown.map(([x, y], i) => [x + (target[i][0] - x) * ease, y + (target[i][1] - y) * ease]) : target) : null;
+        if (target) shown = shown ? shown.map(([x, y], i) => [x + (target[i][0] - x) * ease, y + (target[i][1] - y) * ease]) : target;
+        opacity += ((target ? 1 : 0) - opacity) * ease;
         ctx.clearRect(0, 0, W, H);
-        if (shown) {
-          ctx.lineWidth = Math.max(W, H) / 150;
-          ctx.lineJoin = "round";
-          strokePolygon(ctx, shown, readable ? colors.readable : colors.far, 0.15);
-        }
+        if (shown && opacity > 0.01) {
+          drawViewfinder(ctx, shown, {
+            color: readable ? colors.readable : colors.far,
+            progress: readable ? Math.min(1, (performance.now() - stableSince) / STABLE_MS) : 0,
+            opacity,
+            unit: Math.max(W, H) / 250,
+          });
+        } else if (!target) shown = null; // faded out; the next outline starts where it is found
       }
       requestAnimationFrame(render);
     };

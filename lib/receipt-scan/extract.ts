@@ -47,16 +47,38 @@ const height = (b: OcrBox) => Math.hypot(b.box[3][0] - b.box[0][0], b.box[3][1] 
 const median = (xs: number[]) => xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;
 
 export function extractReceipt(boxes: OcrBox[], learned: LearnedLabels = {}) {
-  // Text-line slope from nearby wide boxes, so rows can be followed across a tilted, perspective-distorted photo.
+  // Rough text-line slope from nearby wide boxes, so rows can be followed across a tilted, perspective-distorted photo.
   const wide = boxes
     .filter((b) => b.box[1][0] - b.box[0][0] > 60)
     .map((b) => ({ y: center(b)[1], s: (b.box[1][1] - b.box[0][1]) / (b.box[1][0] - b.box[0][0]) }));
-  const slopeAt = (y: number) =>
+  const roughSlopeAt = (y: number) =>
     median(wide.filter((w) => Math.abs(w.y - y) < 80).map((w) => w.s)) || median(wide.map((w) => w.s));
   const amounts = boxes.flatMap((b) => {
     const v = parseAmount(b.text);
     return v === null ? [] : [{ b, v, c: center(b) }];
   });
+  const texts = boxes.filter((b) => parseAmount(b.text) === null).map((b) => ({ c: center(b), right: Math.max(...b.box.map((p) => p[0])) }));
+
+  // Box angles are too coarse on small text to tell rows apart, so nearby rows vote on the slope that lines text
+  // up with amounts. Only votes near the rough slope count; one row up or down would score just as well.
+  const slopeAt = (y: number) => {
+    const rough = roughSlopeAt(y);
+    const votes: number[] = [];
+    for (const t of texts) {
+      if (Math.abs(t.c[1] - y) > 150) continue;
+      for (const a of amounts) {
+        const dx = a.c[0] - t.c[0];
+        const s = (a.c[1] - t.c[1]) / dx;
+        if (a.c[0] > t.right && Math.abs(s - rough) < 0.025) votes.push(s);
+      }
+    }
+    let best = rough, bestCount = 0;
+    for (const s of votes) {
+      const count = votes.filter((v) => Math.abs(v - s) < 0.006).length;
+      if (count > bestCount) [best, bestCount] = [s, count];
+    }
+    return best;
+  };
 
   const amountFor = (label: OcrBox) => {
     const [lx, ly] = center(label);
