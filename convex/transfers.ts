@@ -557,6 +557,10 @@ export const createTransfer = mutation({
     );
     const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const aggregates = transferAggregates(resolvedItems);
+    // Every Transfer waits for a goods receipt, unless goods receipts are
+    // turned off and nothing could accept it. Internal orders always wait.
+    const receiptRequired =
+      order !== null || !auth.disabledFeatures.has("goodsReceipts");
     const transferId = await ctx.db.insert("transfers", {
       organizationId,
       fromLocationId: args.fromLocationId,
@@ -566,9 +570,8 @@ export const createTransfer = mutation({
       comment,
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
-      // Every Transfer waits for a goods receipt before stock moves.
-      stockApplied: false,
-      receiptStatus: "pending",
+      stockApplied: !receiptRequired,
+      ...(receiptRequired ? { receiptStatus: "pending" as const } : {}),
       ...aggregates,
       dashboardSummaryTimeZone: summaryTimeZone,
       ...(order ? { orderId: order._id } : {}),
@@ -578,6 +581,17 @@ export const createTransfer = mutation({
         fulfillmentStatus: "transferred",
         transferId,
       });
+    }
+
+    if (!receiptRequired) {
+      await applyTransferStock(
+        ctx,
+        organizationId,
+        args.fromLocationId,
+        args.toLocationId,
+        resolvedItems,
+        1,
+      );
     }
 
     for (const item of resolvedItems) {

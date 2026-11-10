@@ -208,59 +208,70 @@ export function PendingTransfers() {
       ) : null}
 
       {orders.orders.length > 0 || fullTransfers.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {orders.orders.map((order) => (
-            <Link
-              key={order.id}
-              href={`/goods-receipts/manual?order=${order.id}`}
-              aria-label={`Registrér bestilling${order.supplierName ? ` fra ${order.supplierName}` : ""}`}
-              className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <Card appearance="link" className="h-full">
-                <CardHeader>
-                  <CardTitle>{order.supplierName ?? "Bestilling"}</CardTitle>
-                  <CardDescription>
-                    {dateTimeFormatter.format(order.createdAt)} ·{" "}
-                    {order.createdByName}
-                  </CardDescription>
-                  <CardAction>
-                    <Badge variant="secondary">Bestilling</Badge>
-                  </CardAction>
-                </CardHeader>
-                <CardFooter appearance="emphasized" className="justify-between">
-                  <span>Registrér modtagelse</span>
-                  <ArrowRightIcon aria-hidden="true" />
-                </CardFooter>
-              </Card>
-            </Link>
-          ))}
-          {fullTransfers.map((transfer) => (
-            <Link
-              key={transfer.id}
-              href={`/goods-receipts/${transfer.id}`}
-              aria-label={`Registrér transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
-              className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <Card appearance="link" className="h-full">
-                <CardHeader>
-                  <CardTitle>
-                    {transfer.fromLocationName} → {transfer.toLocationName}
-                  </CardTitle>
-                  <CardDescription>
-                    {dateTimeFormatter.format(transfer.transferredAt)}
-                  </CardDescription>
-                  <CardAction>
-                    <Badge variant="secondary">Transfer</Badge>
-                  </CardAction>
-                </CardHeader>
-                <CardFooter appearance="emphasized" className="justify-between">
-                  <span>Registrér modtagelse</span>
-                  <ArrowRightIcon aria-hidden="true" />
-                </CardFooter>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <section className="flex flex-col gap-3">
+          {quickTransfers.length > 0 ? (
+            <h3 className="text-base font-semibold">Bestillinger</h3>
+          ) : null}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {orders.orders.map((order) => (
+              <Link
+                key={order.id}
+                href={`/goods-receipts/manual?order=${order.id}`}
+                aria-label={`Registrér bestilling${order.supplierName ? ` fra ${order.supplierName}` : ""}`}
+                className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Card appearance="link" className="h-full">
+                  <CardHeader>
+                    <CardTitle>{order.supplierName ?? "Bestilling"}</CardTitle>
+                    <CardDescription>
+                      {dateTimeFormatter.format(order.createdAt)} ·{" "}
+                      {order.createdByName}
+                    </CardDescription>
+                    <CardAction>
+                      <Badge variant="secondary">Bestilling</Badge>
+                    </CardAction>
+                  </CardHeader>
+                  <CardFooter
+                    appearance="emphasized"
+                    className="justify-between"
+                  >
+                    <span>Registrér modtagelse</span>
+                    <ArrowRightIcon aria-hidden="true" />
+                  </CardFooter>
+                </Card>
+              </Link>
+            ))}
+            {fullTransfers.map((transfer) => (
+              <Link
+                key={transfer.id}
+                href={`/goods-receipts/${transfer.id}`}
+                aria-label={`Registrér transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
+                className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Card appearance="link" className="h-full">
+                  <CardHeader>
+                    <CardTitle>
+                      {transfer.fromLocationName} → {transfer.toLocationName}
+                    </CardTitle>
+                    <CardDescription>
+                      {dateTimeFormatter.format(transfer.transferredAt)}
+                    </CardDescription>
+                    <CardAction>
+                      <Badge variant="secondary">Transfer</Badge>
+                    </CardAction>
+                  </CardHeader>
+                  <CardFooter
+                    appearance="emphasized"
+                    className="justify-between"
+                  >
+                    <span>Registrér modtagelse</span>
+                    <ArrowRightIcon aria-hidden="true" />
+                  </CardFooter>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
       ) : null}
     </div>
   );
