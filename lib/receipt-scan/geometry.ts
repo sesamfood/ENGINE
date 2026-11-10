@@ -50,11 +50,35 @@ export function corners({ cx, cy, w, h, angle }: Rect): Point[] {
   return ([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]] as Point[]).map(([x, y]) => [cx + x * c - y * s, cy + x * s + y * c]);
 }
 
-// Rotated rectangle around all text regions, plus the median height of line-shaped regions.
+const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
+
+// Rotated rectangle around the receipt, plus the median height of its text lines. Only text lying in the reading
+// direction counts, grouped with its neighbours; the largest group wins. Stray text nearby, such as a screen or a
+// sign, and streaks or edges that look like vertical text are left out.
 export function textOutline(rects: Rect[]): TextOutline | null {
-  if (!rects.length) return null;
-  const rect = minAreaRect(convexHull(rects.flatMap(corners)));
-  const lines = rects.filter((r) => Math.max(r.w, r.h) >= 3 * Math.min(r.w, r.h));
-  const heights = (lines.length ? lines : rects).map((r) => Math.min(r.w, r.h)).sort((a, b) => a - b);
-  return rect && { ...rect, corners: corners(rect), lineHeight: heights[heights.length >> 1] };
+  // Angles are normalized to ±45° with w along the angle, so reading-direction text is wider than tall.
+  const lines = rects.filter((r) => r.w >= 1.5 * r.h);
+  if (lines.length < 3) return null;
+  const longLines = lines.filter((r) => r.w >= 3 * r.h);
+  const lineHeight = median((longLines.length ? longLines : lines).map((r) => r.h));
+  const angle = median(lines.map((r) => r.angle));
+  const ux = Math.cos(angle), uy = Math.sin(angle);
+  const placed = lines.map((r) => ({ r, u: r.cx * ux + r.cy * uy, n: -r.cx * uy + r.cy * ux }));
+
+  // Neighbours along a row can be far apart (label and amount columns); rows above and below must be close.
+  const parent = placed.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  for (let i = 0; i < placed.length; i++)
+    for (let j = i + 1; j < placed.length; j++) {
+      const a = placed[i], b = placed[j];
+      const alongGap = Math.abs(a.u - b.u) - (a.r.w + b.r.w) / 2;
+      const acrossGap = Math.abs(a.n - b.n) - (a.r.h + b.r.h) / 2;
+      if (alongGap < 12 * lineHeight && acrossGap < 2.5 * lineHeight) parent[root(i)] = root(j);
+    }
+  const sizes = new Map<number, number>();
+  placed.forEach((_, i) => sizes.set(root(i), (sizes.get(root(i)) ?? 0) + 1));
+  const largest = [...sizes].sort((a, b) => b[1] - a[1])[0][0];
+
+  const rect = minAreaRect(convexHull(lines.filter((_, i) => root(i) === largest).flatMap(corners)));
+  return rect && { ...rect, corners: corners(rect), lineHeight };
 }
