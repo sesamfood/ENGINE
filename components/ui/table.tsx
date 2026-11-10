@@ -129,6 +129,7 @@ const tableHeadAppearance = cva("", {
       muted: "bg-muted/30",
       day: "border-l",
       currentDay: "border-l bg-primary/5",
+      matrix: "h-auto border-l px-1 text-center align-bottom whitespace-normal",
     },
   },
 })
@@ -171,6 +172,7 @@ const tableCellAppearance = cva("", {
       compactNumeric: "tabular-nums py-1.5",
       day: "border-l p-2",
       currentDay: "border-l p-2 bg-primary/5",
+      matrix: "border-l p-1 text-center",
     },
   },
 })
