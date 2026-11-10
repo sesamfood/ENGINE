@@ -1,4 +1,17 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  TextRenderingMode,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  setLineWidth,
+  setStrokingColor,
+  setTextRenderingMode,
+  type PDFFont,
+  type PDFImage,
+  type PDFPage,
+} from "pdf-lib";
 import { allergenIconPaths } from "./allergen-icons";
 import { allergens, type AllergenId } from "./allergens";
 import { sanitizePdfText } from "./own-check-pdf";
@@ -87,6 +100,13 @@ export async function buildAllergenPdf(input: AllergenPdfInput) {
     // Header: title, then one pictogram per allergen.
     const headerBottom = top - HEADER_HEIGHT;
     const titleSize = 26;
+    // Helvetica Bold is the heaviest standard font; an outline stroke makes the title heavier.
+    page.pushOperators(
+      pushGraphicsState(),
+      setTextRenderingMode(TextRenderingMode.FillAndOutline),
+      setStrokingColor(primary),
+      setLineWidth(1.2),
+    );
     page.drawText("ALLERGENER", {
       x: left + 8,
       y: headerBottom + HEADER_HEIGHT / 2 - 2,
@@ -94,6 +114,7 @@ export async function buildAllergenPdf(input: AllergenPdfInput) {
       font: bold,
       color: primary,
     });
+    page.pushOperators(popGraphicsState());
     page.drawText(fitText(input.locationName, bold, 9, NAME_WIDTH - 16), {
       x: left + 9,
       y: headerBottom + 14,

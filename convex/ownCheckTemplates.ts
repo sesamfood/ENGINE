@@ -16,10 +16,11 @@ import {
 import {
   requireHumanPrincipal,
   requireLocationAccess,
+  requireOrganization,
   requireOwnCheckManager,
 } from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
-import { getOwnCheckConfiguration } from "./lib/ownCheckSettings";
+import { getOwnCheckConfiguration, ownCheckPageValidator } from "./lib/ownCheckSettings";
 import { claimStorageForOrganization } from "./lib/storageOwnership";
 import { allowsProductTemperatures, MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./lib/ownChecks";
 
@@ -611,6 +612,7 @@ const settingsOutputValidator = v.object({
   lateSubmissionDays: v.number(),
   requireSecondPersonApproval: v.boolean(),
   blockDuringCount: v.boolean(),
+  hiddenPages: v.array(ownCheckPageValidator),
 });
 
 export const getSettings = query({
@@ -619,6 +621,15 @@ export const getSettings = query({
   handler: async (ctx) => {
     const auth = await requireOwnCheckManager(ctx);
     return await getOwnCheckConfiguration(ctx, auth.organizationId);
+  },
+});
+
+export const getHiddenPages = query({
+  args: {},
+  returns: v.array(ownCheckPageValidator),
+  handler: async (ctx) => {
+    const auth = await requireOrganization(ctx);
+    return (await getOwnCheckConfiguration(ctx, auth.organizationId)).hiddenPages;
   },
 });
 
@@ -638,6 +649,7 @@ export const saveSettings = mutation({
     lateSubmissionDays: v.number(),
     requireSecondPersonApproval: v.boolean(),
     blockDuringCount: v.boolean(),
+    hiddenPages: v.optional(v.array(ownCheckPageValidator)),
     reason: v.string(),
   },
   returns: v.null(),
@@ -645,6 +657,10 @@ export const saveSettings = mutation({
     const auth = await requireOwnCheckManager(ctx);
     if (!Number.isInteger(args.lateSubmissionDays) || args.lateSubmissionDays < 0 || args.lateSubmissionDays > 30) {
       throw new ConvexError("Fristen skal være mellem 0 og 30 dage");
+    }
+    const hiddenPages = args.hiddenPages && [...new Set(args.hiddenPages)];
+    if (hiddenPages && hiddenPages.length >= 5) {
+      throw new ConvexError("Mindst én side skal være slået til");
     }
     const reason = requireAuditReason(args.reason);
     const existing = await ctx.db
@@ -659,6 +675,7 @@ export const saveSettings = mutation({
         lateSubmissionDays: args.lateSubmissionDays,
         requireSecondPersonApproval: args.requireSecondPersonApproval,
         blockDuringCount: args.blockDuringCount,
+        ...(hiddenPages ? { hiddenPages } : {}),
         updatedAt: now,
       });
     } else {
@@ -667,6 +684,7 @@ export const saveSettings = mutation({
         lateSubmissionDays: args.lateSubmissionDays,
         requireSecondPersonApproval: args.requireSecondPersonApproval,
         blockDuringCount: args.blockDuringCount,
+        ...(hiddenPages ? { hiddenPages } : {}),
         updatedAt: now,
       });
     }

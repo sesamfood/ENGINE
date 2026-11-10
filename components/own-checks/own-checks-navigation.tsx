@@ -1,82 +1,62 @@
 "use client";
 
 import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon, WheatIcon } from "lucide-react";
+import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { SectionNav } from "@/components/section-nav";
 import { useKiosk, usePermission } from "@/components/app-shell";
+import { api } from "@/convex/_generated/api";
 
 export function OwnChecksNavigation() {
   const pathname = usePathname();
   const router = useRouter();
   const kiosk = useKiosk();
   const kioskMode = Boolean(kiosk?.kioskModeEnabled);
+  const hiddenPages = useQuery(api.ownCheckTemplates.getHiddenPages);
   const canToday = usePermission("ownChecks.perform");
   const canOverview = usePermission("ownChecks.view");
   const canDocumentation = usePermission("ownChecks.export");
-  const showToday = kioskMode
-    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.today"))
-    : canToday;
-  const showOverview = kioskMode
-    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.overview"))
-    : canOverview;
-  const showDocumentation = kioskMode
-    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.documentation"))
-    : canDocumentation;
-  const showGuidance = kioskMode
-    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.guidance"))
-    : canToday || canOverview || canDocumentation;
-  const showAllergens = kioskMode
-    ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.allergens"))
-    : canToday || canOverview || canDocumentation;
-  const sectionCount =
-    Number(showToday) + Number(showOverview) + Number(showDocumentation) + Number(showAllergens) + Number(showGuidance);
-  const value = pathname.startsWith("/own-checks/guidance") && showGuidance
-    ? "guidance"
-    : pathname.startsWith("/own-checks/allergens") && showAllergens
-    ? "allergens"
-    : pathname.startsWith("/own-checks/documentation") && showDocumentation
-    ? "documentation"
-    : pathname.startsWith("/own-checks/overview") && showOverview
-      ? "overview"
-      : showToday
-        ? "today"
-        : showOverview
-          ? "overview"
-          : "documentation";
+  const canAny = canToday || canOverview || canDocumentation;
+  const sections = [
+    { id: "ownChecks.today", href: "/own-checks", label: "I dag", icon: ClipboardCheckIcon, allowed: canToday },
+    { id: "ownChecks.overview", href: "/own-checks/overview", label: "Oversigt", icon: ListChecksIcon, allowed: canOverview },
+    { id: "ownChecks.documentation", href: "/own-checks/documentation", label: "Dokumentation", icon: FileCheck2Icon, allowed: canDocumentation },
+    { id: "ownChecks.allergens", href: "/own-checks/allergens", label: "Allergener", icon: WheatIcon, allowed: canAny },
+    { id: "ownChecks.guidance", href: "/own-checks/guidance", label: "Vejledning", icon: BookOpenIcon, allowed: canAny },
+  ] as const;
+  const visible = sections.filter(
+    (section) =>
+      !hiddenPages?.includes(section.id) &&
+      (kioskMode ? Boolean(kiosk?.settings?.enabledPages.includes(section.id)) : section.allowed),
+  );
+  const matches = (href: string) =>
+    href === "/own-checks"
+      ? pathname === "/own-checks" || pathname.startsWith("/own-checks/check/")
+      : pathname.startsWith(href);
+  const active = visible.find((section) => matches(section.href)) ?? visible[0];
+  const prefetchKey = visible.map((section) => section.href).join(",");
 
   useEffect(() => {
-    if (showToday) router.prefetch("/own-checks");
-    if (showOverview) router.prefetch("/own-checks/overview");
-    if (showDocumentation) router.prefetch("/own-checks/documentation");
-    if (showAllergens) router.prefetch("/own-checks/allergens");
-    if (showGuidance) router.prefetch("/own-checks/guidance");
-  }, [router, showAllergens, showDocumentation, showGuidance, showOverview, showToday]);
+    for (const href of prefetchKey.split(",")) if (href) router.prefetch(href);
+  }, [prefetchKey, router]);
+
+  const redirectTo = hiddenPages !== undefined && active && !matches(active.href) ? active.href : null;
 
   useEffect(() => {
-    if (value === "today" && pathname.startsWith("/own-checks/check/")) return;
-    if (value === "guidance" && pathname.startsWith("/own-checks/guidance")) return;
-    if (value === "allergens" && pathname.startsWith("/own-checks/allergens")) return;
-    if ((value === "today" && pathname === "/own-checks") || (value === "overview" && pathname.startsWith("/own-checks/overview")) || (value === "documentation" && pathname.startsWith("/own-checks/documentation"))) return;
-    const href = value === "today" ? "/own-checks" : value === "overview" ? "/own-checks/overview" : "/own-checks/documentation";
-    router.replace(href, { scroll: false });
-  }, [pathname, router, value]);
+    if (redirectTo) router.replace(redirectTo, { scroll: false });
+  }, [redirectTo, router]);
 
-  if (sectionCount <= 1) return null;
-
-  const items = [
-    ...(showToday ? [{ href: "/own-checks", label: "I dag", icon: ClipboardCheckIcon, active: value === "today" }] : []),
-    ...(showOverview ? [{ href: "/own-checks/overview", label: "Oversigt", icon: ListChecksIcon, active: value === "overview" }] : []),
-    ...(showDocumentation ? [{ href: "/own-checks/documentation", label: "Dokumentation", icon: FileCheck2Icon, active: value === "documentation" }] : []),
-    ...(showAllergens ? [{ href: "/own-checks/allergens", label: "Allergener", icon: WheatIcon, active: value === "allergens" }] : []),
-    ...(showGuidance ? [{ href: "/own-checks/guidance", label: "Vejledning", icon: BookOpenIcon, active: value === "guidance" }] : []),
-  ];
+  if (visible.length <= 1) return null;
 
   return (
     <AppBottomBar>
       <div className="mx-auto w-full max-w-(--container-page)">
-        <SectionNav label="Egenkontrolsektioner" items={items} />
+        <SectionNav
+          label="Egenkontrolsektioner"
+          items={visible.map(({ href, label, icon }) => ({ href, label, icon, active: href === active?.href }))}
+        />
       </div>
     </AppBottomBar>
   );

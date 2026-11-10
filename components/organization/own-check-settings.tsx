@@ -24,6 +24,8 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,15 @@ import { Spinner } from "@/components/ui/spinner";
 
 import { api } from "@/convex/_generated/api";
 import { useAccess, usePermission } from "@/components/app-shell";
+import type { OwnCheckPage } from "@/convex/lib/ownCheckSettings";
+
+const pages: { id: OwnCheckPage; label: string }[] = [
+  { id: "ownChecks.today", label: "I dag" },
+  { id: "ownChecks.overview", label: "Oversigt" },
+  { id: "ownChecks.documentation", label: "Dokumentation" },
+  { id: "ownChecks.allergens", label: "Allergener" },
+  { id: "ownChecks.guidance", label: "Vejledning" },
+];
 
 export function OwnCheckSettings() {
   const access = useAccess();
@@ -48,6 +59,7 @@ export function OwnCheckSettings() {
   const [blockDuringCount, setBlockDuringCount] = useState<boolean | null>(
     null,
   );
+  const [hiddenPagesDraft, setHiddenPages] = useState<OwnCheckPage[] | null>(null);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
@@ -69,6 +81,7 @@ export function OwnCheckSettings() {
   const secondPerson =
     requireSecondPersonApproval ?? settings.requireSecondPersonApproval;
   const blockCount = blockDuringCount ?? settings.blockDuringCount;
+  const hiddenPages = hiddenPagesDraft ?? settings.hiddenPages;
 
   async function save() {
     if (!reason.trim()) {
@@ -81,6 +94,7 @@ export function OwnCheckSettings() {
         lateSubmissionDays: days,
         requireSecondPersonApproval: secondPerson,
         blockDuringCount: blockCount,
+        hiddenPages,
         reason,
       });
       toast.success("Egenkontrolindstillingerne er gemt");
@@ -97,7 +111,7 @@ export function OwnCheckSettings() {
       <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle>Indstillinger for egenkontrol</CardTitle>
-          <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og Count.</CardDescription>
+          <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og Count og hvilke sider der vises.</CardDescription>
         </CardHeader>
         <CardContent appearance="spacious" className="flex flex-col">
           <FieldGroup>
@@ -137,6 +151,25 @@ export function OwnCheckSettings() {
               }
               invalid={blockCount}
             />
+            <FieldSet>
+              <FieldLegend variant="label">Sider i egenkontrol</FieldLegend>
+              <FieldDescription>Mindst én side skal være slået til.</FieldDescription>
+              {pages.map((page) => {
+                const shown = !hiddenPages.includes(page.id);
+                return (
+                  <SettingsSwitchField
+                    key={page.id}
+                    label={page.label}
+                    id={`own-check-page-${page.id}`}
+                    checked={shown}
+                    disabled={shown && hiddenPages.length >= pages.length - 1}
+                    onCheckedChange={(checked) =>
+                      setHiddenPages(checked ? hiddenPages.filter((id) => id !== page.id) : [...hiddenPages, page.id])
+                    }
+                  />
+                );
+              })}
+            </FieldSet>
             <Field>
               <FieldLabel htmlFor="own-check-settings-reason">Begrundelse for ændringer</FieldLabel>
               <FieldDescription>Begrund ændringen. Teksten gemmes i ændringshistorikken.</FieldDescription>
