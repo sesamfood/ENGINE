@@ -4,19 +4,18 @@ import type { OcrBox, OcrEngine, OcrJob, OcrResponse } from "./ocr.worker";
 
 export type { OcrBox, OcrEngine };
 type ReadResult = { boxes: OcrBox[]; detectMs: number; readMs: number; regions: number };
-type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; onProgress?: (done: number, total: number) => void };
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void };
 
 let worker: Worker | undefined;
 let nextId = 0;
 const pending = new Map<number, Pending>();
 
-function call<T>(request: OcrJob, onProgress?: Pending["onProgress"]) {
+function call<T>(request: OcrJob) {
   if (!worker) {
     worker = new Worker(new URL("./ocr.worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = ({ data }: MessageEvent<OcrResponse>) => {
       const job = pending.get(data.id);
       if (!job) return;
-      if ("progress" in data) return job.onProgress?.(...data.progress);
       pending.delete(data.id);
       if ("error" in data) job.reject(new Error(data.error));
       else job.resolve(data.result);
@@ -24,7 +23,7 @@ function call<T>(request: OcrJob, onProgress?: Pending["onProgress"]) {
   }
   const id = nextId++;
   return new Promise<T>((resolve, reject) => {
-    pending.set(id, { resolve: (value) => resolve(value as T), reject, onProgress });
+    pending.set(id, { resolve: (value) => resolve(value as T), reject });
     worker!.postMessage({ ...request, id }, "bitmap" in request ? [request.bitmap] : []);
   });
 }
@@ -45,6 +44,6 @@ export async function detectText(video: HTMLVideoElement, scale: number, region:
 }
 
 // The worker gets its own copy, so the caller can keep drawing the bitmap.
-export async function readText(bitmap: ImageBitmap, onProgress?: (done: number, total: number) => void) {
-  return call<ReadResult>({ type: "read", bitmap: await createImageBitmap(bitmap) }, onProgress);
+export async function readText(bitmap: ImageBitmap) {
+  return call<ReadResult>({ type: "read", bitmap: await createImageBitmap(bitmap) });
 }

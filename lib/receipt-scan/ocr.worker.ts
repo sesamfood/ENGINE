@@ -24,7 +24,6 @@ export type OcrJob =
 type OcrRequest = OcrJob & { id: number };
 export type OcrResponse =
   | { id: number; error: string }
-  | { id: number; progress: [number, number] }
   | { id: number; result: unknown };
 
 let running: Promise<unknown> = Promise.resolve();
@@ -144,14 +143,13 @@ function decode({ data, dims }: Tensor, chars: string[]) {
   return { text: text.trim(), score: scores.length ? scores.reduce((a, b) => a + b) / scores.length : 0 };
 }
 
-async function read(bitmap: ImageBitmap, onProgress: (done: number, total: number) => void) {
+async function read(bitmap: ImageBitmap) {
   const { ort, rec, chars } = await load();
   const t0 = performance.now();
   const rects = await detect(bitmap, 1920);
   const t1 = performance.now();
   const boxes: OcrBox[] = [];
-  for (const [i, rect] of rects.entries()) {
-    onProgress(i + 1, rects.length);
+  for (const rect of rects) {
     let { w, h, angle } = rect;
     if (h / w >= 1.5) { angle += Math.PI / 2; [w, h] = [h, w]; }
     const outW = Math.max(1, Math.round((REC_H * w) / h));
@@ -179,7 +177,7 @@ self.onmessage = async ({ data }: MessageEvent<OcrRequest>) => {
         ? (await load()).engine
         : data.type === "detect"
           ? await detect(data.bitmap, data.maxSide)
-          : await read(data.bitmap, (done, total) => reply({ id: data.id, progress: [done, total] }));
+          : await read(data.bitmap);
     reply({ id: data.id, result });
   } catch (error) {
     reply({ id: data.id, error: error instanceof Error ? error.message : String(error) });

@@ -1,8 +1,7 @@
 "use client";
 
 import { CameraIcon, CircleCheckIcon, CircleXIcon, ImageIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -20,105 +19,10 @@ import {
   type LearnedLabels,
   type ReceiptField,
 } from "@/lib/receipt-scan/extract";
-import { textOutline, type Point, type TextOutline } from "@/lib/receipt-scan/geometry";
-import { detectText, loadOcr, readText, type OcrBox, type OcrEngine, type Region } from "@/lib/receipt-scan/ocr";
+import { loadOcr, readText, type OcrBox, type OcrEngine } from "@/lib/receipt-scan/ocr";
+import { ReceiptCamera } from "./receipt-camera";
 
 const LEARNED_KEY = "receipt-scan-learned-labels";
-const LIVE_SCALE = 0.6; // live detection size relative to the frame; smaller misses text that is still readable
-const MIN_LINE_HEIGHT = 28; // video pixels; below this rows start to pair wrongly
-const STABLE_MS = 1000;
-const FULL_FRAME_EVERY = 15;
-
-// Bounding box of the outline with a margin for movement, clamped to the frame.
-function around(points: Point[], W: number, H: number): Region {
-  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
-  const mx = (Math.max(...xs) - Math.min(...xs)) * 0.15, my = (Math.max(...ys) - Math.min(...ys)) * 0.15;
-  const x = Math.max(0, Math.floor(Math.min(...xs) - mx)), y = Math.max(0, Math.floor(Math.min(...ys) - my));
-  return { x, y, w: Math.min(W, Math.ceil(Math.max(...xs) + mx)) - x, h: Math.min(H, Math.ceil(Math.max(...ys) + my)) - y };
-}
-
-// Cuts the outline's rotated rectangle out of the frame and turns it upright, with a margin for the paper
-// around the text. Without an outline the whole frame is kept.
-function cropToOutline(video: HTMLVideoElement, outline: TextOutline | null) {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  if (!ctx || !outline) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx?.drawImage(video, 0, 0);
-    return canvas;
-  }
-  const margin = outline.lineHeight * 1.5;
-  canvas.width = Math.round(outline.w + 2 * margin);
-  canvas.height = Math.round(outline.h + 2 * margin);
-  ctx.fillStyle = "#fff"; // paper colour where the margin leaves the frame
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate(-outline.angle);
-  ctx.translate(-outline.cx, -outline.cy);
-  ctx.drawImage(video, 0, 0);
-  return canvas;
-}
-
-// Viewfinder: dims the camera image outside the receipt, draws rounded corner brackets with a soft glow, and
-// runs a line around the edge while the receipt is held still. `unit` is a line width in video pixels.
-function drawViewfinder(
-  ctx: CanvasRenderingContext2D,
-  quad: Point[],
-  { color, progress, opacity, unit }: { color: string; progress: number; opacity: number; unit: number },
-) {
-  const corner = (i: number) => quad[(i + 4) % 4];
-  const edges = quad.map((p, i) => Math.hypot(corner(i + 1)[0] - p[0], corner(i + 1)[1] - p[1]));
-  const radius = Math.min(unit * 4, Math.min(...edges) / 4);
-  const outline = () => {
-    ctx.beginPath();
-    ctx.moveTo((quad[0][0] + quad[1][0]) / 2, (quad[0][1] + quad[1][1]) / 2);
-    for (let i = 1; i <= 4; i++) ctx.arcTo(corner(i)[0], corner(i)[1], corner(i + 1)[0], corner(i + 1)[1], radius);
-    ctx.closePath();
-  };
-
-  ctx.save();
-  ctx.globalAlpha = opacity;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  outline();
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.fill();
-  ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = ctx.strokeStyle = color;
-  ctx.globalAlpha = opacity * 0.08;
-  ctx.fill();
-  ctx.globalAlpha = opacity * 0.5;
-  ctx.lineWidth = unit * 0.4;
-  ctx.stroke();
-
-  ctx.globalAlpha = opacity;
-  ctx.lineCap = ctx.lineJoin = "round";
-  if (progress > 0) {
-    const perimeter = edges.reduce((a, b) => a + b);
-    ctx.lineWidth = unit;
-    ctx.setLineDash([perimeter * progress, perimeter]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-  ctx.lineWidth = unit * 1.8;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = unit * 3;
-  const length = Math.min(...edges) * 0.18 + radius;
-  quad.forEach((c, i) => {
-    const toward = (p: Point): Point => {
-      const d = Math.hypot(p[0] - c[0], p[1] - c[1]);
-      return [c[0] + ((p[0] - c[0]) / d) * length, c[1] + ((p[1] - c[1]) / d) * length];
-    };
-    const [a, b] = [toward(corner(i - 1)), toward(corner(i + 1))];
-    ctx.beginPath();
-    ctx.moveTo(a[0], a[1]);
-    ctx.arcTo(c[0], c[1], b[0], b[1], radius);
-    ctx.lineTo(b[0], b[1]);
-    ctx.stroke();
-  });
-  ctx.restore();
-}
 
 const fieldOptions = Object.entries(receiptFields).map(([value, { label }]) => ({ value: value as ReceiptField, label }));
 const amountFormatter = new Intl.NumberFormat("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -205,7 +109,7 @@ export function ReceiptScanTest() {
     setStatus("Læser kasserapporten…");
     try {
       const bitmap = await createImageBitmap(source);
-      const read = await readText(bitmap, (done, total) => setStatus(`Læser tekst ${done} af ${total}…`));
+      const read = await readText(bitmap);
       const seconds = (read.detectMs + read.readMs) / 1000;
       setScan({ bitmap, boxes: read.boxes, seconds, regions: read.regions });
       setStatus(`Færdig på ${seconds.toFixed(1)} s.`);
@@ -406,10 +310,8 @@ export function ReceiptScanTest() {
 
       {cameraOpen && (
         <ReceiptCamera
-          onCapture={(frame) => {
-            setCameraOpen(false);
-            runScan(frame);
-          }}
+          onCapture={runScan}
+          onDone={() => setCameraOpen(false)}
           onCancel={() => setCameraOpen(false)}
           onUnavailable={() => {
             setCameraOpen(false);
@@ -418,160 +320,5 @@ export function ReceiptScanTest() {
         />
       )}
     </div>
-  );
-}
-
-// Live camera with an outline around detected text. Captures by itself once the text is readable and steady.
-function ReceiptCamera({
-  onCapture,
-  onCancel,
-  onUnavailable,
-}: {
-  onCapture: (frame: HTMLCanvasElement) => void;
-  onCancel: () => void;
-  onUnavailable: () => void;
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const overlayRef = useRef<HTMLCanvasElement>(null);
-  const captureRef = useRef<() => void>(() => {});
-  const [hint, setHint] = useState("Starter kamera…");
-  const capture = useEffectEvent(onCapture);
-  const unavailable = useEffectEvent(onUnavailable);
-  const cancel = useEffectEvent(onCancel);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && cancel();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  useEffect(() => {
-    const video = videoRef.current!;
-    const overlay = overlayRef.current!;
-    let stream: MediaStream | undefined;
-    let live = true;
-    let last = null as TextOutline | null;
-    let stableSince = 0;
-    const stop = () => {
-      live = false;
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-    captureRef.current = () => {
-      if (!live) return;
-      const frame = cropToOutline(video, last);
-      stop();
-      capture(frame);
-    };
-
-    const colors = { readable: themeColor("--success"), far: themeColor("--warning") };
-    let readable = false;
-    let shown: Point[] | null = null;
-    let opacity = 0;
-    let lastFrame = performance.now();
-
-    // Detection runs in the worker; the outline eases toward the latest result on every display frame.
-    const render = (time: number) => {
-      if (!live) return;
-      const ease = 1 - Math.exp(-(time - lastFrame) / 60);
-      lastFrame = time;
-      const W = video.videoWidth, H = video.videoHeight;
-      const ctx = overlay.getContext("2d");
-      if (W && ctx) {
-        if (overlay.width !== W || overlay.height !== H) {
-          overlay.width = W;
-          overlay.height = H;
-        }
-        const target = last?.corners;
-        if (target) shown = shown ? shown.map(([x, y], i) => [x + (target[i][0] - x) * ease, y + (target[i][1] - y) * ease]) : target;
-        opacity += ((target ? 1 : 0) - opacity) * ease;
-        ctx.clearRect(0, 0, W, H);
-        if (shown && opacity > 0.01) {
-          drawViewfinder(ctx, shown, {
-            color: readable ? colors.readable : colors.far,
-            progress: readable ? Math.min(1, (performance.now() - stableSince) / STABLE_MS) : 0,
-            opacity,
-            unit: Math.max(W, H) / 250,
-          });
-        } else if (!target) shown = null; // faded out; the next outline starts where it is found
-      }
-      requestAnimationFrame(render);
-    };
-
-    const update = (outline: TextOutline | null, W: number, H: number) => {
-      const now = performance.now();
-      const moved =
-        !outline ||
-        !last ||
-        Math.hypot(outline.cx - last.cx, outline.cy - last.cy) > 0.02 * Math.max(W, H) ||
-        Math.abs(outline.area / last.area - 1) > 0.1;
-      if (moved) stableSince = now;
-      last = outline;
-      readable = !!outline && outline.lineHeight >= MIN_LINE_HEIGHT;
-      const ready = readable && now - stableSince >= STABLE_MS;
-      setHint(!outline ? "Hold kameraet tæt på kasserapporten" : !readable ? "Kom tættere på" : ready ? "Tager billede…" : "Hold stille");
-      if (ready) captureRef.current();
-    };
-
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } },
-        });
-        if (!live) return stop();
-        video.srcObject = stream;
-        await video.play();
-      } catch {
-        if (live) unavailable();
-        return;
-      }
-      requestAnimationFrame(render);
-      // Two detections in flight: the worker prepares one frame while the model runs the other.
-      let next = 0, applied = -1;
-      const track = async () => {
-        while (live) {
-          const W = video.videoWidth, H = video.videoHeight;
-          if (!W) {
-            await new Promise((resolve) => setTimeout(resolve, 50));
-            continue;
-          }
-          const n = next++;
-          // Track around the last outline; scan the whole frame now and then to catch a receipt that moved.
-          const region = last && n % FULL_FRAME_EVERY ? around(last.corners, W, H) : undefined;
-          const rects = (await detectText(video, LIVE_SCALE, region)).filter((r) => Math.min(r.w, r.h) < Math.min(W, H) / 10);
-          if (!live || n < applied) continue;
-          applied = n;
-          update(rects.length >= 8 ? textOutline(rects) : null, W, H);
-        }
-      };
-      track();
-      track();
-    })();
-    return stop;
-  }, []);
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 bg-background" role="dialog" aria-modal="true" aria-label="Kamera">
-      <video ref={videoRef} playsInline muted autoPlay className="absolute inset-0 size-full object-contain" />
-      <canvas ref={overlayRef} className="absolute inset-0 size-full object-contain" />
-      <p
-        role="status"
-        className="absolute top-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-background/90 px-4 py-2 font-medium shadow-sm"
-      >
-        {hint}
-      </p>
-      <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-8 pb-safe-inset">
-        <Button size="lg" variant="secondary" onClick={onCancel} autoFocus>
-          Annullér
-        </Button>
-        <button
-          type="button"
-          aria-label="Tag billede"
-          onClick={() => captureRef.current()}
-          className="size-20 rounded-full border-4 border-primary bg-background shadow-md outline-none focus-visible:ring-4 focus-visible:ring-ring"
-        />
-      </div>
-    </div>,
-    document.body,
   );
 }
