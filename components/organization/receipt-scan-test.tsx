@@ -21,12 +21,21 @@ import {
   type ReceiptField,
 } from "@/lib/receipt-scan/extract";
 import { textOutline, type Point, type TextOutline } from "@/lib/receipt-scan/geometry";
-import { detectText, loadOcr, readText, type OcrBox, type OcrEngine } from "@/lib/receipt-scan/ocr";
+import { detectText, loadOcr, readText, type OcrBox, type OcrEngine, type Region } from "@/lib/receipt-scan/ocr";
 
 const LEARNED_KEY = "receipt-scan-learned-labels";
 const LIVE_SCALE = 0.6; // live detection size relative to the frame; smaller misses text that is still readable
 const MIN_LINE_HEIGHT = 28; // video pixels; below this rows start to pair wrongly
 const STABLE_MS = 1000;
+const FULL_FRAME_EVERY = 15;
+
+// Bounding box of the outline with a margin for movement, clamped to the frame.
+function around(points: Point[], W: number, H: number): Region {
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  const mx = (Math.max(...xs) - Math.min(...xs)) * 0.15, my = (Math.max(...ys) - Math.min(...ys)) * 0.15;
+  const x = Math.max(0, Math.floor(Math.min(...xs) - mx)), y = Math.max(0, Math.floor(Math.min(...ys) - my));
+  return { x, y, w: Math.min(W, Math.ceil(Math.max(...xs) + mx)) - x, h: Math.min(H, Math.ceil(Math.max(...ys) + my)) - y };
+}
 
 const fieldOptions = Object.entries(receiptFields).map(([value, { label }]) => ({ value: value as ReceiptField, label }));
 const amountFormatter = new Intl.NumberFormat("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -358,7 +367,7 @@ function ReceiptCamera({
     const overlay = overlayRef.current!;
     let stream: MediaStream | undefined;
     let live = true;
-    let last: TextOutline | null = null;
+    let last = null as TextOutline | null;
     let stableSince = 0;
     const stop = () => {
       live = false;
@@ -377,10 +386,13 @@ function ReceiptCamera({
     const colors = { readable: themeColor("--success"), far: themeColor("--warning") };
     let readable = false;
     let shown: Point[] | null = null;
+    let lastFrame = performance.now();
 
-    // Detection runs a few times a second in the worker; the outline eases toward it on every frame.
-    const render = () => {
+    // Detection runs in the worker; the outline eases toward the latest result on every display frame.
+    const render = (time: number) => {
       if (!live) return;
+      const ease = 1 - Math.exp(-(time - lastFrame) / 60);
+      lastFrame = time;
       const W = video.videoWidth, H = video.videoHeight;
       const ctx = overlay.getContext("2d");
       if (W && ctx) {
@@ -389,7 +401,7 @@ function ReceiptCamera({
           overlay.height = H;
         }
         const target = last?.corners;
-        shown = target ? (shown ? shown.map(([x, y], i) => [x + (target[i][0] - x) * 0.35, y + (target[i][1] - y) * 0.35]) : target) : null;
+        shown = target ? (shown ? shown.map(([x, y], i) => [x + (target[i][0] - x) * ease, y + (target[i][1] - y) * ease]) : target) : null;
         ctx.clearRect(0, 0, W, H);
         if (shown) {
           ctx.lineWidth = Math.max(W, H) / 150;
@@ -419,7 +431,7 @@ function ReceiptCamera({
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } },
         });
         if (!live) return stop();
         video.srcObject = stream;
@@ -429,15 +441,26 @@ function ReceiptCamera({
         return;
       }
       requestAnimationFrame(render);
-      while (live) {
-        const W = video.videoWidth, H = video.videoHeight;
-        if (!W) {
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          continue;
+      // Two detections in flight: the worker prepares one frame while the model runs the other.
+      let next = 0, applied = -1;
+      const track = async () => {
+        while (live) {
+          const W = video.videoWidth, H = video.videoHeight;
+          if (!W) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            continue;
+          }
+          const n = next++;
+          // Track around the last outline; scan the whole frame now and then to catch a receipt that moved.
+          const region = last && n % FULL_FRAME_EVERY ? around(last.corners, W, H) : undefined;
+          const rects = (await detectText(video, LIVE_SCALE, region)).filter((r) => Math.min(r.w, r.h) < Math.min(W, H) / 10);
+          if (!live || n < applied) continue;
+          applied = n;
+          update(rects.length >= 8 ? textOutline(rects) : null, W, H);
         }
-        const rects = (await detectText(video, Math.max(W, H) * LIVE_SCALE)).filter((r) => Math.min(r.w, r.h) < Math.min(W, H) / 10);
-        if (live) update(rects.length >= 8 ? textOutline(rects) : null, W, H);
-      }
+      };
+      track();
+      track();
     })();
     return stop;
   }, []);

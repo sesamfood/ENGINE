@@ -31,18 +31,17 @@ function call<T>(request: OcrJob, onProgress?: Pending["onProgress"]) {
 
 export const loadOcr = () => call<OcrEngine>({ type: "load" });
 
-// Text regions in video pixels. The browser scales the frame while the main thread stays free.
-export async function detectText(video: HTMLVideoElement, maxSide: number) {
-  const sw = video.videoWidth, sh = video.videoHeight;
-  const scale = Math.min(1, maxSide / Math.max(sw, sh));
-  const bitmap = await createImageBitmap(video, {
-    resizeWidth: Math.max(32, Math.round((sw * scale) / 32) * 32),
-    resizeHeight: Math.max(32, Math.round((sh * scale) / 32) * 32),
-    resizeQuality: "low",
-  });
-  const sx = sw / bitmap.width, sy = sh / bitmap.height;
-  const rects = await call<Rect[]>({ type: "detect", bitmap, maxSide });
-  return rects.map((r) => ({ ...r, cx: r.cx * sx, cy: r.cy * sy, w: r.w * sx, h: r.h * sy }));
+export type Region = { x: number; y: number; w: number; h: number };
+
+// Text regions in video pixels, optionally only within a region. The browser crops and scales the frame while
+// the main thread stays free; detection time grows with the pixel count.
+export async function detectText(video: HTMLVideoElement, scale: number, region: Region = { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight }) {
+  const W = Math.max(32, Math.round((region.w * scale) / 32) * 32);
+  const H = Math.max(32, Math.round((region.h * scale) / 32) * 32);
+  const bitmap = await createImageBitmap(video, region.x, region.y, region.w, region.h, { resizeWidth: W, resizeHeight: H, resizeQuality: "low" });
+  const sx = region.w / bitmap.width, sy = region.h / bitmap.height;
+  const rects = await call<Rect[]>({ type: "detect", bitmap, maxSide: Math.max(W, H) });
+  return rects.map((r) => ({ ...r, cx: region.x + r.cx * sx, cy: region.y + r.cy * sy, w: r.w * sx, h: r.h * sy }));
 }
 
 // The worker gets its own copy, so the caller can keep drawing the bitmap.

@@ -27,6 +27,16 @@ export type OcrResponse =
   | { id: number; progress: [number, number] }
   | { id: number; result: unknown };
 
+let running: Promise<unknown> = Promise.resolve();
+
+// A session accepts one run at a time. Only the runs are queued, so the next frame can be prepared and the
+// previous one post-processed while the model works.
+function exclusive<T>(run: () => Promise<T>) {
+  const next = running.then(run);
+  running = next.catch(() => {});
+  return next;
+}
+
 let models: Promise<{ ort: Ort; det: Session; rec: Session; chars: string[]; engine: OcrEngine }> | undefined;
 
 function load() {
@@ -111,7 +121,8 @@ async function detect(bitmap: ImageBitmap, maxSide: number) {
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const W = Math.max(32, Math.round((bitmap.width * scale) / 32) * 32);
   const H = Math.max(32, Math.round((bitmap.height * scale) / 32) * 32);
-  const out = await det.run({ x: toTensor(ort, pixels(W, H, (ctx) => ctx.drawImage(bitmap, 0, 0, W, H))) });
+  const x = toTensor(ort, pixels(W, H, (ctx) => ctx.drawImage(bitmap, 0, 0, W, H)));
+  const out = await exclusive(() => det.run({ x }));
   const sx = bitmap.width / W, sy = bitmap.height / H;
   return boxesFromMap(Object.values(out)[0].data, W, H).map((r) => ({ ...r, cx: r.cx * sx, cy: r.cy * sy, w: r.w * sx, h: r.h * sy }));
 }
@@ -151,7 +162,8 @@ async function read(bitmap: ImageBitmap, onProgress: (done: number, total: numbe
       ctx.translate(-rect.cx, -rect.cy);
       ctx.drawImage(bitmap, 0, 0);
     });
-    const out = await rec.run({ x: toTensor(ort, crop, Math.max(outW, REC_MIN_W)) });
+    const x = toTensor(ort, crop, Math.max(outW, REC_MIN_W));
+    const out = await exclusive(() => rec.run({ x }));
     const result = decode(Object.values(out)[0], chars);
     if (result.text && result.score > 0.5) boxes.push({ box: corners(rect), ...result });
   }
@@ -159,23 +171,19 @@ async function read(bitmap: ImageBitmap, onProgress: (done: number, total: numbe
 }
 
 const reply = (message: OcrResponse) => (self as unknown as Worker).postMessage(message);
-let queue: Promise<unknown> = Promise.resolve();
 
-// The sessions accept one run at a time, so requests are handled in order.
-self.onmessage = ({ data }: MessageEvent<OcrRequest>) => {
-  queue = queue.then(async () => {
-    try {
-      const result =
-        data.type === "load"
-          ? (await load()).engine
-          : data.type === "detect"
-            ? await detect(data.bitmap, data.maxSide)
-            : await read(data.bitmap, (done, total) => reply({ id: data.id, progress: [done, total] }));
-      reply({ id: data.id, result });
-    } catch (error) {
-      reply({ id: data.id, error: error instanceof Error ? error.message : String(error) });
-    } finally {
-      if (data.type !== "load") data.bitmap.close();
-    }
-  });
+self.onmessage = async ({ data }: MessageEvent<OcrRequest>) => {
+  try {
+    const result =
+      data.type === "load"
+        ? (await load()).engine
+        : data.type === "detect"
+          ? await detect(data.bitmap, data.maxSide)
+          : await read(data.bitmap, (done, total) => reply({ id: data.id, progress: [done, total] }));
+    reply({ id: data.id, result });
+  } catch (error) {
+    reply({ id: data.id, error: error instanceof Error ? error.message : String(error) });
+  } finally {
+    if (data.type !== "load") data.bitmap.close();
+  }
 };
