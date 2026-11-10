@@ -80,6 +80,7 @@ const sectionTitles = [
   { value: "feedback", label: "Feedback" },
   { value: "appearance", label: "Udseende" },
   { value: "api", label: "API" },
+  { value: "receipt-scan", label: "Scan kasserapport" },
 ];
 
 export function AdministrationHeader() {

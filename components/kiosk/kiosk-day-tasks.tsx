@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { useHomeDestination, useKiosk, useKioskDay } from "@/components/app-shell";
+import { CashReportAction, type CashReport } from "@/components/kiosk/cash-report-action";
 import { KioskDayTaskIconView } from "@/components/kiosk/kiosk-day-task-icon";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -91,6 +92,9 @@ function TaskRow({
   done,
   showLink,
   preview,
+  cashReport,
+  simulated,
+  timeZone,
   onToggle,
 }: {
   index: number;
@@ -98,6 +102,9 @@ function TaskRow({
   done: boolean;
   showLink: boolean;
   preview: boolean;
+  cashReport: CashReport | null | undefined;
+  simulated: boolean;
+  timeZone: string | null;
   onToggle: () => void;
 }) {
   return (
@@ -130,16 +137,26 @@ function TaskRow({
             <ArrowRightIcon data-icon="inline-end" />
           </Button>
         ) : null}
-        <Button
-          variant={done ? "default" : "outline"}
-          size="lg"
-          aria-pressed={done}
-          aria-label={`${task.title}: ${done ? "udført" : "markér som udført"}`}
-          onClick={onToggle}
-        >
-          {done ? "Udført" : "Markér som udført"}
-          {done ? <CircleCheckIcon data-icon="inline-end" /> : <CircleIcon data-icon="inline-end" />}
-        </Button>
+        {task.kind === "cashReport" ? (
+          <CashReportAction
+            title={task.title}
+            report={cashReport}
+            preview={preview}
+            simulated={simulated}
+            timeZone={timeZone}
+          />
+        ) : (
+          <Button
+            variant={done ? "default" : "outline"}
+            size="lg"
+            aria-pressed={done}
+            aria-label={`${task.title}: ${done ? "udført" : "markér som udført"}`}
+            onClick={onToggle}
+          >
+            {done ? "Udført" : "Markér som udført"}
+            {done ? <CircleCheckIcon data-icon="inline-end" /> : <CircleIcon data-icon="inline-end" />}
+          </Button>
+        )}
       </div>
     </li>
   );
@@ -173,7 +190,15 @@ function Checklist({
     useQuery(api.kioskDay.listResponsibleEmployees, preview ? "skip" : { now }),
     "people",
   );
-  const { checked, toggle, clear } = useStoredChecks(
+  const hasCashReport = tasks.some((task) => task.kind === "cashReport");
+  const cashReport = useLastDefined(
+    useQuery(
+      api.kioskDay.getCashReport,
+      preview || !hasCashReport ? "skip" : { now, ...(simulated ? { simulateEndOfDay: true } : {}) },
+    ),
+    "cashReport",
+  );
+  const { checked: ticked, toggle, clear } = useStoredChecks(
     `engine.kiosk-day.${preview ? "preview." : ""}${phase}.${tasks.map((task) => task.title).join("\n")}`,
     tasks.length,
   );
@@ -181,6 +206,10 @@ function Checklist({
   const [responsible, setResponsible] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const text = copy[phase];
+  // The cash report task is done once its report is saved.
+  const checked = tasks.flatMap((task, index) =>
+    task.kind === "cashReport" ? (cashReport?.saved ? [index] : []) : ticked.includes(index) ? [index] : [],
+  );
   const allDone = checked.length === tasks.length;
   const zone = timeZone ?? undefined;
   const shiftTime = dateTimeFormatter("da-DK", { hour: "2-digit", minute: "2-digit", timeZone: zone });
@@ -297,6 +326,9 @@ function Checklist({
                 done={checked.includes(index)}
                 showLink={Boolean(task.link && enabledPages.includes(task.link))}
                 preview={preview}
+                cashReport={cashReport}
+                simulated={simulated}
+                timeZone={timeZone}
                 onToggle={() => toggle(index)}
               />
             ))}

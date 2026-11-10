@@ -31,4 +31,5 @@ export type KioskDayTask = {
   description?: string;
   icon?: KioskDayTaskIcon;
   link?: KioskDestinationId;
+  kind?: "cashReport";
 };

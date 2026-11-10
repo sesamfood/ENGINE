@@ -19,7 +19,11 @@ import {
   openingHoursModeValidator,
   weeklyOpeningHoursValidator,
 } from "./lib/openingHours";
-import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
+import {
+  cashReportSalesValidator,
+  cashReportValuesValidator,
+  kioskDayTaskValidator,
+} from "./lib/kioskDayValidators";
 import { countScheduleValidator } from "./lib/countSettings";
 
 import {
@@ -2103,10 +2107,26 @@ export default defineSchema({
     // The person who approved the run; the kiosk account only records it.
     responsibleEmployeeId: v.optional(v.id("employees")),
     responsibleName: v.optional(v.string()),
+    cashReportId: v.optional(v.id("cashReports")),
   }).index("by_organizationId_and_locationId_and_phase", [
     "organizationId",
     "locationId",
     "phase",
+  ]),
+
+  // A POS cash report registered at closing, with Engine's sales for the same period when saved.
+  cashReports: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    values: cashReportValuesValidator,
+    sales: v.union(cashReportSalesValidator, v.null()),
+    createdAt: v.number(),
+    createdByUserId: v.string(),
+    createdByName: v.string(),
+  }).index("by_organizationId_and_locationId_and_createdAt", [
+    "organizationId",
+    "locationId",
+    "createdAt",
   ]),
 
   dashboardDailySummaries: defineTable({

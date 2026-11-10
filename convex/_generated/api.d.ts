@@ -102,6 +102,7 @@ import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authEmail from "../lib/authEmail.js";
 import type * as lib_badDeliverySettings from "../lib/badDeliverySettings.js";
+import type * as lib_cashReports from "../lib/cashReports.js";
 import type * as lib_categoryHierarchy from "../lib/categoryHierarchy.js";
 import type * as lib_countAreas from "../lib/countAreas.js";
 import type * as lib_countExclusions from "../lib/countExclusions.js";
@@ -316,6 +317,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/authEmail": typeof lib_authEmail;
   "lib/badDeliverySettings": typeof lib_badDeliverySettings;
+  "lib/cashReports": typeof lib_cashReports;
   "lib/categoryHierarchy": typeof lib_categoryHierarchy;
   "lib/countAreas": typeof lib_countAreas;
   "lib/countExclusions": typeof lib_countExclusions;
