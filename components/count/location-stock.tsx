@@ -3,7 +3,7 @@
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { useMutation } from "convex/react";
-import { BoxesIcon, Grid2X2Icon, ListIcon } from "lucide-react";
+import { BoxesIcon, Grid2X2Icon, ListIcon, PencilIcon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   ProductCardMedia,
@@ -23,6 +23,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { parseQuantity } from "@/lib/quantity-input";
 import {
   Card,
   CardContent,
@@ -116,15 +127,57 @@ export function LocationStock() {
     productId: Id<"products">;
     productName: string;
     quantity: string;
-  } | null>(null);
+  } | "all" | null>(null);
+  const deductAllIngredients = useMutation(
+    api.count.deductAllIngredientsForNegativeStock,
+  );
+  const adjustStock = useMutation(api.count.adjustLocationStock);
   const [isDeducting, setIsDeducting] = useState(false);
+  const [editing, setEditing] = useState<{
+    productId: Id<"products">;
+    productName: string;
+    defaultUnitName: string;
+    current: string;
+    value: string;
+  } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const editQuantity = editing ? parseQuantity(editing.value) : null;
+
+  async function saveStock() {
+    if (!editing || !locationId || editQuantity === null) return;
+    setIsSaving(true);
+    try {
+      await adjustStock({
+        locationId,
+        productId: editing.productId,
+        quantity: editQuantity,
+      });
+      toast.success(`Lageret for ${editing.productName} er opdateret`);
+      setEditing(null);
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Lageret kunne ikke opdateres. Prøv igen."),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   async function confirmDeduct() {
     if (!pending || !locationId) return;
     setIsDeducting(true);
     try {
-      await deductIngredients({ locationId, productId: pending.productId });
-      toast.success(`${pending.productName} står nu på nul`);
+      if (pending === "all") {
+        const count = await deductAllIngredients({ locationId });
+        toast.success(
+          count === 1
+            ? "1 produkt står nu på nul"
+            : `${count} produkter står nu på nul`,
+        );
+      } else {
+        await deductIngredients({ locationId, productId: pending.productId });
+        toast.success(`${pending.productName} står nu på nul`);
+      }
       setPending(null);
     } catch (error) {
       toast.error(
@@ -138,6 +191,31 @@ export function LocationStock() {
   type StockRow = NonNullable<typeof stock>[number];
   const canDeduct = (row: StockRow) =>
     canManage && row.hasIngredients && row.quantity < 0;
+
+  const deductableCount = stock?.filter(canDeduct).length ?? 0;
+
+  function editButton(row: StockRow) {
+    if (!canManage) return null;
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={`Redigér lager for ${row.productName}`}
+        onClick={() =>
+          setEditing({
+            productId: row.productId,
+            productName: row.productName,
+            defaultUnitName: row.defaultUnitName,
+            current: formatStockQuantity(row.quantity, row.defaultUnitName, row.units ?? []),
+            value: String(Math.max(0, row.quantity)).replace(".", ","),
+          })
+        }
+      >
+        <PencilIcon />
+      </Button>
+    );
+  }
 
   function deductButton(row: StockRow) {
     if (!canDeduct(row)) return null;
@@ -224,7 +302,17 @@ export function LocationStock() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {deductableCount > 1 ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="mr-auto"
+            onClick={() => setPending("all")}
+          >
+            Træk ingredienser for alle ({deductableCount})
+          </Button>
+        ) : null}
         <ToggleGroup
           value={[view]}
           onValueChange={(value) => {
@@ -271,13 +359,16 @@ export function LocationStock() {
                 </div>
               </CardHeader>
               <CardContent appearance="stock" className="flex flex-col">
-                <p className="text-xl font-semibold tabular-nums">
-                  {formatStockQuantity(
-                    row.quantity,
-                    row.defaultUnitName,
-                    row.units ?? [],
-                  )}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xl font-semibold tabular-nums">
+                    {formatStockQuantity(
+                      row.quantity,
+                      row.defaultUnitName,
+                      row.units ?? [],
+                    )}
+                  </p>
+                  {editButton(row)}
+                </div>
                 <p className="text-sm text-muted-foreground">
                   {row.lastCountedAt
                     ? `Senest talt ${dateFormatter.format(row.lastCountedAt)}`
@@ -327,7 +418,10 @@ export function LocationStock() {
                   </TableCell>
                   {canManage ? (
                     <TableCell className="text-right">
-                      {deductButton(row)}
+                      <div className="flex items-center justify-end gap-2">
+                        {deductButton(row)}
+                        {editButton(row)}
+                      </div>
                     </TableCell>
                   ) : null}
                 </TableRow>
@@ -347,7 +441,9 @@ export function LocationStock() {
           <AlertDialogHeader>
             <AlertDialogTitle>Træk ingredienser fra lageret?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pending
+              {pending === "all"
+                ? `${deductableCount} produkter står på minus. Ingredienserne til de mængder trækkes fra lageret, og produkterne sættes til nul.`
+                : pending
                 ? `${pending.productName} står på minus ${pending.quantity}. Ingredienserne til den mængde trækkes fra lageret, og ${pending.productName} sættes til nul.`
                 : null}
             </AlertDialogDescription>
@@ -360,6 +456,72 @@ export function LocationStock() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={Boolean(editing)}
+        onOpenChange={(open) => {
+          if (!open && !isSaving) setEditing(null);
+        }}
+      >
+        <DialogContent>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveStock();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Redigér lager</DialogTitle>
+              <DialogDescription>
+                {editing ? `${editing.productName} står på ${editing.current}.` : null}
+              </DialogDescription>
+            </DialogHeader>
+            <Alert>
+              <TriangleAlertIcon />
+              <AlertTitle>Anbefales ikke</AlertTitle>
+              <AlertDescription>
+                Ret helst lageret med en Count, en Transfer eller en Waste-registrering, så ændringen kan spores. Brug kun dette til at rette fejl.
+              </AlertDescription>
+            </Alert>
+            <Field data-invalid={editQuantity === null}>
+              <FieldLabel htmlFor="stock-quantity">
+                Beholdning ({editing?.defaultUnitName})
+              </FieldLabel>
+              <Input
+                id="stock-quantity"
+                type="text"
+                inputMode="decimal"
+                value={editing?.value ?? ""}
+                onChange={(event) =>
+                  setEditing((current) =>
+                    current ? { ...current, value: event.target.value } : current,
+                  )
+                }
+                className="h-11"
+                aria-invalid={editQuantity === null}
+                autoFocus
+              />
+              <FieldError>
+                {editQuantity === null ? "Angiv en mængde på nul eller mere" : null}
+              </FieldError>
+            </Field>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSaving}
+                onClick={() => setEditing(null)}
+              >
+                Annullér
+              </Button>
+              <Button type="submit" disabled={isSaving || editQuantity === null}>
+                Gem
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -28,7 +28,7 @@ import {
   getCurrentCount,
   getOpenAdHocCount,
 } from "./lib/countWindow";
-import { addStock, setStock, toDefaultUnit } from "./lib/stock";
+import { addStock, normalizeStock, setStock, toDefaultUnit } from "./lib/stock";
 import { createProductStockResolver } from "./lib/productStock";
 import { unitNameFor } from "../lib/unit-system";
 import { recordAudit, requireAuditReason } from "./lib/audit";
@@ -1490,6 +1490,50 @@ export const addProductToLatestCount = mutation({
 });
 
 // Brings negative stock of a recipe product to zero by consuming its ingredients one level down.
+// Covers a product's negative stock with its recipe ingredients so it stands
+// at zero. Returns false when there is nothing to deduct.
+async function deductIngredientsToZero(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  productId: Id<"products">,
+  resolver: ReturnType<typeof createProductStockResolver>,
+) {
+  const stock = await ctx.db
+    .query("locationStock")
+    .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("locationId", locationId)
+        .eq("productId", productId),
+    )
+    .unique();
+  const missing = -(stock?.quantity ?? 0);
+  if (missing <= 0) return false;
+  const ingredients = await resolver.recipe(productId);
+  if (!ingredients.length) return false;
+  const batches = missing / (await resolver.recipeYield(productId));
+  const deltas = [];
+  for (const ingredient of ingredients) {
+    const quantity = await toDefaultUnit(
+      ctx,
+      organizationId,
+      ingredient.ingredientProductId,
+      ingredient.unitId,
+      ingredient.quantity * batches,
+    );
+    if (quantity === null) {
+      throw new ConvexError("En ingrediens mangler en gyldig enhedsomregning");
+    }
+    deltas.push({ productId: ingredient.ingredientProductId, quantity });
+  }
+  await addStock(ctx, organizationId, locationId, productId, missing);
+  for (const delta of deltas) {
+    await addStock(ctx, organizationId, locationId, delta.productId, -delta.quantity);
+  }
+  return true;
+}
+
 export const deductIngredientsForNegativeStock = mutation({
   args: { locationId: v.id("locations"), productId: v.id("products") },
   returns: v.null(),
@@ -1506,6 +1550,98 @@ export const deductIngredientsForNegativeStock = mutation({
     ) {
       throw new ConvexError("Produktet blev ikke fundet");
     }
+    const resolver = createProductStockResolver(ctx, organizationId);
+    if (!(await resolver.recipe(product._id)).length) {
+      throw new ConvexError("Produktet har ingen ingredienser");
+    }
+    if (
+      !(await deductIngredientsToZero(ctx, organizationId, location._id, product._id, resolver))
+    ) {
+      throw new ConvexError("Produktets lager er ikke i minus");
+    }
+    await recordAudit(ctx, auth, {
+      action: "count.ingredientsDeducted",
+      entityTable: "products",
+      entityId: product._id,
+      locationId: location._id,
+      summary: `Ingredienser trukket fra lageret, så ${product.name} står på nul`,
+    });
+    return null;
+  },
+});
+
+export const deductAllIngredientsForNegativeStock = mutation({
+  args: { locationId: v.id("locations") },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(ctx, organizationId, args.locationId);
+    const resolver = createProductStockResolver(ctx, organizationId);
+    const deducted = new Set<Id<"products">>();
+    // Deducting can push an intermediate ingredient negative, so repeat until
+    // nothing changes. Recipes are at most 20 levels deep.
+    for (let pass = 0; pass < 20; pass++) {
+      const rows = await ctx.db
+        .query("locationStock")
+        .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .take(MAX_LOCATION_STOCK_ROWS + 1);
+      if (rows.length > MAX_LOCATION_STOCK_ROWS) {
+        throw new ConvexError("Lokationen har for mange lagerlinjer");
+      }
+      let changed = false;
+      for (const row of rows) {
+        if (row.quantity >= 0) continue;
+        const product = await ctx.db.get("products", row.productId);
+        if (product?.organizationId !== organizationId || product.status !== "active") {
+          continue;
+        }
+        if (
+          await deductIngredientsToZero(ctx, organizationId, location._id, product._id, resolver)
+        ) {
+          deducted.add(product._id);
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    if (deducted.size) {
+      await recordAudit(ctx, auth, {
+        action: "count.ingredientsDeducted",
+        entityTable: "locations",
+        entityId: location._id,
+        locationId: location._id,
+        summary: `Ingredienser trukket fra lageret for ${deducted.size} produkter i minus`,
+      });
+    }
+    return deducted.size;
+  },
+});
+
+export const adjustLocationStock = mutation({
+  args: {
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    quantity: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(ctx, organizationId, args.locationId);
+    const product = await ctx.db.get("products", args.productId);
+    if (
+      !product ||
+      product.organizationId !== organizationId ||
+      product.status !== "active"
+    ) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    const quantity = normalizeStock(args.quantity);
     const stock = await ctx.db
       .query("locationStock")
       .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
@@ -1515,36 +1651,15 @@ export const deductIngredientsForNegativeStock = mutation({
           .eq("productId", product._id),
       )
       .unique();
-    const missing = -(stock?.quantity ?? 0);
-    if (missing <= 0) throw new ConvexError("Produktets lager er ikke i minus");
-    const { recipe, recipeYield } = createProductStockResolver(ctx, organizationId);
-    const ingredients = await recipe(product._id);
-    if (!ingredients.length) throw new ConvexError("Produktet har ingen ingredienser");
-    const batches = missing / (await recipeYield(product._id));
-    const deltas = [];
-    for (const ingredient of ingredients) {
-      const quantity = await toDefaultUnit(
-        ctx,
-        organizationId,
-        ingredient.ingredientProductId,
-        ingredient.unitId,
-        ingredient.quantity * batches,
-      );
-      if (quantity === null) {
-        throw new ConvexError("En ingrediens mangler en gyldig enhedsomregning");
-      }
-      deltas.push({ productId: ingredient.ingredientProductId, quantity });
-    }
-    await addStock(ctx, organizationId, location._id, product._id, missing);
-    for (const delta of deltas) {
-      await addStock(ctx, organizationId, location._id, delta.productId, -delta.quantity);
-    }
+    const previous = stock?.quantity ?? 0;
+    if (quantity === previous) return null;
+    await addStock(ctx, organizationId, location._id, product._id, quantity - previous);
     await recordAudit(ctx, auth, {
-      action: "count.ingredientsDeducted",
+      action: "count.stockAdjusted",
       entityTable: "products",
       entityId: product._id,
       locationId: location._id,
-      summary: `Ingredienser trukket fra lageret, så ${product.name} står på nul`,
+      summary: `Lageret for ${product.name} ændret manuelt fra ${previous} til ${quantity}`,
     });
     return null;
   },
