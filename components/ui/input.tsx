@@ -11,6 +11,7 @@ const inputAppearance = cva("", {
       code: "font-mono text-sm",
       swatch: "p-1",
       hex: "font-mono uppercase",
+      amount: "text-right tabular-nums",
     },
   },
 })

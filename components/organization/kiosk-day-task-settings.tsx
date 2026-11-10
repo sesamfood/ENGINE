@@ -1,7 +1,7 @@
 "use client";
 
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { CopyIcon, EyeIcon, LinkIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { CopyIcon, EyeIcon, LinkIcon, PlusIcon, ScanTextIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -81,6 +81,13 @@ const phases: { id: Phase; title: string; description: string }[] = [
   },
 ];
 
+const cashReportTask: KioskDayTask = {
+  title: "Kasserapport",
+  description: "Tag et billede af kasserapporten, og tjek tallene.",
+  icon: "banknote",
+  kind: "cashReport",
+};
+
 const iconItems = kioskDayTaskIcons.map((icon) => ({
   value: icon,
   label: kioskDayTaskIconOptions[icon].label,
@@ -153,7 +160,12 @@ function TaskRow({
           value={task.description ?? ""}
           onChange={(event) => onChange({ ...task, description: event.target.value })}
         />
-        {linkablePages.length ? (
+        {task.kind === "cashReport" ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ScanTextIcon aria-hidden="true" className="size-4 shrink-0" />
+            Kasserapporten scannes med kameraet og sammenlignes med salget i Engine.
+          </p>
+        ) : linkablePages.length ? (
           <Select
             value={task.link ?? "none"}
             onValueChange={(link) =>
@@ -249,7 +261,7 @@ function TaskList({
             />
           ))}
         </ol>
-        <div>
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="outline"
@@ -259,6 +271,17 @@ function TaskList({
             <PlusIcon data-icon="inline-start" />
             Tilføj opgave
           </Button>
+          {phase.id === "endOfDay" && !tasks.some((task) => task.kind === "cashReport") ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={() => onChange([...tasks, cashReportTask])}
+            >
+              <ScanTextIcon data-icon="inline-start" />
+              Tilføj kasserapport
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>

@@ -8,8 +8,13 @@ import {
 import { closedPeriodAround } from "../lib/count-window";
 import { getLocationOpeningHours } from "./lib/countWindow";
 import { getKioskDayTasks, kioskDayState } from "./lib/kioskDay";
+import { cashReportPeriodStart, cashReportSales, latestCashReport } from "./lib/cashReports";
 import type { Id } from "./_generated/dataModel";
-import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
+import {
+  cashReportSalesValidator,
+  cashReportValuesValidator,
+  kioskDayTaskValidator,
+} from "./lib/kioskDayValidators";
 import { requireOrganizationLocation } from "./lib/locations";
 
 const MAX_TASKS = 50;
@@ -21,8 +26,13 @@ const tasksValidator = v.object({
   startOfDay: v.array(kioskDayTaskValidator),
 });
 
-function cleanTasks(tasks: Infer<typeof kioskDayTaskValidator>[]) {
-  const cleaned = tasks.flatMap(({ title, description, icon, link }) => {
+function cleanTasks(tasks: Infer<typeof kioskDayTaskValidator>[], phase: "endOfDay" | "startOfDay") {
+  const cashReports = tasks.filter((task) => task.kind === "cashReport").length;
+  if (cashReports && phase === "startOfDay") {
+    throw new ConvexError("Kasserapporten kan kun være en opgave ved lukning");
+  }
+  if (cashReports > 1) throw new ConvexError("Lukningen kan kun have én kasserapport");
+  const cleaned = tasks.flatMap(({ title, description, icon, link, kind }) => {
     const trimmedTitle = title.trim();
     const trimmedDescription = description?.trim();
     if (!trimmedTitle) return [];
@@ -36,7 +46,7 @@ function cleanTasks(tasks: Infer<typeof kioskDayTaskValidator>[]) {
       title: trimmedTitle,
       ...(trimmedDescription ? { description: trimmedDescription } : {}),
       ...(icon ? { icon } : {}),
-      ...(link ? { link } : {}),
+      ...(kind ? { kind } : link ? { link } : {}),
     }];
   });
   if (cleaned.length > MAX_TASKS) {
@@ -118,8 +128,8 @@ export const saveTasks = mutation({
     requireLocationAccess(auth, args.locationId);
     await requireOrganizationLocation(ctx, organizationId, args.locationId);
     const data = {
-      endOfDay: cleanTasks(args.endOfDay),
-      startOfDay: cleanTasks(args.startOfDay),
+      endOfDay: cleanTasks(args.endOfDay, "endOfDay"),
+      startOfDay: cleanTasks(args.startOfDay, "startOfDay"),
       updatedAt: Date.now(),
     };
     const current = await ctx.db
@@ -165,6 +175,74 @@ export const getState = query({
       args.now,
       simulationAllowed(args.simulateEndOfDay),
     );
+  },
+});
+
+// Start of the period a cash report covers, or null when the closing has no cash report task right now.
+async function cashReportTaskPeriod(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  now: number,
+  simulateEndOfDay: boolean | undefined,
+) {
+  const state = await kioskDayState(ctx, organizationId, locationId, now, simulationAllowed(simulateEndOfDay));
+  if (state.phase !== "endOfDay" || !state.tasks.some((task) => task.kind === "cashReport")) return null;
+  return await cashReportPeriodStart(ctx, organizationId, locationId, now);
+}
+
+export const getCashReport = query({
+  args: { now: v.number(), simulateEndOfDay: v.optional(v.boolean()) },
+  returns: v.union(
+    v.object({
+      saved: v.union(v.object({ values: cashReportValuesValidator, createdAt: v.number() }), v.null()),
+      sales: v.union(cashReportSalesValidator, v.null()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.now) || args.now <= 0) {
+      throw new ConvexError("Tidspunktet er ugyldigt");
+    }
+    const { auth, locationId } = await requireKioskLocation(ctx);
+    const { organizationId } = auth;
+    // The closing may just have been registered while the checklist is still open.
+    const since = await cashReportTaskPeriod(ctx, organizationId, locationId, args.now, args.simulateEndOfDay);
+    if (since === null) return null;
+    const [saved, sales] = await Promise.all([
+      latestCashReport(ctx, organizationId, locationId, since),
+      cashReportSales(ctx, organizationId, locationId, since, args.now),
+    ]);
+    return { saved: saved && { values: saved.values, createdAt: saved.createdAt }, sales };
+  },
+});
+
+const MAX_CASH_REPORT_VALUE = 1e11;
+
+export const saveCashReport = mutation({
+  args: { values: cashReportValuesValidator, simulateEndOfDay: v.optional(v.boolean()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { auth, locationId } = await requireKioskLocation(ctx);
+    if (auth.readOnly || !auth.userId) throw new ConvexError("Du har ikke adgang");
+    const values = Object.values(args.values);
+    if (values.some((value) => value !== null && (!Number.isInteger(value) || Math.abs(value) > MAX_CASH_REPORT_VALUE))) {
+      throw new ConvexError("Et beløb i kasserapporten er ugyldigt");
+    }
+    if (args.values.total === null) throw new ConvexError("Udfyld Total");
+    const now = Date.now();
+    const since = await cashReportTaskPeriod(ctx, auth.organizationId, locationId, now, args.simulateEndOfDay);
+    if (since === null) throw new ConvexError("Kasserapporten er ikke en del af lukningen lige nu");
+    await ctx.db.insert("cashReports", {
+      organizationId: auth.organizationId,
+      locationId,
+      values: args.values,
+      sales: await cashReportSales(ctx, auth.organizationId, locationId, since, now),
+      createdAt: now,
+      createdByUserId: auth.userId,
+      createdByName: auth.userName,
+    });
+    return null;
   },
 });
 
@@ -288,6 +366,13 @@ export const complete = mutation({
     ) {
       throw new ConvexError("Opgavelisten er ændret. Gennemgå opgaverne igen");
     }
+    let cashReportId: Id<"cashReports"> | undefined;
+    if (state.tasks.some((task) => task.kind === "cashReport")) {
+      const since = await cashReportPeriodStart(ctx, auth.organizationId, locationId, Date.now());
+      const report = await latestCashReport(ctx, auth.organizationId, locationId, since);
+      if (!report) throw new ConvexError("Gem kasserapporten, før lukningen registreres");
+      cashReportId = report._id;
+    }
     await ctx.db.insert("kioskDayRuns", {
       organizationId: auth.organizationId,
       locationId,
@@ -298,6 +383,7 @@ export const complete = mutation({
       completedByName: auth.userName,
       responsibleEmployeeId: responsible.employeeId,
       responsibleName: responsible.name,
+      cashReportId,
     });
     return null;
   },

@@ -29,7 +29,7 @@ export async function getKioskDayTasks(
   return { endOfDay: normalize(tasks?.endOfDay), startOfDay: normalize(tasks?.startOfDay) };
 }
 
-async function latestRun(
+export async function latestRun(
   ctx: KioskDayContext,
   organizationId: string,
   locationId: Id<"locations">,
