@@ -85,6 +85,7 @@ import {
   ImageIcon,
   MapPinIcon,
   MinusIcon,
+  PencilIcon,
   PlusIcon,
   SearchIcon,
   ShoppingBasketIcon,
@@ -117,6 +118,18 @@ function hasModifiers(product: Product) {
   return product.removals.length > 0 || product.additions.length > 0;
 }
 
+function choiceSummary(product: Product, value: Choices) {
+  const names = [
+    ...product.removals
+      .filter((option) => value.removals.includes(option.id))
+      .map((option) => `Uden ${option.name}`),
+    ...product.additions
+      .filter((option) => value.additions.includes(option.id))
+      .map((option) => `Ekstra ${option.name}`),
+  ];
+  return names.length ? names.join(", ") : "Ingen tilvalg eller fravalg";
+}
+
 function ModifierChoices({
   product,
   value,
@@ -136,13 +149,14 @@ function ModifierChoices({
         product[key].length ? (
           <div key={key} className="flex flex-col gap-2">
             <span className="text-sm text-muted-foreground">{title}</span>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               {product[key].map((option) => {
                 const selected = value[key].includes(option.id);
                 return (
                   <Toggle
                     key={option.id}
                     variant="outline"
+                    className="justify-start"
                     pressed={selected}
                     onPressedChange={(pressed) =>
                       onChange({
@@ -335,6 +349,7 @@ export function StaffFoodRegistration() {
     add: () => void;
   } | null>(null);
   const [draftChoices, setDraftChoices] = useState<Choices>(noChoices);
+  const [editingChoicesId, setEditingChoicesId] = useState<string | null>(null);
   // Kept apart from pendingProduct so the dialog keeps its content while closing.
   const [modifiersOpen, setModifiersOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("all");
@@ -923,7 +938,10 @@ export function StaffFoodRegistration() {
                       submitting ||
                       !state.session.active
                     }
-                    onClick={() => setConfirming(true)}
+                    onClick={() => {
+                      setEditingChoicesId(null);
+                      setConfirming(true);
+                    }}
                   >
                     Registrér Staff food
                   </Button>
@@ -1015,16 +1033,47 @@ export function StaffFoodRegistration() {
                             </Badge>
                           </div>
                           {hasModifiers(product) ? (
-                            <ModifierChoices
-                              product={product}
-                              value={choices[product.id] ?? noChoices}
-                              onChange={(value) =>
-                                setChoices((current) => ({
-                                  ...current,
-                                  [product.id]: value,
-                                }))
-                              }
-                            />
+                            <>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="min-w-0 text-sm text-muted-foreground">
+                                  {choiceSummary(
+                                    product,
+                                    choices[product.id] ?? noChoices,
+                                  )}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  className="shrink-0"
+                                  aria-expanded={editingChoicesId === product.id}
+                                  onClick={() =>
+                                    setEditingChoicesId((current) =>
+                                      current === product.id ? null : product.id,
+                                    )
+                                  }
+                                >
+                                  {editingChoicesId === product.id ? (
+                                    <CheckIcon data-icon="inline-start" />
+                                  ) : (
+                                    <PencilIcon data-icon="inline-start" />
+                                  )}
+                                  {editingChoicesId === product.id
+                                    ? "Færdig"
+                                    : "Redigér"}
+                                </Button>
+                              </div>
+                              {editingChoicesId === product.id ? (
+                                <ModifierChoices
+                                  product={product}
+                                  value={choices[product.id] ?? noChoices}
+                                  onChange={(value) =>
+                                    setChoices((current) => ({
+                                      ...current,
+                                      [product.id]: value,
+                                    }))
+                                  }
+                                />
+                              ) : null}
+                            </>
                           ) : null}
                         </div>
                       ))}
