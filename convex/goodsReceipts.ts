@@ -45,7 +45,6 @@ const IMAGE_TYPES = new Set([
 
 const settingsValidator = v.object({
   transferDeliveryNotePhotoEnabled: v.boolean(),
-  transferReceiptRequired: v.boolean(),
 });
 
 const pendingTransferValidator = v.object({
@@ -149,7 +148,6 @@ export async function settingsFor(ctx: GoodsReceiptCtx, organizationId: string) 
   return {
     transferDeliveryNotePhotoEnabled:
       settings?.transferDeliveryNotePhotoEnabled ?? false,
-    transferReceiptRequired: settings?.transferReceiptRequired ?? true,
   };
 }
 
@@ -415,7 +413,21 @@ function pendingTransfer(
 export const listPendingTransfers = query({
   args: { locationId: v.id("locations") },
   returns: v.object({
-    transfers: v.array(pendingTransferValidator),
+    transfers: v.array(
+      pendingTransferValidator.extend({
+        // Transfers without an internal order can be accepted as sent.
+        quick: v.boolean(),
+        items: v.array(
+          v.object({
+            id: v.id("transferItems"),
+            productName: v.string(),
+            unitId: v.id("units"),
+            unitName: v.string(),
+            quantity: v.number(),
+          }),
+        ),
+      }),
+    ),
     truncated: v.boolean(),
   }),
   handler: async (ctx, args) => {
@@ -437,10 +449,34 @@ export const listPendingTransfers = query({
 
     const visibleRows = rows.slice(0, MAX_PENDING_TRANSFERS);
     const names = await locationNames(ctx, visibleRows);
+    const transfers = await Promise.all(
+      visibleRows.map(async (transfer) => {
+        const quick = !transfer.orderId;
+        const items = quick
+          ? await ctx.db
+              .query("transferItems")
+              .withIndex("by_organizationId_and_transferId", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("transferId", transfer._id),
+              )
+              .take(MAX_TRANSFER_ITEMS)
+          : [];
+        return {
+          ...pendingTransfer(transfer, names),
+          quick,
+          items: items.map((item) => ({
+            id: item._id,
+            productName: item.productName,
+            unitId: item.unitId,
+            unitName: item.unitName,
+            quantity: item.quantity,
+          })),
+        };
+      }),
+    );
     return {
-      transfers: visibleRows.map((transfer) =>
-        pendingTransfer(transfer, names),
-      ),
+      transfers,
       truncated: rows.length > MAX_PENDING_TRANSFERS,
     };
   },
@@ -972,7 +1008,11 @@ export const getSettings = query({
 });
 
 export const setSettings = mutation({
-  args: settingsValidator.fields,
+  // transferReceiptRequired is ignored; kept for clients from before receipts were always required.
+  args: {
+    ...settingsValidator.fields,
+    transferReceiptRequired: v.optional(v.boolean()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireGoodsReceiptSettings(ctx);
@@ -984,7 +1024,6 @@ export const setSettings = mutation({
       .unique();
     const next = {
       transferDeliveryNotePhotoEnabled: args.transferDeliveryNotePhotoEnabled,
-      transferReceiptRequired: args.transferReceiptRequired,
       updatedAt: Date.now(),
     };
     if (current) {

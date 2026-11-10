@@ -20,7 +20,6 @@ import {
 } from "./lib/dashboardSummaries";
 import { transferAggregates } from "./lib/transferAggregates";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
-import { settingsFor as goodsReceiptSettingsFor } from "./goodsReceipts";
 import { requireOpenOrder } from "./internalOrders";
 
 const MAX_TRANSFER_ITEMS = 200;
@@ -558,12 +557,10 @@ export const createTransfer = mutation({
     );
     const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const aggregates = transferAggregates(resolvedItems);
-    // Internal-order transfers always wait for a goods receipt.
+    // Every Transfer waits for a goods receipt, unless goods receipts are
+    // turned off and nothing could accept it. Internal orders always wait.
     const receiptRequired =
-      order !== null ||
-      (await goodsReceiptSettingsFor(ctx, organizationId))
-        .transferReceiptRequired;
-
+      order !== null || !auth.disabledFeatures.has("goodsReceipts");
     const transferId = await ctx.db.insert("transfers", {
       organizationId,
       fromLocationId: args.fromLocationId,
