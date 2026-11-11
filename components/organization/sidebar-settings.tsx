@@ -22,7 +22,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { GripVerticalIcon, ListOrderedIcon } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useState } from "react";

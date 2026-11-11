@@ -54,7 +54,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { setEmployeeLocation, useEmployeeLocation } from "@/lib/employee-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
 import {
   AlertTriangleIcon,
   CalendarDaysIcon,

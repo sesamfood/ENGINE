@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { usePaginatedQuery, useQuery } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
 import { FileImageIcon, ReceiptTextIcon } from "lucide-react";
 import { useKiosk } from "@/components/app-shell";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";

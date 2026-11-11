@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useConvex, useQueries, type ConvexReactClient, type RequestForQueries } from "convex/react";
+import { useConvex, type ConvexReactClient, type RequestForQueries } from "convex/react";
+import { useQueries } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { metricRegistry } from "@/lib/dashboard/registry";

@@ -18,7 +18,8 @@ import {
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
-import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
+import { useMutation, type RequestForQueries } from "convex/react";
+import { useQueries, useQuery } from "convex-helpers/react/cache/hooks";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";

@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { getFunctionName } from "convex/server";
 import { convexToJson, type Value } from "convex/values";
 import {
-  usePaginatedQuery,
   type PaginatedQueryArgs,
   type PaginatedQueryItem,
   type PaginatedQueryReference,
 } from "convex/react";
+import { usePaginatedQuery } from "convex-helpers/react/cache/hooks";
 import { authClient } from "@/lib/auth-client";
 
 const COMPLETE_CATALOG_PAGE_SIZE = 100;

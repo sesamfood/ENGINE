@@ -4,7 +4,12 @@ import type { MutationCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 import { claimStorageForOrganization, preserveStorageOwnership } from "./lib/storageOwnership";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  getUserSession,
+  isApiKeyIdentity,
+  requireOrganization,
+  requireOrganizationAdmin,
+} from "./lib/auth";
 import {
   getOrganizationThemeError,
   normalizeOrganizationTheme,
@@ -40,6 +45,54 @@ export const canCreateOrganization = query({
   args: {},
   returns: v.boolean(),
   handler: async () => selfServeOrganizationsAllowed(),
+});
+
+// A reactive replacement for Better Auth's active-organization HTTP request.
+// Returns null instead of throwing so the shell can route users without one.
+export const getActive = query({
+  args: {},
+  returns: v.union(
+    v.object({
+      id: v.string(),
+      name: v.string(),
+      slug: v.string(),
+      logo: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || isApiKeyIdentity(identity)) return null;
+    const session = await getUserSession(ctx, identity);
+    const organizationId = session?.activeOrganizationId;
+    if (!session || !organizationId) return null;
+    const adapter = getDatabaseAdapter(ctx);
+    const member = await adapter.findOne<{ id: string }>({
+      model: "member",
+      where: [
+        { field: "organizationId", value: organizationId },
+        { field: "userId", value: session.userId },
+      ],
+    });
+    if (!member) return null;
+    const organization = await adapter.findOne<{
+      id: string;
+      name: string;
+      slug: string;
+      logo?: string | null;
+    }>({
+      model: "organization",
+      where: [{ field: "id", value: organizationId }],
+    });
+    return organization
+      ? {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          logo: organization.logo ?? null,
+        }
+      : null;
+  },
 });
 
 export const getBranding = query({

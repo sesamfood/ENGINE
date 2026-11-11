@@ -71,7 +71,8 @@ import { searchProducts } from "@/lib/product-search";
 import { unitNameFor } from "@/lib/unit-system";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import {
   ImageIcon,
   PinIcon,

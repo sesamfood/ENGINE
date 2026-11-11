@@ -2,7 +2,8 @@
 
 import { dateTimeFormatter as sharedDateTimeFormatter } from "@/lib/date";
 
-import { useConvex, useQuery } from "convex/react";
+import { useConvex } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
 import {
   ArrowRightIcon,

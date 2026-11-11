@@ -71,7 +71,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { compressImage, evidencePhotoOptions } from "@/lib/compress-image";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import {
   ArrowLeftIcon,
   CheckIcon,

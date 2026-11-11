@@ -3,7 +3,8 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
 import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";

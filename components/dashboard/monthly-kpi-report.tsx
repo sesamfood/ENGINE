@@ -4,7 +4,8 @@ import { useIntegrations } from "@/integrations/use-integrations";
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { useAction, useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
+import { useAction, useMutation, type RequestForQueries } from "convex/react";
+import { useQueries, useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowLeftIcon, CheckIcon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";

@@ -5,7 +5,8 @@ import { useIntegrations } from "@/integrations/use-integrations";
 import type { FunctionReturnType } from "convex/server";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";

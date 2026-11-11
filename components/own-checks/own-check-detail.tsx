@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { ArrowLeftIcon, ClipboardCheckIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

@@ -6,7 +6,7 @@ import {
   PackageIcon,
   ReceiptTextIcon,
 } from "lucide-react";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import {
   Alert,
   AlertDescription,

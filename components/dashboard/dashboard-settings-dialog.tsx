@@ -15,7 +15,8 @@ import {
 } from "@dnd-kit/sortable";
 
 import { CopyIcon, SaveIcon, SettingsIcon, Trash2Icon } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";

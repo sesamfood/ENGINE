@@ -1,7 +1,8 @@
 "use client";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { toast } from "sonner";

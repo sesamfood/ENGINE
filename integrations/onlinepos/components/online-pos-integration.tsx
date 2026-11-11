@@ -8,9 +8,11 @@ import {
   useAction,
   useConvex,
   useMutation,
+} from "convex/react";
+import {
   usePaginatedQuery,
   useQuery,
-} from "convex/react";
+} from "convex-helpers/react/cache/hooks";
 import {
   ChevronRightIcon,
   CircleAlertIcon,

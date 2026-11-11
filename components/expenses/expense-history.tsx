@@ -3,7 +3,8 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { useState } from "react";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
 import { FileTextIcon, ReceiptTextIcon } from "lucide-react";
 import { toast } from "sonner";
 import { usePermission } from "@/components/app-shell";

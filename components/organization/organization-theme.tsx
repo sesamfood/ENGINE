@@ -1,6 +1,7 @@
 "use client";
 
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useEffect, type ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";

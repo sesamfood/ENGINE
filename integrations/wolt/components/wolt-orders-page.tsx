@@ -8,7 +8,7 @@ import {
   PackageCheckIcon,
   SearchIcon,
 } from "lucide-react";
-import { usePaginatedQuery, useQuery } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
 import { useMemo, useState } from "react";
 import { DatePicker } from "@/components/date-picker";
 import { useAccess, usePermission } from "@/components/app-shell";

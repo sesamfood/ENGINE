@@ -61,7 +61,8 @@ import {
   writeTransferDraft,
 } from "@/lib/transfer-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { ChevronDownIcon, PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
 import posthog from "posthog-js";
 import { useEffect, useRef, useState, type ReactNode } from "react";

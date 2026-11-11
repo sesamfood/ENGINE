@@ -34,7 +34,8 @@ import {
   ShoppingCartIcon,
   SunIcon,
 } from "lucide-react";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -1578,21 +1579,41 @@ function OrganizationBoundary({
 }) {
   const router = useRouter();
   const { isAuthenticated } = useConvexAuth();
-  const organizations = authClient.useListOrganizations();
   const activeOrganization = useActiveOrganization();
   const platformMember = useQuery(
     api.platform.members.me,
     isAuthenticated ? {} : "skip",
   );
   const [activationError, setActivationError] = useState(false);
+  // Listing organizations is an HTTP round trip, so it only runs when no
+  // organization is active.
+  const [organizations, setOrganizations] = useState<
+    { firstId: string | null } | "error"
+  >();
   const activeOrganizationId = activeOrganization.data?.id;
-  const firstOrganizationId = organizations.data?.[0]?.id;
+  const needsOrganization =
+    required && !activeOrganization.isPending && !activeOrganizationId;
+  const firstOrganizationId =
+    organizations && organizations !== "error" ? organizations.firstId : undefined;
 
   useEffect(() => {
-    if (!required) return;
-    if (organizations.isPending || activeOrganization.isPending) return;
-    if (organizations.error || activeOrganization.error) return;
-    if (activeOrganizationId) return;
+    if (!needsOrganization) return;
+    let active = true;
+    void authClient.organization
+      .list()
+      .then(({ data, error }) => {
+        if (active) setOrganizations(error ? "error" : { firstId: data?.[0]?.id ?? null });
+      })
+      .catch(() => {
+        if (active) setOrganizations("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [needsOrganization]);
+
+  useEffect(() => {
+    if (!needsOrganization || firstOrganizationId === undefined) return;
 
     if (!firstOrganizationId) {
       // Platform staff usually have no organization of their own.
@@ -1612,21 +1633,11 @@ function OrganizationBoundary({
         router.refresh();
       })
       .catch(() => setActivationError(true));
-  }, [
-    activeOrganization.isPending,
-    activeOrganization.error,
-    activeOrganizationId,
-    firstOrganizationId,
-    organizations.isPending,
-    organizations.error,
-    platformMember,
-    required,
-    router,
-  ]);
+  }, [firstOrganizationId, needsOrganization, platformMember, router]);
 
   if (!required) return children;
 
-  if (organizations.error || activeOrganization.error || activationError) {
+  if (organizations === "error" || activationError) {
     return (
       <main className="grid min-h-screen place-items-center p-6">
         <Alert variant="destructive" className="max-w-md">
@@ -1647,11 +1658,7 @@ function OrganizationBoundary({
     );
   }
 
-  if (
-    organizations.isPending ||
-    activeOrganization.isPending ||
-    !activeOrganizationId
-  ) {
+  if (!activeOrganizationId) {
     return (
       <main
         className="grid min-h-screen place-items-center"

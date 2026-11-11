@@ -26,7 +26,7 @@ import {
   measureUnits,
   parseDecimal,
 } from "@/lib/containers";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { PlusIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
