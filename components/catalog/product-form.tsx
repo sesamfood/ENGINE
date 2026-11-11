@@ -1452,16 +1452,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         </div>
       </div>
 
-      {canManageIntegrations &&
-      masterSettings &&
-      masterSettings.masters.length > 0 ? (
-        <OnlinePosMasterSelect
-          masters={masterSettings.masters}
-          value={integrationId ?? null}
-          onValueChange={setSelectedMasterId}
-          disabled={isSaving || !onlinePosSettingsReady}
-        />
-      ) : null}
       <div className="grid gap-6 xl:items-start xl:grid-cols-(--grid-cols-product-details)">
         <Card>
           <CardHeader>
@@ -1621,55 +1611,64 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 </CollapsibleContent>
               </Collapsible>
 
-              {productId ? (
-                // Each field renders nothing when its integration is off, so
-                // the section hides itself until at least one field exists.
-                <Collapsible
-                  render={<FieldSet className="hidden has-data-[slot=field]:flex" />}
-                >
-                  <FieldLegend variant="label">Koblinger</FieldLegend>
-                  <CollapsibleTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="group min-h-11 w-full justify-between"
-                      />
-                    }
-                  >
-                    <span className="truncate">Vis koblinger til integrationer</span>
-                    <ChevronDownIcon
-                      className="transition-transform group-aria-expanded:rotate-180"
-                      aria-hidden="true"
+              {/* Each field renders nothing when its integration is off, so
+                the section hides itself until at least one field exists. */}
+              <Collapsible
+                render={<FieldSet className="hidden has-data-[slot=field]:flex" />}
+              >
+                <FieldLegend variant="label">Koblinger</FieldLegend>
+                <CollapsibleTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="group min-h-11 w-full justify-between"
                     />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent keepMounted>
-                    <div className="flex flex-col gap-6 pt-1">
-                      <OnlinePosProductMappingField
-                        integrationId={integrationId}
-                        productId={productId}
-                        productName={name}
-                        mapping={productMapping}
-                        onlinePosProducts={onlinePosProducts}
-                        onRetry={() => setOnlinePosProducts(undefined)}
+                  }
+                >
+                  <span className="truncate">Vis koblinger til integrationer</span>
+                  <ChevronDownIcon
+                    className="transition-transform group-aria-expanded:rotate-180"
+                    aria-hidden="true"
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent keepMounted>
+                  <div className="flex flex-col gap-6 pt-1">
+                    {canManageIntegrations &&
+                    masterSettings &&
+                    masterSettings.masters.length > 0 ? (
+                      <OnlinePosMasterSelect
+                        masters={masterSettings.masters}
+                        value={integrationId ?? null}
+                        onValueChange={setSelectedMasterId}
+                        disabled={isSaving || !onlinePosSettingsReady}
                       />
-                      {Object.values(supplierCatalogs).map((catalog) => (
-                        <CatalogProductLinkField
-                          key={catalog.id}
-                          catalog={catalog}
+                    ) : null}
+                    {productId ? (
+                      <>
+                        <OnlinePosProductMappingField
+                          integrationId={integrationId}
                           productId={productId}
                           productName={name}
+                          mapping={productMapping}
+                          onlinePosProducts={onlinePosProducts}
+                          onRetry={() => setOnlinePosProducts(undefined)}
                         />
-                      ))}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              ) : null}
+                        {Object.values(supplierCatalogs).map((catalog) => (
+                          <CatalogProductLinkField
+                            key={catalog.id}
+                            catalog={catalog}
+                            productId={productId}
+                            productName={name}
+                          />
+                        ))}
+                      </>
+                    ) : null}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
-              <Field
-                className="max-w-xl"
-                data-invalid={Boolean(errors.image)}
-              >
+              <Field data-invalid={Boolean(errors.image)}>
                 <FieldLabel htmlFor="product-picture">Billede</FieldLabel>
                 <div className="flex flex-col overflow-hidden rounded-xl border">
                   <label
