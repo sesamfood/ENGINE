@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { CheckIcon, FileDownIcon, WheatIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";

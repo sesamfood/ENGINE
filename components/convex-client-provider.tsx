@@ -2,6 +2,7 @@
 
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexReactClient } from "convex/react";
+import { ConvexQueryCacheProvider } from "convex-helpers/react/cache/provider";
 import type { ReactNode } from "react";
 import { authClient } from "@/lib/auth-client";
 
@@ -26,7 +27,11 @@ export function ConvexClientProvider({
       authClient={authClient}
       initialToken={initialToken}
     >
-      {children}
+      {/* Keeps a left page's subscriptions briefly so returning to it is
+          instant. Short expiry limits re-runs of queries nobody is viewing. */}
+      <ConvexQueryCacheProvider expiration={120_000} maxIdleEntries={100}>
+        {children}
+      </ConvexQueryCacheProvider>
     </ConvexBetterAuthProvider>
   );
 }

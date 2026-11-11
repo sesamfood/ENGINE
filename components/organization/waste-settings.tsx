@@ -10,7 +10,8 @@ import {
   TagsInputItemText,
   TagsInputRoot,
 } from "@diceui/tags-input";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { XIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";

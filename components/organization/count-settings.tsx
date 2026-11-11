@@ -6,7 +6,8 @@ import { OrganizationCountExclusions } from "./count-exclusion-list";
 import { SettingsSwitchField } from "./settings-switch-field";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { Clock3Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";

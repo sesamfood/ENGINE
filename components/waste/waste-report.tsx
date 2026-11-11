@@ -14,9 +14,11 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   useConvex,
   useMutation,
+} from "convex/react";
+import {
   usePaginatedQuery,
   useQuery,
-} from "convex/react";
+} from "convex-helpers/react/cache/hooks";
 import { DownloadIcon, FileChartColumnIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";

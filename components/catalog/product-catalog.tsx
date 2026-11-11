@@ -6,7 +6,8 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { searchProducts } from "@/lib/product-search";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
@@ -523,7 +524,7 @@ export function ProductCatalog() {
       search: querySearch,
       sort,
     },
-    { initialNumItems: 24 },
+    { initialNumItems: querySearch.trim() ? 100 : 24 },
   );
 
   const [requestedPage, setRequestedPage] = useState({
@@ -540,7 +541,7 @@ export function ProductCatalog() {
       paginationStatus === "CanLoadMore" &&
       (hasSearch || results.length < requestedResults)
     ) {
-      loadMore(24);
+      loadMore(hasSearch ? 100 : 24);
     }
   }, [hasSearch, loadMore, paginationStatus, requestedResults, results.length]);
 

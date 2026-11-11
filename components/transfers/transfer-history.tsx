@@ -30,9 +30,11 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   useConvex,
   useMutation,
+} from "convex/react";
+import {
   usePaginatedQuery,
   useQuery,
-} from "convex/react";
+} from "convex-helpers/react/cache/hooks";
 import {
   ArrowLeftRightIcon,
   CircleCheckBigIcon,

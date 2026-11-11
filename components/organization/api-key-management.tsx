@@ -3,7 +3,8 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import {
   CheckIcon,
   ClipboardIcon,

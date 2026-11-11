@@ -107,7 +107,8 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import {
   BoxesIcon,
   CheckIcon,

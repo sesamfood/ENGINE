@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";

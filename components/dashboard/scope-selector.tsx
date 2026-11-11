@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPinIcon } from "lucide-react";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useLocationAccess } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import {

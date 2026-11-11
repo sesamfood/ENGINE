@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2Icon } from "lucide-react";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import {
   AlertTriangleIcon,
   ClipboardCheckIcon,

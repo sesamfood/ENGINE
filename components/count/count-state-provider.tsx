@@ -1,7 +1,7 @@
 "use client";
 
 import type { FunctionReturnType } from "convex/server";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { usePathname } from "next/navigation";
 import {
   createContext,

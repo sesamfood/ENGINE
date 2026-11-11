@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { DateTimePicker } from "@/components/date-picker";

@@ -1479,8 +1479,10 @@ export const listProducts = query({
                 q.eq("organizationId", organizationId).eq("status", args.status),
               )
               .order(sort === "nameDesc" ? "desc" : "asc");
+    // A search filters after reading, so it scans larger pages to need fewer
+    // sequential round trips through the catalog.
     const candidates = await ordered.paginate(
-      catalogPaginationOptions(args.paginationOpts, 25),
+      catalogPaginationOptions(args.paginationOpts, search ? 100 : 25),
     );
     const categorizedProducts = await Promise.all(
       candidates.page.map(async (product) => ({

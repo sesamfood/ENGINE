@@ -1,7 +1,8 @@
 "use client";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";

@@ -1,6 +1,7 @@
 "use client";
 
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
 import { useActiveOrganization } from "@/lib/active-organization";
 

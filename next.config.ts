@@ -56,6 +56,10 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_ID: buildId,
   },
   experimental: {
+    // Every route is dynamic because the root layout reads cookies. Pages get
+    // their data from Convex, so reusing a visited page's server payload is
+    // safe and skips a server round trip on navigation.
+    staleTimes: { dynamic: 300 },
     turbopackFileSystemCacheForDev: false,
     turbopackFileSystemCacheForBuild: true,
   },

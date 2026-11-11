@@ -3,7 +3,8 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRightIcon, TriangleAlertIcon } from "lucide-react";

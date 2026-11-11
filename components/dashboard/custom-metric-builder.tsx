@@ -5,7 +5,8 @@ import { metricSourceAvailable } from "@/integrations/dashboard";
 
 import { useEffect, useMemo, useState } from "react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";

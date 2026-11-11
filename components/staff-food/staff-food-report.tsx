@@ -1,6 +1,6 @@
 "use client";
 
-import { usePaginatedQuery, useQuery } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
 import { DownloadIcon, UtensilsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";

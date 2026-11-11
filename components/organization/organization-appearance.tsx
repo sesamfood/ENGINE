@@ -3,7 +3,8 @@
 import { uploadToStorage } from "@/lib/upload-to-storage";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ImageIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import Image from "next/image";

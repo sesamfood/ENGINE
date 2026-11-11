@@ -1,7 +1,8 @@
 "use client";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { MessageSquarePlusIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import posthog from "posthog-js";

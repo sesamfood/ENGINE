@@ -6,9 +6,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   useConvex,
   useMutation,
+} from "convex/react";
+import {
   usePaginatedQuery,
   useQuery,
-} from "convex/react";
+} from "convex-helpers/react/cache/hooks";
 import { DownloadIcon, PackageXIcon, RotateCcwIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";

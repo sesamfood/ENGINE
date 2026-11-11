@@ -15,7 +15,8 @@ import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { ConvexError } from "convex/values";
 import type { FunctionReturnType } from "convex/server";
 import { formatMeasure, measureUnits } from "@/lib/containers";
@@ -1451,16 +1452,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         </div>
       </div>
 
-      {canManageIntegrations &&
-      masterSettings &&
-      masterSettings.masters.length > 0 ? (
-        <OnlinePosMasterSelect
-          masters={masterSettings.masters}
-          value={integrationId ?? null}
-          onValueChange={setSelectedMasterId}
-          disabled={isSaving || !onlinePosSettingsReady}
-        />
-      ) : null}
       <div className="grid gap-6 xl:items-start xl:grid-cols-(--grid-cols-product-details)">
         <Card>
           <CardHeader>
@@ -1494,61 +1485,63 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 <FieldError>{errors.category}</FieldError>
               </Field>
 
-              <Field
-                className="max-w-xl"
-                data-invalid={Boolean(errors.maxTemperatureCelsius)}
-              >
-                <FieldLabel htmlFor="product-max-temperature">
-                  Maksimal temperatur
-                </FieldLabel>
-                <InputGroup className="h-11 max-w-xs">
-                  <InputGroupInput
-                    id="product-max-temperature"
-                    type="number"
-                    inputMode="decimal"
-                    min={MIN_MAX_TEMPERATURE_CELSIUS}
-                    max={MAX_MAX_TEMPERATURE_CELSIUS}
-                    step="0.1"
-                    value={maxTemperatureCelsius}
-                    onChange={(event) =>
-                      setMaxTemperatureCelsius(event.target.value)
-                    }
-                    aria-invalid={Boolean(errors.maxTemperatureCelsius)}
-                  />
-                  <InputGroupAddon align="inline-end">°C</InputGroupAddon>
-                </InputGroup>
-                <FieldError>{errors.maxTemperatureCelsius}</FieldError>
-              </Field>
+              <div className="grid items-start gap-5 @md/field-group:grid-cols-2">
+                <Field data-invalid={Boolean(errors.salesPrice)}>
+                  <FieldLabel htmlFor="product-sales-price">Salgspris</FieldLabel>
+                  <InputGroup className="h-11">
+                    <InputGroupInput
+                      id="product-sales-price"
+                      type="text"
+                      inputMode="decimal"
+                      value={salesPrice}
+                      onChange={(event) => setSalesPrice(event.target.value)}
+                      aria-invalid={Boolean(errors.salesPrice)}
+                    />
+                    <InputGroupAddon align="inline-end">kr.</InputGroupAddon>
+                  </InputGroup>
+                  <FieldDescription>Inklusive moms</FieldDescription>
+                  <FieldError>{errors.salesPrice}</FieldError>
+                </Field>
+              </div>
 
-              <Field
-                className="max-w-xl"
-                data-invalid={Boolean(errors.salesPrice)}
-              >
-                <FieldLabel htmlFor="product-sales-price">Salgspris</FieldLabel>
-                <InputGroup className="h-11 max-w-xs">
-                  <InputGroupInput
-                    id="product-sales-price"
-                    type="text"
-                    inputMode="decimal"
-                    value={salesPrice}
-                    onChange={(event) => setSalesPrice(event.target.value)}
-                    aria-invalid={Boolean(errors.salesPrice)}
-                  />
-                  <InputGroupAddon align="inline-end">kr.</InputGroupAddon>
-                </InputGroup>
-                <FieldDescription>Inklusive moms</FieldDescription>
-                <FieldError>{errors.salesPrice}</FieldError>
-              </Field>
+              <div className="grid items-start gap-5 @md/field-group:grid-cols-2">
+                <Field data-invalid={Boolean(errors.maxTemperatureCelsius)}>
+                  {/* Matches the Holdbarhed label row, whose help button is 44px. */}
+                  <FieldLabel
+                    htmlFor="product-max-temperature"
+                    className="@md/field-group:min-h-11"
+                  >
+                    Maksimal temperatur
+                  </FieldLabel>
+                  <InputGroup className="h-11">
+                    <InputGroupInput
+                      id="product-max-temperature"
+                      type="number"
+                      inputMode="decimal"
+                      min={MIN_MAX_TEMPERATURE_CELSIUS}
+                      max={MAX_MAX_TEMPERATURE_CELSIUS}
+                      step="0.1"
+                      value={maxTemperatureCelsius}
+                      onChange={(event) =>
+                        setMaxTemperatureCelsius(event.target.value)
+                      }
+                      aria-invalid={Boolean(errors.maxTemperatureCelsius)}
+                    />
+                    <InputGroupAddon align="inline-end">°C</InputGroupAddon>
+                  </InputGroup>
+                  <FieldError>{errors.maxTemperatureCelsius}</FieldError>
+                </Field>
 
-              <ExpiryField
-                id="product-expiry"
-                value={expiryValue}
-                unit={expiryUnit}
-                onValueChange={setExpiryValue}
-                onUnitChange={setExpiryUnit}
-                error={errors.expiry}
-                disabled={isSaving}
-              />
+                <ExpiryField
+                  id="product-expiry"
+                  value={expiryValue}
+                  unit={expiryUnit}
+                  onValueChange={setExpiryValue}
+                  onUnitChange={setExpiryUnit}
+                  error={errors.expiry}
+                  disabled={isSaving}
+                />
+              </div>
 
               <Collapsible render={<FieldSet />}>
                 <FieldLegend variant="label">Allergener</FieldLegend>
@@ -1557,7 +1550,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     <Button
                       type="button"
                       variant="outline"
-                      className="group min-h-11 w-full max-w-xl justify-between"
+                      className="group min-h-11 w-full justify-between"
                     />
                   }
                 >
@@ -1618,32 +1611,64 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 </CollapsibleContent>
               </Collapsible>
 
-              {productId ? (
-                <OnlinePosProductMappingField
-                  integrationId={integrationId}
-                  productId={productId}
-                  productName={name}
-                  mapping={productMapping}
-                  onlinePosProducts={onlinePosProducts}
-                  onRetry={() => setOnlinePosProducts(undefined)}
-                />
-              ) : null}
-
-              {productId
-                ? Object.values(supplierCatalogs).map((catalog) => (
-                    <CatalogProductLinkField
-                      key={catalog.id}
-                      catalog={catalog}
-                      productId={productId}
-                      productName={name}
-                    />
-                  ))
-                : null}
-
-              <Field
-                className="max-w-xl"
-                data-invalid={Boolean(errors.image)}
+              {/* Each field renders nothing when its integration is off, so
+                the section hides itself until at least one field exists. */}
+              <Collapsible
+                render={<FieldSet className="hidden has-data-[slot=field]:flex" />}
               >
+                <FieldLegend variant="label">Koblinger</FieldLegend>
+                <CollapsibleTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="group min-h-11 w-full justify-between"
+                    />
+                  }
+                >
+                  <span className="truncate">Vis koblinger til integrationer</span>
+                  <ChevronDownIcon
+                    className="transition-transform group-aria-expanded:rotate-180"
+                    aria-hidden="true"
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent keepMounted>
+                  <div className="flex flex-col gap-6 pt-1">
+                    {canManageIntegrations &&
+                    masterSettings &&
+                    masterSettings.masters.length > 0 ? (
+                      <OnlinePosMasterSelect
+                        masters={masterSettings.masters}
+                        value={integrationId ?? null}
+                        onValueChange={setSelectedMasterId}
+                        disabled={isSaving || !onlinePosSettingsReady}
+                      />
+                    ) : null}
+                    {productId ? (
+                      <>
+                        <OnlinePosProductMappingField
+                          integrationId={integrationId}
+                          productId={productId}
+                          productName={name}
+                          mapping={productMapping}
+                          onlinePosProducts={onlinePosProducts}
+                          onRetry={() => setOnlinePosProducts(undefined)}
+                        />
+                        {Object.values(supplierCatalogs).map((catalog) => (
+                          <CatalogProductLinkField
+                            key={catalog.id}
+                            catalog={catalog}
+                            productId={productId}
+                            productName={name}
+                          />
+                        ))}
+                      </>
+                    ) : null}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Field data-invalid={Boolean(errors.image)}>
                 <FieldLabel htmlFor="product-picture">Billede</FieldLabel>
                 <div className="flex flex-col overflow-hidden rounded-xl border">
                   <label

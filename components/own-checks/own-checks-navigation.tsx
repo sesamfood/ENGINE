@@ -1,7 +1,7 @@
 "use client";
 
 import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon, WheatIcon } from "lucide-react";
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppBottomBar } from "@/components/app-bottom-bar";
