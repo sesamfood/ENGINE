@@ -1620,26 +1620,49 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               </Collapsible>
 
               {productId ? (
-                <OnlinePosProductMappingField
-                  integrationId={integrationId}
-                  productId={productId}
-                  productName={name}
-                  mapping={productMapping}
-                  onlinePosProducts={onlinePosProducts}
-                  onRetry={() => setOnlinePosProducts(undefined)}
-                />
-              ) : null}
-
-              {productId
-                ? Object.values(supplierCatalogs).map((catalog) => (
-                    <CatalogProductLinkField
-                      key={catalog.id}
-                      catalog={catalog}
-                      productId={productId}
-                      productName={name}
+                // Each field renders nothing when its integration is off, so
+                // the section hides itself until at least one field exists.
+                <Collapsible
+                  render={<FieldSet className="hidden has-data-[slot=field]:flex" />}
+                >
+                  <FieldLegend variant="label">Koblinger</FieldLegend>
+                  <CollapsibleTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="group min-h-11 w-full max-w-xl justify-between"
+                      />
+                    }
+                  >
+                    <span className="truncate">Vis koblinger til integrationer</span>
+                    <ChevronDownIcon
+                      className="transition-transform group-aria-expanded:rotate-180"
+                      aria-hidden="true"
                     />
-                  ))
-                : null}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent keepMounted>
+                    <div className="flex flex-col gap-6 pt-1">
+                      <OnlinePosProductMappingField
+                        integrationId={integrationId}
+                        productId={productId}
+                        productName={name}
+                        mapping={productMapping}
+                        onlinePosProducts={onlinePosProducts}
+                        onRetry={() => setOnlinePosProducts(undefined)}
+                      />
+                      {Object.values(supplierCatalogs).map((catalog) => (
+                        <CatalogProductLinkField
+                          key={catalog.id}
+                          catalog={catalog}
+                          productId={productId}
+                          productName={name}
+                        />
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : null}
 
               <Field
                 className="max-w-xl"
