@@ -251,12 +251,16 @@ function useKioskWakeLock(enabled: boolean) {
     }
 
     const handleVisibilityChange = () => void acquire();
+    // Safari only grants the lock from a tap, so retry on each one.
+    const handlePointerDown = () => void acquire();
     void acquire();
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pointerdown", handlePointerDown, { passive: true });
 
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pointerdown", handlePointerDown);
       if (wakeLock && !wakeLock.released) void wakeLock.release();
     };
   }, [enabled, supported]);
@@ -539,16 +543,12 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     if (!seconds || !idleTarget || atHome || onDayTasks || disabled || pending) {
       return;
     }
-    let timeout = window.setTimeout(
-      () => window.location.replace(idleTarget),
-      seconds * 1000,
-    );
+    // In-app navigation, since a reload drops the screen wake lock on Safari.
+    const goIdle = () => router.replace(idleTarget);
+    let timeout = window.setTimeout(goIdle, seconds * 1000);
     const activity = () => {
       window.clearTimeout(timeout);
-      timeout = window.setTimeout(
-        () => window.location.replace(idleTarget),
-        seconds * 1000,
-      );
+      timeout = window.setTimeout(goIdle, seconds * 1000);
     };
     const visibility = () => {
       if (document.visibilityState === "visible") activity();
@@ -574,6 +574,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     onDayTasks,
     pathname,
     pending,
+    router,
     runtime?.kioskModeEnabled,
     runtime?.settings?.inactivitySeconds,
     runtime?.settings?.updatedAt,
@@ -742,7 +743,7 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
     setDismissedKey(endOfDayKey);
   }
   const canLeaveStartOfDay = Boolean(kiosk?.settings?.allowLeavingStartOfDay);
-  // In memory only, so the inactivity reload returns to start of day.
+  // In memory only, so a reload returns to start of day.
   const [startOfDayLeft, setStartOfDayLeft] = useState(false);
   if (startOfDayLeft && current && current.phase !== "startOfDay") setStartOfDayLeft(false);
   // Navigating away from the start-of-day page counts as leaving it.

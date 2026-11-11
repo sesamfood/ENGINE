@@ -292,5 +292,10 @@ export function closedPeriodAround(
     now < previous.closesAt
       ? previous
       : countWindowForDate(today, "", weekly, specialOpeningHours, timeZone);
-  return { closedAt: window.opensAt, reopensAt: window.closesAt };
+  return {
+    closedAt: window.opensAt,
+    reopensAt: window.closesAt,
+    // Start of the closed period that ended at the latest opening, or null until it ends.
+    lastClosedAt: window === previous ? null : previous.opensAt,
+  };
 }
