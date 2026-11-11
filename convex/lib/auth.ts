@@ -569,6 +569,7 @@ export async function requireKioskDestination(
       ctx,
       auth.organizationId,
       auth.kioskLocationId,
+      Date.now(),
     );
     if (allowed && !pages.some((item) => allowed.includes(item))) {
       throw new ConvexError("Udfør åbningsopgaverne, før du fortsætter");
