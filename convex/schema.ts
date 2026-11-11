@@ -1549,6 +1549,12 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
+  transferSettings: defineTable({
+    organizationId: v.string(),
+    maxFutureDays: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   wasteSettings: defineTable({
     organizationId: v.string(),
     // Unused. Older rows still carry it.
