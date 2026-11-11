@@ -9,6 +9,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 import {
+  requireOrganizationAdmin,
   requireTransferManager,
   requireTransferViewer,
 } from "./lib/auth";
@@ -25,7 +26,9 @@ import { requireOpenOrder } from "./internalOrders";
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_COMMENT_LENGTH = 500;
 const EXPORT_PAGE_SIZE = 5;
-const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_MAX_FUTURE_DAYS = 30;
+const MAX_FUTURE_DAYS_LIMIT = 365;
 const MAX_PUBLIC_PAGE_SIZE = 100;
 
 function requirePageSize(numItems: number, maximum: number) {
@@ -250,6 +253,60 @@ async function resolveResponsibleName(
   return user.name?.trim() || user.email;
 }
 
+async function transferSettingsFor(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+) {
+  const settings = await ctx.db
+    .query("transferSettings")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .unique();
+  return { maxFutureDays: settings?.maxFutureDays ?? DEFAULT_MAX_FUTURE_DAYS };
+}
+
+const transferSettingsValidator = v.object({ maxFutureDays: v.number() });
+
+export const getSettings = query({
+  args: {},
+  returns: transferSettingsValidator,
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    return await transferSettingsFor(ctx, organizationId);
+  },
+});
+
+export const setSettings = mutation({
+  args: transferSettingsValidator.fields,
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    if (
+      !Number.isSafeInteger(args.maxFutureDays) ||
+      args.maxFutureDays < 0 ||
+      args.maxFutureDays > MAX_FUTURE_DAYS_LIMIT
+    ) {
+      throw new ConvexError(
+        `Antal dage skal være et heltal mellem 0 og ${MAX_FUTURE_DAYS_LIMIT}`,
+      );
+    }
+    const current = await ctx.db
+      .query("transferSettings")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .unique();
+    const next = { maxFutureDays: args.maxFutureDays, updatedAt: Date.now() };
+    if (current) {
+      await ctx.db.patch("transferSettings", current._id, next);
+    } else {
+      await ctx.db.insert("transferSettings", { organizationId, ...next });
+    }
+    return null;
+  },
+});
+
 async function prepareTransfer(
   ctx: MutationCtx,
   organizationId: string,
@@ -263,8 +320,12 @@ async function prepareTransfer(
   if (!Number.isFinite(args.transferredAt) || args.transferredAt <= 0) {
     throw new ConvexError("Transferdatoen er ugyldig");
   }
-  if (args.transferredAt > Date.now() + MAX_FUTURE_SKEW_MS) {
-    throw new ConvexError("Transferdatoen er ugyldig");
+  const { maxFutureDays } = await transferSettingsFor(ctx, organizationId);
+  // One extra day absorbs clock and time zone drift.
+  if (args.transferredAt > Date.now() + (maxFutureDays + 1) * DAY_MS) {
+    throw new ConvexError(
+      `Transferdatoen må højst ligge ${maxFutureDays} ${maxFutureDays === 1 ? "dag" : "dage"} frem i tiden`,
+    );
   }
   if (args.items.length === 0) {
     throw new ConvexError("Tilføj mindst én produktlinje");
