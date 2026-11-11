@@ -345,19 +345,10 @@ async function resolveTransferReceiptItems({
     pairKeys.add(pairKey);
 
     const quantity = normalizeStock(input.quantity);
-    const sentDefaultQuantity = normalizeStock(
-      item.quantity * item.factorToDefault,
-    );
     const defaultQuantity = normalizeStock(quantity * factorToDefault);
-    if (
-      !Number.isFinite(input.quantity) ||
-      quantity < 0 ||
-      defaultQuantity < 0 ||
-      defaultQuantity > sentDefaultQuantity
-    ) {
-      const maximum = normalizeStock(sentDefaultQuantity / factorToDefault);
+    if (!Number.isFinite(input.quantity) || quantity < 0) {
       throw new ConvexError(
-        `Den modtagne mængde for ${item.productName} skal være mellem 0 og ${maximum}`,
+        `Den modtagne mængde for ${item.productName} må ikke være negativ`,
       );
     }
 

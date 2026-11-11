@@ -119,7 +119,9 @@ function normalizeQuantity(value: number) {
 }
 
 function initialQuantities(items: ReceiptItem[]) {
-  return Object.fromEntries(items.map((item) => [item.id, "0"]));
+  return Object.fromEntries(
+    items.map((item) => [item.id, String(item.quantity)]),
+  );
 }
 
 function initialUnitIds(items: ReceiptItem[]) {
@@ -227,7 +229,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
     return normalizeQuantity(item.quantity * item.factorToDefault);
   }
 
-  function maximumReceivedQuantity(item: ReceiptItem) {
+  function sentQuantity(item: ReceiptItem) {
     return normalizeQuantity(
       sentDefaultQuantity(item) / selectedReceiptUnit(item).factorToDefault,
     );
@@ -369,10 +371,8 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
     const next: Record<string, string> = {};
     for (const item of transfer.items) {
       const quantity = parseQuantity(quantities[item.id] ?? "");
-      const maximum = maximumReceivedQuantity(item);
-      if (quantity === null || quantity < 0 || quantity > maximum) {
-        next[item.id] =
-          `Angiv en mængde mellem 0 og ${quantityFormatter.format(maximum)}`;
+      if (quantity === null || quantity < 0) {
+        next[item.id] = "Angiv en mængde på 0 eller mere";
       }
     }
     for (const line of additionalLines) {
@@ -623,7 +623,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                     const quantity = parseQuantity(quantities[item.id] ?? "");
                     const units = receiptUnits(item);
                     const selectedUnit = selectedReceiptUnit(item);
-                    const maximum = maximumReceivedQuantity(item);
+                    const sent = sentQuantity(item);
                     const fullyReceived =
                       quantity !== null &&
                       normalizeQuantity(
@@ -717,7 +717,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                                 Sendt
                               </FieldTitle>
                               <span className="flex h-11 items-center tabular-nums">
-                                {quantityFormatter.format(maximum)}{" "}
+                                {quantityFormatter.format(sent)}{" "}
                                 {selectedUnit.name}
                               </span>
                             </Field>
@@ -739,7 +739,6 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                                 label={`Modtaget mængde for ${item.productName}`}
                                 value={quantities[item.id] ?? ""}
                                 min={0}
-                                max={maximum}
                                 invalid={Boolean(errors[item.id])}
                                 className="w-full sm:w-48"
                                 onValueChange={(value) => {
@@ -763,7 +762,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                               className="min-h-11"
                               aria-label={`Alt modtaget for ${item.productName}`}
                               disabled={fullyReceived}
-                              onClick={() => setQuantity(item.id, maximum)}
+                              onClick={() => setQuantity(item.id, sent)}
                             >
                               <CheckIcon data-icon="inline-start" />
                               Alt modtaget
