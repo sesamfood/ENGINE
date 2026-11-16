@@ -33,7 +33,10 @@ type Route = { href: string; permission: PermissionId };
 const routes: Record<SidebarItemId, readonly Route[]> = {
   dateLabels: [{ href: "/date-labels", permission: "dateLabels.print" }],
   dashboard: [{ href: "/dashboard", permission: "dashboard.view" }],
-  manager: [{ href: "/manager/targets", permission: "dashboard.manageTargets" }],
+  manager: [
+    { href: "/manager/targets", permission: "dashboard.manageTargets" },
+    { href: "/manager/staff-food", permission: "staffFood.report" },
+  ],
   woltOrders: [{ href: "/wolt-orders", permission: "sales.viewDetail" }],
   ordering: [{ href: "/ordering", permission: "ordering.plan" }],
   transfers: [
