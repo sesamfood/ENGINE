@@ -70,7 +70,7 @@ export function LocationTargetsPage() {
     settings?.targetMetricIds.includes(metric.id)
     && metricSourceAvailable(metric.source, integrations)
     && metricFeaturesAvailable(metric.features, disabledFeatures)
-    && (!metric.sensitive || canViewSales));
+    && (!metric.sensitive || (metric.source === "wolt" ? canViewAggregateSales || canViewDetailedSales : canViewSales)));
 
   const header = (
     <AppPageHeader>

@@ -195,6 +195,7 @@ const definitions = {
   },
   wasteRegistrations: {
     id: "wasteRegistrations",
+    targetable: true,
     label: "Waste-registreringer",
     category: "Waste",
     description: "Antal aktive Waste-registreringer.",
@@ -284,6 +285,7 @@ const definitions = {
   },
   transfers: {
     id: "transfers",
+    targetable: true,
     label: "Transfers",
     category: "Transfer",
     description: "Antal transfers i perioden.",
@@ -298,6 +300,7 @@ const definitions = {
   },
   itemsMoved: {
     id: "itemsMoved",
+    targetable: true,
     label: "Transfermængde",
     category: "Transfer",
     description: "Samlet registreret mængde på transferlinjer.",
@@ -326,6 +329,7 @@ const definitions = {
   },
   staffFoodRegistrations: {
     id: "staffFoodRegistrations",
+    targetable: true,
     label: "Staff food-registreringer",
     category: "Staff food",
     description: "Antal aktive Staff food-registreringer.",
@@ -354,6 +358,7 @@ const definitions = {
   },
   scheduledHours: {
     id: "scheduledHours",
+    targetable: true,
     label: "Planlagte timer",
     category: "Vagtplan",
     description: "Samlede timer i den synkroniserede vagtplan.",
@@ -448,6 +453,7 @@ const definitions = {
   onlineSalesRevenue: {
     ...channelSalesDefaults,
     id: "onlineSalesRevenue",
+    targetable: true,
     direction: "up-good",
     label: "Online omsætning",
     description: "Omsætning fra OnlinePOS-salg online i perioden.",
@@ -458,6 +464,7 @@ const definitions = {
   onlineSalesOrderCount: {
     ...channelSalesDefaults,
     id: "onlineSalesOrderCount",
+    targetable: true,
     direction: "up-good",
     label: "Online ordrer",
     description: "Antal OnlinePOS-ordrer online i perioden.",
@@ -468,6 +475,7 @@ const definitions = {
   onlineAverageBasket: {
     ...channelSalesDefaults,
     id: "onlineAverageBasket",
+    targetable: true,
     direction: "up-good",
     label: "Online gennemsnitlig kurv",
     description: "Omsætning divideret med antal ordrer for OnlinePOS-salg online.",
@@ -478,6 +486,7 @@ const definitions = {
   storeSalesRevenue: {
     ...channelSalesDefaults,
     id: "storeSalesRevenue",
+    targetable: true,
     direction: "up-good",
     label: "Omsætning i butik",
     description: "Omsætning fra OnlinePOS-salg i butik i perioden.",
@@ -488,6 +497,7 @@ const definitions = {
   storeSalesOrderCount: {
     ...channelSalesDefaults,
     id: "storeSalesOrderCount",
+    targetable: true,
     direction: "up-good",
     label: "Ordrer i butik",
     description: "Antal OnlinePOS-ordrer i butik i perioden.",
@@ -498,6 +508,7 @@ const definitions = {
   storeAverageBasket: {
     ...channelSalesDefaults,
     id: "storeAverageBasket",
+    targetable: true,
     direction: "up-good",
     label: "Gennemsnitlig kurv i butik",
     description: "Omsætning divideret med antal ordrer for OnlinePOS-salg i butik.",
@@ -507,6 +518,7 @@ const definitions = {
   },
   woltCancellationRate: {
     id: "woltCancellationRate",
+    targetable: true,
     direction: "down-good",
     label: "Wolt-annulleringsrate",
     category: "Salg",
