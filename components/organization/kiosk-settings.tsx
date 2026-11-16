@@ -3,7 +3,8 @@
 import { PasswordInput } from "@/components/ui/password-input";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { KeyRoundIcon, LogOutIcon, MonitorCogIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { KeyRoundIcon, LayoutDashboardIcon, LogOutIcon, MonitorCogIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useEffect, useState } from "react";
@@ -70,6 +71,13 @@ import {
 } from "@/lib/kiosk";
 import type { SystemOrganizationRole } from "@/lib/auth-permissions";
 import { featureLabels, type FeatureId } from "@/lib/features";
+import type { WidgetRangePreset } from "@/lib/dashboard/types";
+import { rangePresetOptions } from "@/components/dashboard/range-selector";
+
+type KioskDashboard = { dashboardId: Id<"dashboards">; preset: WidgetRangePreset };
+const kioskPresetItems = rangePresetOptions.filter(
+  (option): option is { value: WidgetRangePreset; label: string } => option.value !== "custom",
+);
 
 const roleLabels: Record<SystemOrganizationRole, string> = {
   admin: "Administrator",
@@ -234,6 +242,112 @@ function SessionKioskCard({ disabled }: { disabled: boolean }) {
   );
 }
 
+type DashboardOption = { id: Id<"dashboards">; name: string };
+
+function KioskDashboardDialog({
+  open,
+  options,
+  value,
+  onOpenChange,
+  onApply,
+}: {
+  open: boolean;
+  options: DashboardOption[];
+  value: KioskDashboard[];
+  onOpenChange: (open: boolean) => void;
+  onApply: (value: KioskDashboard[]) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLocaleLowerCase("da");
+  const visible = options.filter((option) => option.name.toLocaleLowerCase("da").includes(query));
+  const allVisibleSelected = visible.length > 0 && visible.every((option) => draft.some((item) => item.dashboardId === option.id));
+  const periodFor = (id: Id<"dashboards">) => draft.find((item) => item.dashboardId === id)?.preset;
+
+  function toggle(id: Id<"dashboards">, checked: boolean) {
+    setDraft(checked ? [...draft, { dashboardId: id, preset: "today" }] : draft.filter((item) => item.dashboardId !== id));
+  }
+
+  function toggleVisible() {
+    const ids = new Set(visible.map((option) => option.id));
+    setDraft(
+      allVisibleSelected
+        ? draft.filter((item) => !ids.has(item.dashboardId))
+        : [...draft, ...visible.filter((option) => !periodFor(option.id)).map((option) => ({ dashboardId: option.id, preset: "today" as const }))],
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          setDraft(value);
+          setSearch("");
+        }
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent className="flex max-h-(--spacing-viewport-inset) flex-col sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Dashboards i kiosk</DialogTitle>
+          <DialogDescription>Vælg de dashboards, kiosken må vise, og den periode, hvert dashboard altid viser.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <InputGroup className="h-11 sm:flex-1">
+            <InputGroupAddon><SearchIcon /></InputGroupAddon>
+            <InputGroupInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Søg efter dashboard" aria-label="Søg efter dashboard" />
+          </InputGroup>
+          <Button type="button" variant="outline" className="min-h-11" onClick={toggleVisible} disabled={!visible.length}>
+            {allVisibleSelected ? "Fravælg alle" : "Vælg alle"}
+          </Button>
+        </div>
+        <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
+          {visible.length ? (
+            <ul className="flex flex-col divide-y rounded-xl border">
+              {visible.map((option) => {
+                const preset = periodFor(option.id);
+                return (
+                  <li key={option.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-4">
+                    <Field orientation="horizontal" className="min-h-11 flex-1">
+                      <Checkbox id={`kiosk-dashboard-${option.id}`} checked={Boolean(preset)} onCheckedChange={(checked) => toggle(option.id, checked)} />
+                      <FieldLabel htmlFor={`kiosk-dashboard-${option.id}`} className="min-w-0 break-words">{option.name}</FieldLabel>
+                    </Field>
+                    <Select
+                      items={kioskPresetItems}
+                      value={preset ?? null}
+                      disabled={!preset}
+                      onValueChange={(next) => next && setDraft(draft.map((item) => item.dashboardId === option.id ? { ...item, preset: next } : item))}
+                    >
+                      <SelectTrigger className="h-11 w-full sm:w-44" aria-label={`Periode for ${option.name}`}>
+                        <SelectValue placeholder="Ikke valgt" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {kioskPresetItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">{options.length ? "Ingen dashboards matcher søgningen." : "Der er ingen dashboards endnu."}</p>
+          )}
+        </div>
+        <DialogFooter className="items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">{draft.length} af {options.length} valgt</p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button type="button" variant="outline" className="min-h-11" onClick={() => onOpenChange(false)}>Annullér</Button>
+            <Button type="button" className="min-h-11" disabled={!draft.length} onClick={() => { onApply(draft); onOpenChange(false); }}>Anvend</Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function KioskSettings() {
   const access = useAccess();
   const canManageSettings = usePermission("organization.settings");
@@ -253,6 +367,10 @@ export function KioskSettings() {
     api.access.listMemberLocationAccess,
     canManageAccounts ? {} : "skip",
   );
+  const dashboardOptions = useQuery(
+    api.kiosk.listDashboardOptions,
+    canManageSettings ? {} : "skip",
+  );
   const locations = canManageAccounts
     ? memberLocationAccess?.locations
     : undefined;
@@ -266,6 +384,8 @@ export function KioskSettings() {
   const [inactivitySeconds, setInactivitySeconds] = useState(60);
   const [allowLeavingStartOfDay, setAllowLeavingStartOfDay] = useState(false);
   const [pinFeatures, setPinFeatures] = useState<FeatureId[]>([]);
+  const [kioskDashboards, setKioskDashboards] = useState<KioskDashboard[]>([]);
+  const [dashboardDialogOpen, setDashboardDialogOpen] = useState(false);
   const [settingsPending, setSettingsPending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string>();
@@ -286,6 +406,21 @@ export function KioskSettings() {
     return () => window.clearTimeout(timeout);
   }, [settings]);
 
+  useEffect(() => {
+    if (settings === undefined || dashboardOptions === undefined) return;
+    const timeout = window.setTimeout(() => {
+      // Settings saved before dashboards could be chosen show every dashboard with its own period.
+      setKioskDashboards(
+        settings?.dashboards?.filter((item) => dashboardOptions.some((option) => option.id === item.dashboardId))
+          ?? dashboardOptions.map((option) => ({
+            dashboardId: option.id,
+            preset: kioskPresetItems.find((item) => item.value === option.defaultPreset)?.value ?? "today",
+          })),
+      );
+    });
+    return () => window.clearTimeout(timeout);
+  }, [settings, dashboardOptions]);
+
   if (!access) {
     return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
   }
@@ -300,7 +435,7 @@ export function KioskSettings() {
   }
 
   if (
-    (canManageSettings && settings === undefined) ||
+    (canManageSettings && (settings === undefined || dashboardOptions === undefined)) ||
     (canManageAccounts && (accounts === undefined || locations === undefined))
   ) {
     return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
@@ -330,7 +465,7 @@ export function KioskSettings() {
     event.preventDefault();
     setSettingsPending(true);
     try {
-      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay, pinFeatures: pinFeatures.filter(featureEnabled) });
+      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay, pinFeatures: pinFeatures.filter(featureEnabled), dashboards: kioskDashboards });
       toast.success("Kioskopsætningen er gemt");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
@@ -418,6 +553,26 @@ export function KioskSettings() {
                           </FieldLabel>
                         </Field>
                       ))}
+                    {feature === "dashboard" && enabledPages.includes("dashboard.view") ? (
+                      <>
+                        <FieldSeparator />
+                        <Field>
+                          <FieldLabel htmlFor="kiosk-dashboards">Dashboards</FieldLabel>
+                          <Button id="kiosk-dashboards" type="button" variant="outline" className="min-h-11 justify-start" onClick={() => setDashboardDialogOpen(true)}>
+                            <LayoutDashboardIcon data-icon="inline-start" />
+                            {kioskDashboards.length} af {dashboardOptions?.length ?? 0} valgt
+                          </Button>
+                          {kioskDashboards.length ? null : <FieldDescription>Vælg mindst ét dashboard.</FieldDescription>}
+                        </Field>
+                        <KioskDashboardDialog
+                          open={dashboardDialogOpen}
+                          options={dashboardOptions ?? []}
+                          value={kioskDashboards}
+                          onOpenChange={setDashboardDialogOpen}
+                          onApply={setKioskDashboards}
+                        />
+                      </>
+                    ) : null}
                     {featureEnabled(feature) ? (
                       <>
                         <FieldSeparator />

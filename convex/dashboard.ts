@@ -594,6 +594,21 @@ function roleAllowsDashboard(dashboard: Doc<"dashboards">, role: string) {
   return dashboard.roleIds.length === 0 || dashboard.roleIds.includes(role);
 }
 
+/** Dashboard ids a kiosk session may show, or null when every dashboard is allowed. */
+async function kioskDashboardIds(
+  ctx: QueryCtx,
+  auth: { organizationId: string; isKioskAccount: boolean; kioskModeEnabled: boolean },
+) {
+  if (!auth.isKioskAccount || !auth.kioskModeEnabled) return null;
+  const settings = await ctx.db
+    .query("kioskSettings")
+    .withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId))
+    .unique();
+  return settings?.dashboards
+    ? new Set(settings.dashboards.map((item) => item.dashboardId))
+    : null;
+}
+
 async function availableWidgets(
   ctx: QueryCtx | MutationCtx,
   auth: DashboardAccess & {
@@ -899,9 +914,12 @@ export const list = query({
         ...await availableWidgets(ctx, auth, dashboard.widgets, integrations),
       })),
     );
+    const kioskIds = await kioskDashboardIds(ctx, auth);
     const accessible = withWidgets.filter(
       ({ dashboard, hasAccessibleWidgets }) =>
-        roleAllowsDashboard(dashboard, auth.role) && hasAccessibleWidgets,
+        roleAllowsDashboard(dashboard, auth.role) &&
+        hasAccessibleWidgets &&
+        (!kioskIds || kioskIds.has(dashboard._id)),
     );
     const singleLocationId = auth.kioskLocationId
       ? auth.kioskLocationId
@@ -929,7 +947,11 @@ export const get = query({
       auth.organizationId,
       args.dashboardId,
     );
-    if (!roleAllowsDashboard(dashboard, auth.role)) {
+    const kioskIds = await kioskDashboardIds(ctx, auth);
+    if (
+      !roleAllowsDashboard(dashboard, auth.role) ||
+      (kioskIds && !kioskIds.has(dashboard._id))
+    ) {
       throw new ConvexError("Du har ikke adgang til dette dashboard");
     }
     const { widgets, hasAccessibleWidgets } = await availableWidgets(ctx, auth, dashboard.widgets, integrations);

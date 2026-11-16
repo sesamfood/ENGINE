@@ -15,7 +15,7 @@ import {
 import { comparisonPeriodLabels, comparisonPeriods, type ComparisonPeriod, type DashboardRange, type RangePreset } from "@/lib/dashboard/types";
 import { dateKey, DEFAULT_TIME_ZONE } from "@/lib/date";
 
-const presets: Array<{ value: RangePreset; label: string }> = [
+export const rangePresetOptions: Array<{ value: RangePreset; label: string }> = [
   { value: "today", label: "I dag" },
   { value: "yesterday", label: "I går" },
   { value: "7days", label: "7 dage" },
@@ -62,7 +62,7 @@ export function RangeSelector({
   return (
     <div className="flex flex-col gap-3">
       <Select
-        items={presets}
+        items={rangePresetOptions}
         value={range.preset}
         onValueChange={(value) => {
           if (value) select([value]);
@@ -73,7 +73,7 @@ export function RangeSelector({
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            {presets.map((preset) => (
+            {rangePresetOptions.map((preset) => (
               <SelectItem key={preset.value} value={preset.value}>
                 {preset.label}
               </SelectItem>
@@ -83,7 +83,7 @@ export function RangeSelector({
       </Select>
       <div ref={scrollRef} data-scroll-right={canScrollRight ? "true" : undefined} className="no-scrollbar hidden overflow-x-auto lg:block">
         <ToggleGroup value={[range.preset]} onValueChange={select} variant="outline" size="lg" spacing={0} className="min-w-max">
-          {presets.map((preset) => <ToggleGroupItem key={preset.value} value={preset.value} className="min-h-11">{preset.label}</ToggleGroupItem>)}
+          {rangePresetOptions.map((preset) => <ToggleGroupItem key={preset.value} value={preset.value} className="min-h-11">{preset.label}</ToggleGroupItem>)}
         </ToggleGroup>
       </div>
       {range.preset === "custom" ? (

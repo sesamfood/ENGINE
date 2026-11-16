@@ -46,6 +46,7 @@ import {
   targetPeriodValidator,
   rangeValidator,
   comparisonPeriodValidator,
+  kioskDashboardValidator,
   scopeValidator,
   widgetValidator,
 } from "./lib/dashboardValidators";
@@ -2113,6 +2114,8 @@ export default defineSchema({
     allowLeavingStartOfDay: v.optional(v.boolean()),
     // Modules whose kiosk pages ask for the location's PIN code.
     pinFeatures: v.optional(v.array(v.string())),
+    // Dashboards the kiosk may show. Missing means every dashboard with its own default period.
+    dashboards: v.optional(v.array(kioskDashboardValidator)),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
