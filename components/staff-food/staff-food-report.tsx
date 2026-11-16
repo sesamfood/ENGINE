@@ -1,7 +1,7 @@
 "use client";
 
 import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
-import { DownloadIcon, UtensilsIcon } from "lucide-react";
+import { CircleCheckIcon, DownloadIcon, UtensilsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/date-picker";
@@ -162,6 +162,19 @@ export function StaffFoodReport() {
       : "skip",
     { initialNumItems: 100 },
   );
+  const missing = useQuery(
+    api.staffFood.missingRegistrations,
+    context && rangeValid && canReport
+      ? {
+          startAt,
+          endAt,
+          now: todayTimestamp,
+          ...(effectiveLocation === "all"
+            ? {}
+            : { locationId: effectiveLocation as Id<"locations"> }),
+        }
+      : "skip",
+  );
 
   // Totals need every row in the period, so keep loading until exhausted.
   useEffect(() => {
@@ -221,6 +234,17 @@ export function StaffFoodReport() {
     };
   }, [results]);
   const loading = rangeValid && status !== "Exhausted";
+  const shiftDay = dateTimeFormatter("da-DK", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone,
+  });
+  const shiftTime = dateTimeFormatter("da-DK", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+  });
 
   function exportCsv() {
     const formatter = dateTimeFormatter("da-DK", {
@@ -503,6 +527,77 @@ export function StaffFoodReport() {
               </CardContent>
             </Card>
           ) : null}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Manglende registreringer
+                {missing?.shifts.length ? ` (${missing.shifts.length})` : ""}
+              </CardTitle>
+              <CardDescription>
+                Afsluttede vagter med ret til Staff food, hvor der ikke blev
+                registreret noget.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!missing ? (
+                <TableSkeleton />
+              ) : missing.shifts.length ? (
+                <div className="flex flex-col gap-3">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Medarbejder</TableHead>
+                        {effectiveLocation === "all" ? (
+                          <TableHead>Lokation</TableHead>
+                        ) : null}
+                        <TableHead>Vagt</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {missing.shifts.map((row) => (
+                        <TableRow key={row.shiftId}>
+                          <TableCell>
+                            {row.employeeName}
+                            {row.roleName ? (
+                              <span className="block text-muted-foreground">
+                                {row.roleName}
+                              </span>
+                            ) : null}
+                          </TableCell>
+                          {effectiveLocation === "all" ? (
+                            <TableCell>{row.locationName}</TableCell>
+                          ) : null}
+                          <TableCell>
+                            {shiftDay.format(row.startsAt)}
+                            <span className="block text-muted-foreground">
+                              {shiftTime.format(row.startsAt)}–
+                              {shiftTime.format(row.endsAt)}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {missing.truncated ? (
+                    <p className="text-sm text-muted-foreground">
+                      Listen viser kun de seneste vagter. Vælg en kortere
+                      periode for at se alle.
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <CircleCheckIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>Ingen manglende registreringer</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
       <StaffFoodNavigation />
