@@ -1,6 +1,6 @@
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
-import { action, env, internalQuery, query, type QueryCtx } from "./_generated/server";
+import { action, env, internalMutation, internalQuery, query, type QueryCtx } from "./_generated/server";
 import { requireDashboardViewer, requireHumanPrincipal, requireOrganization } from "./lib/auth";
 import { dashboardMetricComputers, resolveMetricParams } from "./lib/dashboardMetrics";
 import { liveMetricResultValidator, metricIdValidator, scopeValidator, visualizationValidator } from "./lib/dashboardValidators";
@@ -64,6 +64,42 @@ async function resolveContext(
 export const getContext = query({ args: contextArgs, returns: contextValidator, handler: resolveContext });
 export const getAuthorizedContext = internalQuery({ args: contextArgs, returns: contextValidator, handler: resolveContext });
 
+const RATING_TTL = 7 * 24 * 60 * 60 * 1000;
+const ratingValidator = v.object({
+  placeId: v.string(),
+  rating: v.union(v.number(), v.null()),
+  attributions: v.array(v.object({ provider: v.string(), providerUri: v.optional(v.string()) })),
+  fetchedAt: v.number(),
+});
+
+export const cachedRatings = internalQuery({
+  args: { organizationId: v.string(), placeIds: v.array(v.string()), since: v.number() },
+  returns: v.array(ratingValidator),
+  handler: async (ctx, args) => {
+    const rows = await Promise.all(args.placeIds.map((placeId) => ctx.db.query("googlePlaceRatings")
+      .withIndex("by_organizationId_and_placeId", (q) => q.eq("organizationId", args.organizationId).eq("placeId", placeId))
+      .unique()));
+    return rows.flatMap((row) => row && row.fetchedAt >= args.since
+      ? [{ placeId: row.placeId, rating: row.rating, attributions: row.attributions, fetchedAt: row.fetchedAt }]
+      : []);
+  },
+});
+
+export const storeRatings = internalMutation({
+  args: { organizationId: v.string(), ratings: v.array(ratingValidator) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    for (const rating of args.ratings) {
+      const row = await ctx.db.query("googlePlaceRatings")
+        .withIndex("by_organizationId_and_placeId", (q) => q.eq("organizationId", args.organizationId).eq("placeId", rating.placeId))
+        .unique();
+      if (row) await ctx.db.patch("googlePlaceRatings", row._id, rating);
+      else await ctx.db.insert("googlePlaceRatings", { organizationId: args.organizationId, ...rating });
+    }
+    return null;
+  },
+});
+
 export const getMetric = action({
   args: {
     ...contextArgs,
@@ -94,22 +130,31 @@ export const getMetric = action({
     }
     const placeIds = [...new Set(locations.flatMap((location) => location.placeId ? [location.placeId] : []))];
     const configured = Boolean(env.GOOGLE_PLACES_API_KEY?.trim());
+    type Rating = Infer<typeof ratingValidator>;
+    type Lookup = { kind: "success"; value: Rating } |
+      { kind: "error"; state: LiveMetricResult["locations"][number]["state"] };
+    const lookups = new Map<string, Lookup>();
+    if (placeIds.length) {
+      const cached: Rating[] = await ctx.runQuery(internal.dashboardLive.cachedRatings, {
+        organizationId: before.organizationId, placeIds, since: Date.now() - RATING_TTL,
+      });
+      for (const value of cached) lookups.set(value.placeId, { kind: "success", value });
+    }
+    const missing = placeIds.filter((placeId) => !lookups.has(placeId));
     let limited = false;
-    if (placeIds.length && configured) {
+    if (missing.length && configured) {
       for (const [name, key] of [
         ["googlePlacesReadUser", before.userIdentifier],
         ["googlePlacesReadOrganization", before.organizationId],
         ["googlePlacesDaily", "deployment"],
       ] as const) {
-        const allowance = await rateLimiter.limit(ctx, name, { key, count: placeIds.length });
+        const allowance = await rateLimiter.limit(ctx, name, { key, count: missing.length });
         if (!allowance.ok) { limited = true; break; }
       }
     }
-    type Lookup = { kind: "success"; value: Awaited<ReturnType<typeof readGoogleRating>> } |
-      { kind: "error"; state: LiveMetricResult["locations"][number]["state"] };
-    const lookups = new Map<string, Lookup>();
-    for (let index = 0; index < placeIds.length; index += 4) {
-      await Promise.all(placeIds.slice(index, index + 4).map(async (placeId) => {
+    const fresh: Rating[] = [];
+    for (let index = 0; index < missing.length; index += 4) {
+      await Promise.all(missing.slice(index, index + 4).map(async (placeId) => {
         if (!configured) {
           lookups.set(placeId, { kind: "error", state: "notConfigured" });
           return;
@@ -119,13 +164,18 @@ export const getMetric = action({
           return;
         }
         try {
-          lookups.set(placeId, { kind: "success", value: await readGoogleRating(placeId) });
+          const value = { placeId, ...await readGoogleRating(placeId), fetchedAt: Date.now() };
+          fresh.push(value);
+          lookups.set(placeId, { kind: "success", value });
         } catch (error) {
           const code = error instanceof GooglePlacesError ? error.code : "unavailable";
           const state = code === "notFound" || code === "moved" ? "reconnect" : code;
           lookups.set(placeId, { kind: "error", state });
         }
       }));
+    }
+    if (fresh.length) {
+      await ctx.runMutation(internal.dashboardLive.storeRatings, { organizationId: before.organizationId, ratings: fresh });
     }
     const verified = locations.flatMap((location) =>
       location.placeId && lookups.get(location.placeId)?.kind === "success"
@@ -142,7 +192,7 @@ export const getMetric = action({
     const result: LiveMetricResult = {
       result: { unit: metricRegistry[args.metricId].unit, scaleMax: 5, series: [], truncated: before.truncated || before.locations.length > limit },
       locations: [],
-      retrievedAt: Date.now(),
+      retrievedAt: Math.min(Date.now(), ...[...lookups.values()].flatMap((lookup) => lookup.kind === "success" ? [lookup.value.fetchedAt] : [])),
       attributions: [],
     };
     const attributions = new Map<string, LiveMetricResult["attributions"][number]>();

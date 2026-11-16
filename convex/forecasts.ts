@@ -731,17 +731,25 @@ export const refreshLocation = internalAction({
         if (!env.GOOGLE_PLACES_API_KEY?.trim()) throw new Error("Google Places is not configured");
         const connection = await ctx.runQuery(internal.forecasts.googleForecastPlace, { forecastId: args.forecastId, revision: forecast.revision });
         if (!connection) throw new Error("Forecast location changed");
-        const organizationLimit = await rateLimiter.limit(ctx, "googlePlacesReadOrganization", { key: connection.organizationId });
-        if (!organizationLimit.ok) throw new Error("Forecast location limit reached");
-        const dailyLimit = await rateLimiter.limit(ctx, "googlePlacesDaily", { key: "deployment" });
-        if (!dailyLimit.ok) throw new Error("Forecast location limit reached");
-        const point = await readGooglePoint(connection.placeId);
-        const region = forecast.region;
-        const subdivisionCode = region?.googlePlaceId === connection.placeId &&
-          region.latitude === point.latitude && region.longitude === point.longitude &&
-          region.countryCode === point.countryCode ? region.subdivisionCode : null;
+        let region = forecast.region;
+        // Google allows keeping coordinates for 30 days; reuse them instead of paying per refresh.
+        if (region?.googlePlaceId !== connection.placeId || Date.now() - region.updatedAt > 30 * 24 * 3_600_000) {
+          const organizationLimit = await rateLimiter.limit(ctx, "googlePlacesReadOrganization", { key: connection.organizationId });
+          if (!organizationLimit.ok) throw new Error("Forecast location limit reached");
+          const dailyLimit = await rateLimiter.limit(ctx, "googlePlacesDaily", { key: "deployment" });
+          if (!dailyLimit.ok) throw new Error("Forecast location limit reached");
+          const point = await readGooglePoint(connection.placeId);
+          const unchanged = region?.googlePlaceId === connection.placeId &&
+            region.latitude === point.latitude && region.longitude === point.longitude &&
+            region.countryCode === point.countryCode;
+          region = { ...point, googlePlaceId: connection.placeId, subdivisionCode: unchanged && region ? region.subdivisionCode : null, updatedAt: Date.now() };
+          const cached: boolean = await ctx.runMutation(internal.forecasts.cacheRegion, { forecastId: args.forecastId, revision: forecast.revision, region });
+          // A changed region resets the forecast and schedules a fresh run.
+          if (!cached || !unchanged) return null;
+        }
+        const { subdivisionCode } = region;
         environment = await fetchForecastConditions({
-          profile: { ...point, ...(subdivisionCode ? { subdivisionCode } : {}) },
+          profile: { latitude: region.latitude, longitude: region.longitude, countryCode: region.countryCode, ...(subdivisionCode ? { subdivisionCode } : {}) },
           timeZone: forecast.timeZone,
           today,
           cached: forecast.conditions,
