@@ -328,6 +328,18 @@ function DraggableWidget({
       ? { scope, range: widget.range ? { preset: widget.range } : range, now }
       : "skip",
   );
+  const locationTarget = useQuery(
+    api.locationTargets.getForScope,
+    budgetAllowed && widget.metric.kind === "builtin" && widgetTarget(widget)?.kind === "location"
+      ? {
+          metricId: widget.metric.id,
+          scope,
+          range: widget.range ? { preset: widget.range } : range,
+          now,
+          ...(widget.options?.salesSource ? { salesSource: widget.options.salesSource } : {}),
+        }
+      : "skip",
+  );
 
   return (
     <div
@@ -365,6 +377,7 @@ function DraggableWidget({
         range={range}
         now={now}
         budget={budget}
+        locationTarget={locationTarget}
         editable={editable}
         resizing={widget.size !== sourceSize}
         onVisualizationChange={(visualization: VisualizationId) => {

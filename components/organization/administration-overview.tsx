@@ -9,6 +9,7 @@ import {
   ClipboardListIcon,
   KeyRoundIcon,
   LayoutDashboardIcon,
+  BriefcaseBusinessIcon,
   ListChecksIcon,
   ListOrderedIcon,
   MessageSquarePlusIcon,
@@ -274,6 +275,14 @@ const categories: AdministrationCategory[] = [
         feature: "dashboard",
         icon: LayoutDashboardIcon,
         permissions: ["organization.settings"],
+      },
+      {
+        title: "Manager",
+        description: "Vælg de målinger, managere kan sætte mål for.",
+        href: "/administration/manager",
+        feature: "dashboard",
+        icon: BriefcaseBusinessIcon,
+        permissions: ["dashboard.manage"],
       },
       {
         title: "Integrationer",

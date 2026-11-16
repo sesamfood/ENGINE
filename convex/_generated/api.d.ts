@@ -167,6 +167,7 @@ import type * as lib_testOrganizations from "../lib/testOrganizations.js";
 import type * as lib_timeZone from "../lib/timeZone.js";
 import type * as lib_transferAggregates from "../lib/transferAggregates.js";
 import type * as locationProducts from "../locationProducts.js";
+import type * as locationTargets from "../locationTargets.js";
 import type * as locations from "../locations.js";
 import type * as masterData from "../masterData.js";
 import type * as migrations from "../migrations.js";
@@ -384,6 +385,7 @@ declare const fullApi: ApiFromModules<{
   "lib/timeZone": typeof lib_timeZone;
   "lib/transferAggregates": typeof lib_transferAggregates;
   locationProducts: typeof locationProducts;
+  locationTargets: typeof locationTargets;
   locations: typeof locations;
   masterData: typeof masterData;
   migrations: typeof migrations;

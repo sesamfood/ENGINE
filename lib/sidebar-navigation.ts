@@ -1,5 +1,6 @@
 export const sidebarItems = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "manager", label: "Manager" },
   { id: "dateLabels", label: "Datomærkning" },
   { id: "woltOrders", label: "Wolt-ordrer" },
   { id: "ordering", label: "Bestilling" },
@@ -30,6 +31,8 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
     (id) => !uniqueConfigured.includes(id),
   );
   const newlyAddedDashboard = missing.includes("dashboard") ? ["dashboard" as const] : [];
+  const addManagerAfterDashboard =
+    missing.includes("manager") && configured.includes("dashboard");
   const addInvoicesAfterTransfers =
     missing.includes("invoices") && configured.includes("transfers");
   const addGoodsReceiptsAfterTransfers =
@@ -38,6 +41,9 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
     ...newlyAddedDashboard,
     ...uniqueConfigured.flatMap((id) => [
       id,
+      ...(id === "dashboard" && addManagerAfterDashboard
+        ? ["manager" as const]
+        : []),
       ...(id === "transfers" && addInvoicesAfterTransfers
         ? ["invoices" as const]
         : []),
@@ -48,6 +54,7 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
     ...missing.filter(
       (id) =>
         id !== "dashboard" &&
+        !(id === "manager" && addManagerAfterDashboard) &&
         !(id === "invoices" && addInvoicesAfterTransfers) &&
         !(id === "goodsReceipts" && addGoodsReceiptsAfterTransfers),
     ),

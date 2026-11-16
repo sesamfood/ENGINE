@@ -3,7 +3,7 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ComparisonPeriod, DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, WidgetTarget, VisualizationId } from "@/lib/dashboard/types";
-import { resolveTarget, type BudgetTotals } from "@/lib/dashboard/target";
+import { resolveTarget, type BudgetTotals, type LocationTargetTotals } from "@/lib/dashboard/target";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
@@ -22,6 +22,7 @@ export function DashboardWidget({
   range,
   now,
   budget,
+  locationTarget,
   editable,
   resizing,
   onVisualizationChange,
@@ -45,6 +46,7 @@ export function DashboardWidget({
   range?: DashboardRange;
   now: number;
   budget?: BudgetTotals | null;
+  locationTarget?: LocationTargetTotals | null;
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
@@ -68,6 +70,7 @@ export function DashboardWidget({
     range: widgetRange,
     now,
     budget,
+    locationTarget,
     previous: previousTotal(result),
     comparisonLabel: comparisonPeriodText(result, widgetRange),
     formatValue: (value) => formatMetricValue(value, result),

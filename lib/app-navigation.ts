@@ -33,6 +33,7 @@ type Route = { href: string; permission: PermissionId };
 const routes: Record<SidebarItemId, readonly Route[]> = {
   dateLabels: [{ href: "/date-labels", permission: "dateLabels.print" }],
   dashboard: [{ href: "/dashboard", permission: "dashboard.view" }],
+  manager: [{ href: "/manager/targets", permission: "dashboard.manageTargets" }],
   woltOrders: [{ href: "/wolt-orders", permission: "sales.viewDetail" }],
   ordering: [{ href: "/ordering", permission: "ordering.plan" }],
   transfers: [
@@ -119,7 +120,7 @@ export function resolveAppNavigation({
 }) {
   const otherFeaturesLocked = countLocked && !disabledFeatures.includes("count");
   return sidebarItems.flatMap((item) => {
-    if (item.id !== "organization" && disabledFeatures.includes(item.id))
+    if (item.id !== "organization" && disabledFeatures.includes(item.id === "manager" ? "dashboard" : item.id))
       return [];
     if (item.id === "woltOrders" && !woltEnabled) return [];
     const candidates = routes[item.id];
@@ -152,6 +153,7 @@ export function homeDestination(
 ) {
   const order: SidebarItemId[] = [
     "dashboard",
+    "manager",
     "dateLabels",
     "woltOrders",
     "transfers",

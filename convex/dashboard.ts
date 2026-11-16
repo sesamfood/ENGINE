@@ -20,7 +20,7 @@ import {
   type MetricSource,
 } from "../lib/dashboard/registry";
 import { canBatchCustomMetric, dashboardDatasets } from "../lib/dashboard/datasets";
-import { supportsBudgetTarget, supportsTarget } from "../lib/dashboard/target";
+import { supportsBudgetTarget, supportsLocationTarget, supportsTarget } from "../lib/dashboard/target";
 import { kpiMonthEnd } from "../lib/dashboard/monthly-kpi";
 import { addDays, dateKey } from "../lib/date";
 import { latestBudget } from "./monthlyKpi";
@@ -164,7 +164,7 @@ function canViewWoltSales(auth: DashboardAccess) {
   );
 }
 
-function canViewBuiltinMetric(
+export function canViewBuiltinMetric(
   auth: DashboardAccess,
   metricId: BuiltinMetricId,
   salesSource?: SalesSource,
@@ -181,7 +181,7 @@ function canViewBuiltinMetric(
   return usesWolt ? canViewWoltSales(auth) : canViewSales(auth);
 }
 
-function canViewDetailedSales(auth: DashboardAccess) {
+export function canViewDetailedSales(auth: DashboardAccess) {
   return (
     hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
     hasPermission(auth.role, auth.permissions, "sales.viewDetail")
@@ -318,6 +318,9 @@ async function validateWidgets(
       }
       if (target.kind === "budget" && !supportsBudgetTarget(widget)) {
         throw new ConvexError("Målingen har intet budget");
+      }
+      if (target.kind === "location" && !supportsLocationTarget(widget)) {
+        throw new ConvexError("Målingen understøtter ikke lokationsmål");
       }
     }
   }

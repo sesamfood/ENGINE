@@ -21,6 +21,7 @@ import {
   WalletIcon,
   RefreshCwIcon,
   SettingsIcon,
+  BriefcaseBusinessIcon,
   MonitorIcon,
   PackageCheckIcon,
   PrinterIcon,
@@ -143,6 +144,7 @@ import {
 
 const navigationIcons = {
   dashboard: LayoutDashboardIcon,
+  manager: BriefcaseBusinessIcon,
   dateLabels: PrinterIcon,
   woltOrders: ShoppingBagIcon,
   ordering: ShoppingCartIcon,
@@ -975,6 +977,8 @@ function NavigationList() {
               const active =
                 item.id === "organization"
                   ? pathname.startsWith("/administration")
+                  : item.id === "manager"
+                  ? pathname.startsWith("/manager")
                   : pathname === item.href ||
                     pathname.startsWith(`${item.href}/`);
 
@@ -1754,6 +1758,8 @@ export function AppShell({
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
   const showAdministrationHeader =
     pathname === "/administration" || pathname.startsWith("/administration/");
+  const showManagerHeader =
+    pathname === "/manager" || pathname.startsWith("/manager/");
   const showPageHeader =
     pathname === "/profile" ||
     pathname === "/date-labels" ||
@@ -1768,6 +1774,7 @@ export function AppShell({
     showExpensesHeader ||
     showGoodsReceiptsHeader ||
     showDashboardHeader ||
+    showManagerHeader ||
     showAdministrationHeader;
 
   if (signingOut) {

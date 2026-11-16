@@ -59,7 +59,11 @@ export type TargetPeriod = (typeof targetPeriods)[number];
 export type WidgetTarget =
   | { kind: "comparison"; percent: number; period?: TargetPeriod }
   | { kind: "manual"; amount: number; period: TargetPeriod }
-  | { kind: "budget" };
+  | { kind: "budget" }
+  /** Follows the target a manager set for the selected locations. */
+  | { kind: "location" }
+  /** Opts a widget out of the automatic location target. */
+  | { kind: "none" };
 
 const widgetColumnSpans = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const widgetRowSpans = [1, 2, 3, 4] as const;

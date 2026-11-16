@@ -44,6 +44,8 @@ export type MetricDefinition = {
   /** Whether an increase is good, bad, or neither. Controls delta coloring. */
   direction?: "up-good" | "down-good" | "neutral";
   shareable?: boolean;
+  /** Managers can set a target for it per location. */
+  targetable?: true;
   live?: {
     currentLabel: string;
     sourceLabel: string;
@@ -177,6 +179,7 @@ const definitions = {
   },
   wasteQuantity: {
     id: "wasteQuantity",
+    targetable: true,
     direction: "down-good",
     label: "Waste-mængde",
     category: "Waste",
@@ -192,6 +195,7 @@ const definitions = {
   },
   wasteRegistrations: {
     id: "wasteRegistrations",
+    targetable: true,
     label: "Waste-registreringer",
     category: "Waste",
     description: "Antal aktive Waste-registreringer.",
@@ -234,6 +238,7 @@ const definitions = {
   },
   badDeliveries: {
     id: "badDeliveries",
+    targetable: true,
     direction: "down-good",
     label: "Dårlige leveringer",
     category: "Leveringer",
@@ -249,6 +254,7 @@ const definitions = {
   },
   countCompliance: {
     id: "countCompliance",
+    targetable: true,
     direction: "up-good",
     label: "Gennemførte Counts",
     category: "Count",
@@ -279,6 +285,7 @@ const definitions = {
   },
   transfers: {
     id: "transfers",
+    targetable: true,
     label: "Transfers",
     category: "Transfer",
     description: "Antal transfers i perioden.",
@@ -293,6 +300,7 @@ const definitions = {
   },
   itemsMoved: {
     id: "itemsMoved",
+    targetable: true,
     label: "Transfermængde",
     category: "Transfer",
     description: "Samlet registreret mængde på transferlinjer.",
@@ -321,6 +329,7 @@ const definitions = {
   },
   staffFoodRegistrations: {
     id: "staffFoodRegistrations",
+    targetable: true,
     label: "Staff food-registreringer",
     category: "Staff food",
     description: "Antal aktive Staff food-registreringer.",
@@ -349,6 +358,7 @@ const definitions = {
   },
   scheduledHours: {
     id: "scheduledHours",
+    targetable: true,
     label: "Planlagte timer",
     category: "Vagtplan",
     description: "Samlede timer i den synkroniserede vagtplan.",
@@ -391,6 +401,7 @@ const definitions = {
   },
   salesRevenue: {
     id: "salesRevenue",
+    targetable: true,
     direction: "up-good",
     label: "Omsætning",
     category: "Salg",
@@ -407,6 +418,7 @@ const definitions = {
   },
   salesOrderCount: {
     id: "salesOrderCount",
+    targetable: true,
     direction: "up-good",
     label: "Ordrer",
     category: "Salg",
@@ -423,6 +435,7 @@ const definitions = {
   },
   averageBasket: {
     id: "averageBasket",
+    targetable: true,
     direction: "up-good",
     label: "Gennemsnitlig kurv",
     category: "Salg",
@@ -440,6 +453,7 @@ const definitions = {
   onlineSalesRevenue: {
     ...channelSalesDefaults,
     id: "onlineSalesRevenue",
+    targetable: true,
     direction: "up-good",
     label: "Online omsætning",
     description: "Omsætning fra OnlinePOS-salg online i perioden.",
@@ -450,6 +464,7 @@ const definitions = {
   onlineSalesOrderCount: {
     ...channelSalesDefaults,
     id: "onlineSalesOrderCount",
+    targetable: true,
     direction: "up-good",
     label: "Online ordrer",
     description: "Antal OnlinePOS-ordrer online i perioden.",
@@ -460,6 +475,7 @@ const definitions = {
   onlineAverageBasket: {
     ...channelSalesDefaults,
     id: "onlineAverageBasket",
+    targetable: true,
     direction: "up-good",
     label: "Online gennemsnitlig kurv",
     description: "Omsætning divideret med antal ordrer for OnlinePOS-salg online.",
@@ -470,6 +486,7 @@ const definitions = {
   storeSalesRevenue: {
     ...channelSalesDefaults,
     id: "storeSalesRevenue",
+    targetable: true,
     direction: "up-good",
     label: "Omsætning i butik",
     description: "Omsætning fra OnlinePOS-salg i butik i perioden.",
@@ -480,6 +497,7 @@ const definitions = {
   storeSalesOrderCount: {
     ...channelSalesDefaults,
     id: "storeSalesOrderCount",
+    targetable: true,
     direction: "up-good",
     label: "Ordrer i butik",
     description: "Antal OnlinePOS-ordrer i butik i perioden.",
@@ -490,6 +508,7 @@ const definitions = {
   storeAverageBasket: {
     ...channelSalesDefaults,
     id: "storeAverageBasket",
+    targetable: true,
     direction: "up-good",
     label: "Gennemsnitlig kurv i butik",
     description: "Omsætning divideret med antal ordrer for OnlinePOS-salg i butik.",
@@ -499,6 +518,7 @@ const definitions = {
   },
   woltCancellationRate: {
     id: "woltCancellationRate",
+    targetable: true,
     direction: "down-good",
     label: "Wolt-annulleringsrate",
     category: "Salg",
@@ -526,6 +546,8 @@ export const metricRegistry = Object.fromEntries(
 ) as Record<MetricId, MetricDefinition>;
 
 export const metrics: MetricDefinition[] = Object.values(metricRegistry);
+
+export const targetableMetrics = metrics.filter((metric) => metric.targetable);
 
 export const visualizationLabels: Record<VisualizationId, string> = {
   kpi: "Nøgletal",
