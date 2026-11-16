@@ -41,6 +41,7 @@ import { organizationThemeValidator } from "./lib/organizationTheme";
 import {
   customMetricSpecValidator,
   dashboardSummarySourceValidator,
+  locationTargetKindValidator,
   metricIdValidator,
   targetPeriodValidator,
   rangeValidator,
@@ -636,11 +637,21 @@ export default defineSchema({
     organizationId: v.string(),
     locationId: v.id("locations"),
     metricId: metricIdValidator,
-    amount: v.number(),
+    kind: locationTargetKindValidator,
+    /** A percentage for lastYear and previousPeriod, otherwise the metric's own unit. */
+    value: v.number(),
     period: targetPeriodValidator,
     updatedAt: v.number(),
     updatedBy: v.string(),
   }).index("by_organizationId_and_locationId_and_metricId", ["organizationId", "locationId", "metricId"]),
+
+  managerSettings: defineTable({
+    organizationId: v.string(),
+    /** Metrics managers can set targets for. No row means every targetable metric. */
+    targetMetricIds: v.array(metricIdValidator),
+    updatedAt: v.number(),
+    updatedBy: v.string(),
+  }).index("by_organizationId", ["organizationId"]),
 
   monthlyKpiActuals: defineTable({
     organizationId: v.string(),

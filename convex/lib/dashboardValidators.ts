@@ -141,6 +141,7 @@ export const customMetricSpecValidator = v.union(
 );
 
 export const targetPeriodValidator = v.union(v.literal("day"), v.literal("week"), v.literal("month"));
+export const locationTargetKindValidator = v.union(v.literal("lastYear"), v.literal("previousPeriod"), v.literal("amount"));
 
 export const widgetTargetValidator = v.union(
   v.object({

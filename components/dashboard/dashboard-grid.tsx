@@ -329,9 +329,15 @@ function DraggableWidget({
       : "skip",
   );
   const locationTarget = useQuery(
-    api.dashboard.getLocationTarget,
+    api.locationTargets.getForScope,
     budgetAllowed && widget.metric.kind === "builtin" && widgetTarget(widget)?.kind === "location"
-      ? { metricId: widget.metric.id, scope, range: widget.range ? { preset: widget.range } : range, now }
+      ? {
+          metricId: widget.metric.id,
+          scope,
+          range: widget.range ? { preset: widget.range } : range,
+          now,
+          ...(widget.options?.salesSource ? { salesSource: widget.options.salesSource } : {}),
+        }
       : "skip",
   );
 

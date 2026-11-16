@@ -20,7 +20,7 @@ import {
   type MetricSource,
 } from "../lib/dashboard/registry";
 import { canBatchCustomMetric, dashboardDatasets } from "../lib/dashboard/datasets";
-import { supportsBudgetTarget, supportsLocationTarget, supportsTarget, targetPeriodDays, targetUsesPeriod } from "../lib/dashboard/target";
+import { supportsBudgetTarget, supportsLocationTarget, supportsTarget } from "../lib/dashboard/target";
 import { kpiMonthEnd } from "../lib/dashboard/monthly-kpi";
 import { addDays, dateKey } from "../lib/date";
 import { latestBudget } from "./monthlyKpi";
@@ -45,7 +45,6 @@ import {
   rangeValidator,
   salesSourceValidator,
   scopeValidator,
-  targetPeriodValidator,
   visualizationValidator,
   widgetValidator,
 } from "./lib/dashboardValidators";
@@ -182,7 +181,7 @@ export function canViewBuiltinMetric(
   return usesWolt ? canViewWoltSales(auth) : canViewSales(auth);
 }
 
-function canViewDetailedSales(auth: DashboardAccess) {
+export function canViewDetailedSales(auth: DashboardAccess) {
   return (
     hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
     hasPermission(auth.role, auth.permissions, "sales.viewDetail")
@@ -1430,49 +1429,6 @@ export const getBudgetTarget = query({
     return {
       sales: currency === null ? null : sum(shares.map((share) => share.sales)),
       transactions: sum(shares.map((share) => share.transactions)),
-      currency,
-    };
-  },
-});
-
-export const getLocationTarget = query({
-  args: { metricId: metricIdValidator, scope: scopeValidator, range: rangeValidator, now: v.number() },
-  returns: v.union(
-    v.null(),
-    v.object({ amount: v.number(), period: targetPeriodValidator, currency: v.union(v.string(), v.null()) }),
-  ),
-  handler: async (ctx, args) => {
-    const auth = await requireDashboardViewer(ctx);
-    const human = requireHumanPrincipal(auth);
-    const definition = metricRegistry[args.metricId];
-    if (!definition.targetable || !canViewBuiltinMetric(auth, args.metricId)) return null;
-    const params = await resolveMetricParams(ctx, auth.organizationId, args.scope, args.range, args.now, auth.locationScope, {
-      granularity: auth.granularity,
-      anonymousSeed: human.sessionId,
-      salesDetailAllowed: canViewDetailedSales(auth),
-    });
-    if (params.scopeTruncated || params.locations.length === 0) return null;
-    const targets = await Promise.all(params.locations.map((location) =>
-      ctx.db.query("locationTargets")
-        .withIndex("by_organizationId_and_locationId_and_metricId", (q) =>
-          q.eq("organizationId", auth.organizationId).eq("locationId", location.id).eq("metricId", args.metricId))
-        .unique()));
-    // Every selected location needs a target, otherwise the combined target would be too low.
-    if (targets.some((target) => target === null)) return null;
-    const currencies = new Set(params.locations.map((location) => location.currency));
-    const currency = currencies.size === 1 ? [...currencies][0] : null;
-    if (definition.unit === "currency" && currency === null) return null;
-    const [first, ...rest] = targets.map((target) => target!);
-    if (rest.length === 0) return { amount: first.amount, period: first.period, currency };
-    // Averages and percentages cannot be added up across locations.
-    if (!targetUsesPeriod({ kind: "builtin", id: args.metricId })) return null;
-    const all = [first, ...rest];
-    if (rest.every((target) => target.period === first.period)) {
-      return { amount: all.reduce((sum, target) => sum + target.amount, 0), period: first.period, currency };
-    }
-    return {
-      amount: all.reduce((sum, target) => sum + target.amount / targetPeriodDays[target.period], 0),
-      period: "day" as const,
       currency,
     };
   },

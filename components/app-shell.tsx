@@ -21,7 +21,7 @@ import {
   WalletIcon,
   RefreshCwIcon,
   SettingsIcon,
-  TargetIcon,
+  BriefcaseBusinessIcon,
   MonitorIcon,
   PackageCheckIcon,
   PrinterIcon,
@@ -144,7 +144,7 @@ import {
 
 const navigationIcons = {
   dashboard: LayoutDashboardIcon,
-  manager: TargetIcon,
+  manager: BriefcaseBusinessIcon,
   dateLabels: PrinterIcon,
   woltOrders: ShoppingBagIcon,
   ordering: ShoppingCartIcon,
@@ -1758,6 +1758,8 @@ export function AppShell({
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
   const showAdministrationHeader =
     pathname === "/administration" || pathname.startsWith("/administration/");
+  const showManagerHeader =
+    pathname === "/manager" || pathname.startsWith("/manager/");
   const showPageHeader =
     pathname === "/profile" ||
     pathname === "/date-labels" ||
@@ -1772,6 +1774,7 @@ export function AppShell({
     showExpensesHeader ||
     showGoodsReceiptsHeader ||
     showDashboardHeader ||
+    showManagerHeader ||
     showAdministrationHeader;
 
   if (signingOut) {

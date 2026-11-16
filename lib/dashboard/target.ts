@@ -12,8 +12,23 @@ import {
 } from "./types";
 
 export type BudgetTotals = { sales: number | null; transactions: number | null; currency: string | null };
+/** Percentages are relative to the same period last year or the previous period; 100 means the same. */
+export const locationTargetKinds = ["lastYear", "previousPeriod", "amount"] as const;
+export type LocationTargetKind = (typeof locationTargetKinds)[number];
+export const locationTargetKindLabels: Record<LocationTargetKind, string> = {
+  lastYear: "Procent af sidste år",
+  previousPeriod: "Procent af forrige periode",
+  amount: "Fast mål",
+};
 /** The managers' targets for the selected locations, combined into one. */
-export type LocationTargetTotals = { amount: number; period: TargetPeriod; currency: string | null };
+export type LocationTargetTotals = {
+  kind: LocationTargetKind;
+  value: number;
+  period: TargetPeriod;
+  currency: string | null;
+  /** For percentages: the comparison period's values, moved onto the widget's dates. */
+  reference: { total: number; points: { t: number; value: number }[] } | null;
+};
 
 export type ResolvedTarget = {
   /** Target for the whole widget period, comparable to the headline value. */
@@ -156,35 +171,60 @@ export function resolveTarget({
       : { total, perPoint: additive ? (total / days) * bucketDays(result) : total, ceiling, description };
 
   const daily = additive && bucketDays(result) === 1;
-  if (target.kind === "comparison") {
-    const factor = 1 + target.percent / 100;
-    const period = target.period ?? "week";
-    const percent = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(target.percent);
+  const fromComparison = (
+    factor: number,
+    period: TargetPeriod,
+    description: string,
+    label: string,
+    base: number | null,
+    basePoints: { t: number; value: number }[] | undefined,
+  ): ResolvedTarget | null => {
     const resolved = fromTotal(
-      previous === null ? null : previous * factor,
-      `${percent} % i forhold til ${comparisonLabel} (${previous === null ? "—" : formatValue(previous)})`,
+      base === null ? null : base * factor,
+      `${description} (${base === null ? "—" : formatValue(base)})`,
     );
-    if (!resolved || !daily || previous === null || result.series.length !== 1) return resolved;
+    if (!resolved || !daily || base === null || result.series.length !== 1) return resolved;
     // Without last year's days, the previous period's daily average is the best guide.
-    const previousPoints = result.series[0].previousPoints;
-    const byDay = previousPoints && new Map(previousPoints.map((point) => [point.t, point.value]));
-    const label = `${comparisonLabel} ${percent} %`;
+    const byDay = basePoints && new Map(basePoints.map((point) => [point.t, point.value]));
     return {
       ...resolved,
       chart: {
         period,
-        dailyTarget: (t) => (byDay ? byDay.get(t) ?? 0 : previous / days) * factor,
+        dailyTarget: (t) => (byDay ? byDay.get(t) ?? 0 : base / days) * factor,
         caption: period === "day" ? `Mål: ${label}` : `Løbende total pr. ${period === "week" ? "uge" : "måned"} mod ${label}`,
       },
     };
+  };
+  if (target.kind === "comparison") {
+    const percent = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(target.percent);
+    return fromComparison(
+      1 + target.percent / 100,
+      target.period ?? "week",
+      `${percent} % i forhold til ${comparisonLabel}`,
+      `${comparisonLabel} ${percent} %`,
+      previous,
+      result.series[0]?.previousPoints,
+    );
   }
   if (target.kind === "budget") {
     return fromTotal(metricId ? budgetValue(metricId, budget, result) : null, "Budget for perioden");
   }
   const location = target.kind === "location";
+  if (location && locationTarget && locationTarget.kind !== "amount") {
+    const percent = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(locationTarget.value);
+    const basis = locationTarget.kind === "lastYear" ? "samme ugedage sidste år" : "forrige periode";
+    return fromComparison(
+      locationTarget.value / 100,
+      additive ? locationTarget.period : "day",
+      `Lokationsmål: ${percent} % af ${basis}`,
+      `lokationsmålet på ${percent} % af ${basis}`,
+      locationTarget.reference?.total ?? null,
+      locationTarget.reference?.points,
+    );
+  }
   if (location && (!locationTarget || (locationTarget.currency !== null && result.currency !== undefined
     && locationTarget.currency !== result.currency))) return null;
-  const { amount, period } = location ? locationTarget! : target;
+  const { amount, period } = location ? { amount: locationTarget!.value, period: locationTarget!.period } : target;
   if (!additive) return fromTotal(amount, `${location ? "Lokationsmål" : "Fast mål"}: ${formatValue(amount)}`);
   const amountText = `${formatValue(amount)} ${targetPeriodPhrases[period]}`;
   const resolved = fromTotal((amount / targetPeriodDays[period]) * days, location ? `Lokationsmål: ${amountText}` : amountText);

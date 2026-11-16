@@ -62,6 +62,7 @@ const sectionTitles = [
   { value: "integrations", label: "Integrationer" },
   { value: "metrics", label: "Målinger" },
   { value: "dashboard", label: "Dashboard" },
+  { value: "manager", label: "Manager" },
   { value: "schedule", label: "Medarbejdere" },
   { value: "transfers", label: "Transfer" },
   { value: "invoices", label: "Salg" },
