@@ -8,6 +8,8 @@ import { DatePicker } from "@/components/date-picker";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { ManagerNavigation } from "@/components/manager/manager-navigation";
+import { useActiveOrganization } from "@/lib/active-organization";
+import { setManagerLocation, useManagerLocation } from "@/lib/manager-prefs";
 import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -101,12 +103,19 @@ export function StaffFoodReport({
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [location, setLocation] = useState("all");
+  // The manager section shares one selected location across its subpages.
+  const organizationId = useActiveOrganization().data?.id;
+  const managerLocation = useManagerLocation(organizationId);
   const effectiveLocation =
     isLocked && lockedId
       ? String(lockedId)
-      : location === "all" || locations?.some((item) => item.id === location)
-        ? location
-        : "all";
+      : missingOnly
+        ? (locations?.find((item) => item.id === managerLocation)?.id ??
+          locations?.[0]?.id ??
+          "all")
+        : location === "all" || locations?.some((item) => item.id === location)
+          ? location
+          : "all";
   const context = useQuery(api.employees.getContext, canReport ? {} : "skip");
   const payPeriod = useQuery(api.workfeed.getPayPeriod, canReport ? {} : "skip");
   const timeZone = context?.timeZone ?? DEFAULT_TIME_ZONE;
@@ -373,11 +382,33 @@ export function StaffFoodReport({
   );
 
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-center">
+    <div
+      className={
+        missingOnly
+          ? "grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center"
+          : "grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-center"
+      }
+    >
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>{title}</PageTitle>
       </div>
-      {missingOnly ? null : (
+      {missingOnly ? (
+        <Field>
+          <FieldLabel htmlFor="manager-location" className="sr-only">
+            Lokation
+          </FieldLabel>
+          <LocationField
+            id="manager-location"
+            locations={locations}
+            value={effectiveLocation === "all" ? null : effectiveLocation}
+            locked={isLocked || locations?.length === 1}
+            lockedName={isLocked ? lockedName : locations?.[0]?.name}
+            onValueChange={(value) => {
+              if (organizationId) setManagerLocation(organizationId, value);
+            }}
+          />
+        </Field>
+      ) : (
         <Button
           size="lg"
           disabled={loading || !results.length}
@@ -422,8 +453,17 @@ export function StaffFoodReport({
       <AppPageHeader>{header}</AppPageHeader>
 
       <Card>
-        <CardContent appearance="summary" className="grid sm:grid-cols-3">
-          <div className="overflow-x-auto pb-1 sm:col-span-3">
+        <CardContent
+          appearance="summary"
+          className={missingOnly ? "grid sm:grid-cols-2" : "grid sm:grid-cols-3"}
+        >
+          <div
+            className={
+              missingOnly
+                ? "overflow-x-auto pb-1 sm:col-span-2"
+                : "overflow-x-auto pb-1 sm:col-span-3"
+            }
+          >
             <ToggleGroup
               value={selectedPreset ? [selectedPreset] : []}
               onValueChange={(values) => {
@@ -467,44 +507,46 @@ export function StaffFoodReport({
               onValueChange={setTo}
             />
           </Field>
-          <Field>
-            <FieldLabel htmlFor="staff-food-report-location">Lokation</FieldLabel>
-            {isLocked ? (
-              <LocationField
-                id="staff-food-report-location"
-                locations={locations}
-                value={lockedId}
-                locked
-                lockedName={lockedName}
-              />
-            ) : (
-              <Select
-                items={[
-                  { value: "all", label: "Alle lokationer" },
-                  ...locations.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                  })),
-                ]}
-                value={effectiveLocation}
-                onValueChange={(value) => setLocation(value ?? "all")}
-              >
-                <SelectTrigger id="staff-food-report-location">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all">Alle lokationer</SelectItem>
-                    {locations.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
-          </Field>
+          {missingOnly ? null : (
+            <Field>
+              <FieldLabel htmlFor="staff-food-report-location">Lokation</FieldLabel>
+              {isLocked ? (
+                <LocationField
+                  id="staff-food-report-location"
+                  locations={locations}
+                  value={lockedId}
+                  locked
+                  lockedName={lockedName}
+                />
+              ) : (
+                <Select
+                  items={[
+                    { value: "all", label: "Alle lokationer" },
+                    ...locations.map((item) => ({
+                      value: item.id,
+                      label: item.name,
+                    })),
+                  ]}
+                  value={effectiveLocation}
+                  onValueChange={(value) => setLocation(value ?? "all")}
+                >
+                  <SelectTrigger id="staff-food-report-location">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">Alle lokationer</SelectItem>
+                      {locations.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
+            </Field>
+          )}
         </CardContent>
       </Card>
 
