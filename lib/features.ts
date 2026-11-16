@@ -39,6 +39,7 @@ export function featureForPath(pathname: string): FeatureId | undefined {
   for (const { id } of sidebarItems) {
     if (id === "organization") continue;
     if (id === "manager") {
+      if (pathname.startsWith("/manager/staff-food")) return "staffFood";
       if (pathname === "/manager" || pathname.startsWith("/manager/")) return "dashboard";
       continue;
     }

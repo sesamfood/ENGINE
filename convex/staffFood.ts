@@ -21,7 +21,7 @@ import {
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { consumptionStock } from "./lib/productStock";
 import { addStock, normalizeStock } from "./lib/stock";
-import { resolveTimeZone } from "./lib/timeZone";
+import { DEFAULT_TIME_ZONE, resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { MAX_CATEGORIES_PER_ORGANIZATION } from "./lib/categoryHierarchy";
 import {
@@ -41,6 +41,8 @@ const MAX_BASKET_ITEMS = 50;
 const MAX_SEARCH_RESULTS = 20;
 const MAX_SETTINGS_PRODUCTS = 500;
 const MAX_MODIFIER_ROWS = 200;
+const MAX_MISSING_SHIFTS = 1000;
+const MIN_MISSING_STREAK = 3;
 const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 // Whole-day mode opens shifts that start later in the day.
 const SHIFT_LOOKAHEAD_MS = 30 * 60 * 60 * 1000;
@@ -301,14 +303,17 @@ async function matchingTier(
       .take(MAX_TIERS),
     ctx.db.get("employees", session.employeeId),
   ]);
-  const roles = new Set(
-    [
-      ...(session.roleName ? [session.roleName] : []),
-      ...(employee?.organizationId === organizationId
-        ? (employee.roleNames ?? [])
-        : []),
-    ].map(roleKey),
-  );
+  return pickTier(tiers, [
+    ...(session.roleName ? [session.roleName] : []),
+    ...(employee?.organizationId === organizationId
+      ? (employee.roleNames ?? [])
+      : []),
+  ]);
+}
+
+// Tiers must be sorted by minimumShiftMinutes descending and already fit the shift.
+function pickTier(tiers: Doc<"staffFoodRuleTiers">[], roleNames: string[]) {
+  const roles = new Set(roleNames.map(roleKey));
   return (
     tiers.find((tier) =>
       tier.roleNames?.some((name) => roles.has(roleKey(name))),
@@ -1858,5 +1863,247 @@ export const exportRegistrations = query({
             .order("desc")
             .paginate(args.paginationOpts);
     return { ...result, page: result.page.map(registrationRow) };
+  },
+});
+
+// Ended shifts that qualified for a Staff food rule but have no active registration.
+export const missingRegistrations = query({
+  args: {
+    startAt: v.number(),
+    endAt: v.number(),
+    now: v.number(),
+    locationId: v.optional(v.id("locations")),
+  },
+  returns: v.object({
+    shifts: v.array(
+      v.object({
+        shiftId: v.id("scheduledShifts"),
+        employeeId: v.id("employees"),
+        employeeName: v.string(),
+        locationId: v.id("locations"),
+        locationName: v.string(),
+        startsAt: v.number(),
+        endsAt: v.number(),
+        roleName: v.union(v.string(), v.null()),
+      }),
+    ),
+    // Employees whose latest eligible shifts in the period were all missed.
+    streaks: v.array(
+      v.object({
+        employeeId: v.id("employees"),
+        employeeName: v.string(),
+        count: v.number(),
+        latestStartsAt: v.number(),
+      }),
+    ),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "staffFood.report");
+    await requireKioskDestination(ctx, auth, "staffFood.report");
+    const { organizationId } = auth;
+    const locationFilter = resolveLocationFilter(auth, args.locationId);
+    requireNow(args.now);
+    if (
+      !Number.isFinite(args.startAt) ||
+      !Number.isFinite(args.endAt) ||
+      args.startAt > args.endAt ||
+      args.endAt - args.startAt > 366 * DAY_MS
+    ) {
+      throw new ConvexError("Perioden er ugyldig");
+    }
+    if (args.locationId) {
+      await requireLocation(ctx, organizationId, args.locationId);
+    }
+    const [tiers, settings] = await Promise.all([
+      ctx.db
+        .query("staffFoodRuleTiers")
+        .withIndex("by_organizationId_and_minimumShiftMinutes", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .order("desc")
+        .take(MAX_TIERS),
+      staffFoodSettings(ctx, organizationId),
+    ]);
+    if (!tiers.length) return { shifts: [], streaks: [], truncated: false };
+    // Only shifts whose registration window has closed can be missing.
+    const closedBefore = args.now - settings.afterShiftMinutes * 60_000;
+    const endAt = Math.min(args.endAt, closedBefore);
+    const rows = isSingleLocationFilter(locationFilter)
+      ? await ctx.db
+          .query("scheduledShifts")
+          .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", locationFilter.locationId)
+              .gte("startsAt", args.startAt)
+              .lte("startsAt", endAt),
+          )
+          .order("desc")
+          .take(MAX_MISSING_SHIFTS + 1)
+      : await ctx.db
+          .query("scheduledShifts")
+          .withIndex("by_organizationId_and_startsAt", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .gte("startsAt", args.startAt)
+              .lte("startsAt", endAt),
+          )
+          .order("desc")
+          .take(MAX_MISSING_SHIFTS + 1);
+    const allowed = isMultiLocationFilter(locationFilter)
+      ? new Set<Id<"locations">>(locationFilter.locationIds)
+      : null;
+    const shifts = rows
+      .slice(0, MAX_MISSING_SHIFTS)
+      .filter(
+        (shift) =>
+          shift.endsAt <= closedBefore &&
+          (!allowed || allowed.has(shift.locationId)),
+      );
+
+    const employees = new Map<Id<"employees">, Doc<"employees"> | null>();
+    const locations = new Map<Id<"locations">, Doc<"locations"> | null>();
+    const timeZones = new Map<Id<"locations">, string>();
+    for (const shift of shifts) {
+      if (!employees.has(shift.employeeId)) {
+        employees.set(
+          shift.employeeId,
+          await ctx.db.get("employees", shift.employeeId),
+        );
+      }
+      if (!locations.has(shift.locationId)) {
+        const location = await ctx.db.get("locations", shift.locationId);
+        locations.set(shift.locationId, location);
+        if (location?.organizationId === organizationId) {
+          timeZones.set(
+            shift.locationId,
+            await resolveTimeZone(ctx, organizationId, shift.locationId),
+          );
+        }
+      }
+    }
+
+    async function hasActiveRegistration(sessionId: Id<"staffFoodSessions">) {
+      const row = await ctx.db
+        .query("staffFoodRegistrations")
+        .withIndex(
+          "by_organizationId_and_sessionId_and_status_and_categoryId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("sessionId", sessionId)
+              .eq("status", "active"),
+        )
+        .first();
+      return row !== null;
+    }
+
+    const checked = await Promise.all(
+      shifts.map(async (shift) => {
+        const employee = employees.get(shift.employeeId);
+        const location = locations.get(shift.locationId);
+        if (
+          employee?.organizationId !== organizationId ||
+          location?.organizationId !== organizationId
+        ) {
+          return null;
+        }
+        const durationMinutes = Math.floor(
+          (shift.endsAt - shift.startsAt) / 60_000,
+        );
+        const tier = pickTier(
+          tiers.filter((tier) => tier.minimumShiftMinutes <= durationMinutes),
+          [
+            ...(shift.roleName ? [shift.roleName] : []),
+            ...(employee.roleNames ?? []),
+          ],
+        );
+        if (!tier) return null;
+        const workDate = dateInTimeZone(
+          shift.startsAt,
+          timeZones.get(shift.locationId) ?? DEFAULT_TIME_ZONE,
+        );
+        const sessions = [
+          ...(await ctx.db
+            .query("staffFoodSessions")
+            .withIndex("by_organizationId_and_scheduledShiftId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("scheduledShiftId", shift._id),
+            )
+            .take(10)),
+          // A manual registration the same day also covers the shift.
+          ...(await ctx.db
+            .query("staffFoodSessions")
+            .withIndex("by_org_location_employee_date_source", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", shift.locationId)
+                .eq("employeeId", shift.employeeId)
+                .eq("workDate", workDate)
+                .eq("source", "manual"),
+            )
+            .take(10)),
+        ];
+        for (const session of sessions) {
+          if (await hasActiveRegistration(session._id)) {
+            return { registered: true as const, employeeId: shift.employeeId };
+          }
+        }
+        return {
+          registered: false as const,
+          employeeId: employee._id,
+          row: {
+            shiftId: shift._id,
+            employeeId: employee._id,
+            employeeName: employee.displayName,
+            locationId: location._id,
+            locationName: location.name,
+            startsAt: shift.startsAt,
+            endsAt: shift.endsAt,
+            roleName: shift.roleName,
+          },
+        };
+      }),
+    );
+    const eligible = checked.filter((shift) => shift !== null);
+    const missing = eligible.flatMap((shift) =>
+      shift.registered ? [] : [shift.row],
+    );
+    // Shifts are newest first, so a streak ends at the first registered shift.
+    const ended = new Set<Id<"employees">>();
+    const streaks = new Map<
+      Id<"employees">,
+      {
+        employeeId: Id<"employees">;
+        employeeName: string;
+        count: number;
+        latestStartsAt: number;
+      }
+    >();
+    for (const shift of eligible) {
+      if (ended.has(shift.employeeId)) continue;
+      if (shift.registered) {
+        ended.add(shift.employeeId);
+        continue;
+      }
+      const streak = streaks.get(shift.employeeId);
+      if (streak) streak.count += 1;
+      else
+        streaks.set(shift.employeeId, {
+          employeeId: shift.employeeId,
+          employeeName: shift.row.employeeName,
+          count: 1,
+          latestStartsAt: shift.row.startsAt,
+        });
+    }
+    return {
+      shifts: missing,
+      streaks: [...streaks.values()]
+        .filter((streak) => streak.count >= MIN_MISSING_STREAK)
+        .sort((a, b) => b.count - a.count || b.latestStartsAt - a.latestStartsAt),
+      truncated: rows.length > MAX_MISSING_SHIFTS,
+    };
   },
 });

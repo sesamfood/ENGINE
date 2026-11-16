@@ -1,15 +1,19 @@
 "use client";
 
 import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
-import { DownloadIcon, UtensilsIcon } from "lucide-react";
+import { CircleCheckIcon, DownloadIcon, UtensilsIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/date-picker";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
+import { ManagerNavigation } from "@/components/manager/manager-navigation";
+import { useActiveOrganization } from "@/lib/active-organization";
+import { setManagerLocation, useManagerLocation } from "@/lib/manager-prefs";
 import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -57,6 +61,8 @@ import { downloadCsv } from "@/lib/download-csv";
 import { payPeriodRange } from "@/lib/pay-period";
 
 const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+// Matches MIN_MISSING_STREAK in convex/staffFood.ts.
+const MIN_MISSING_STREAK = 3;
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 2 }).format(
@@ -85,19 +91,34 @@ function ReportDataSkeleton() {
   );
 }
 
-export function StaffFoodReport() {
+export function StaffFoodReport({
+  view = "report",
+}: {
+  view?: "report" | "missing";
+}) {
+  const missingOnly = view === "missing";
+  const title = missingOnly
+    ? "Manglende Staff food-registreringer"
+    : "Staff food-rapport";
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const canReport = usePermission("staffFood.report");
   const [todayTimestamp] = useState(() => Date.now());
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [location, setLocation] = useState("all");
+  // The manager section shares one selected location across its subpages.
+  const organizationId = useActiveOrganization().data?.id;
+  const managerLocation = useManagerLocation(organizationId);
   const effectiveLocation =
     isLocked && lockedId
       ? String(lockedId)
-      : location === "all" || locations?.some((item) => item.id === location)
-        ? location
-        : "all";
+      : missingOnly
+        ? (locations?.find((item) => item.id === managerLocation)?.id ??
+          locations?.[0]?.id ??
+          "all")
+        : location === "all" || locations?.some((item) => item.id === location)
+          ? location
+          : "all";
   const context = useQuery(api.employees.getContext, canReport ? {} : "skip");
   const payPeriod = useQuery(api.workfeed.getPayPeriod, canReport ? {} : "skip");
   const timeZone = context?.timeZone ?? DEFAULT_TIME_ZONE;
@@ -151,7 +172,7 @@ export function StaffFoodReport() {
     endAt - startAt <= MAX_RANGE_MS;
   const { results, status, loadMore } = usePaginatedQuery(
     api.staffFood.exportRegistrations,
-    context && rangeValid && canReport
+    context && rangeValid && canReport && !missingOnly
       ? {
           startAt,
           endAt,
@@ -161,6 +182,19 @@ export function StaffFoodReport() {
         }
       : "skip",
     { initialNumItems: 100 },
+  );
+  const missing = useQuery(
+    api.staffFood.missingRegistrations,
+    context && rangeValid && canReport
+      ? {
+          startAt,
+          endAt,
+          now: todayTimestamp,
+          ...(effectiveLocation === "all"
+            ? {}
+            : { locationId: effectiveLocation as Id<"locations"> }),
+        }
+      : "skip",
   );
 
   // Totals need every row in the period, so keep loading until exhausted.
@@ -221,6 +255,17 @@ export function StaffFoodReport() {
     };
   }, [results]);
   const loading = rangeValid && status !== "Exhausted";
+  const shiftDay = dateTimeFormatter("da-DK", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone,
+  });
+  const shiftTime = dateTimeFormatter("da-DK", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+  });
 
   function exportCsv() {
     const formatter = dateTimeFormatter("da-DK", {
@@ -266,21 +311,148 @@ export function StaffFoodReport() {
     toast.success("CSV-filen er klar");
   }
 
+  const streakCard = missing?.streaks.length ? (
+    <Card appearance="followUp">
+      <CardHeader>
+        <CardTitle>Gentagne manglende registreringer</CardTitle>
+        <CardDescription>
+          Medarbejdere, der ikke har registreret Staff food på deres seneste{" "}
+          {MIN_MISSING_STREAK} eller flere vagter i træk.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="flex flex-col divide-y">
+          {missing.streaks.map((row) => (
+            <li
+              key={row.employeeId}
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0"
+            >
+              <div className="min-w-0">
+                <p className="font-medium">{row.employeeName}</p>
+                <p className="text-sm text-muted-foreground">
+                  Seneste vagt {shiftDay.format(row.latestStartsAt)}
+                </p>
+              </div>
+              <Badge variant="destructive">
+                {row.count} vagter i træk
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  ) : null;
+
+  const missingCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          Manglende registreringer
+          {missing?.shifts.length ? ` (${missing.shifts.length})` : ""}
+        </CardTitle>
+        <CardDescription>
+          Afsluttede vagter med ret til Staff food, hvor der ikke blev
+          registreret noget.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!missing ? (
+          <TableSkeleton />
+        ) : missing.shifts.length ? (
+          <div className="flex flex-col gap-3">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Medarbejder</TableHead>
+                  {effectiveLocation === "all" ? (
+                    <TableHead>Lokation</TableHead>
+                  ) : null}
+                  <TableHead>Vagt</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {missing.shifts.map((row) => (
+                  <TableRow key={row.shiftId}>
+                    <TableCell>
+                      {row.employeeName}
+                      {row.roleName ? (
+                        <span className="block text-muted-foreground">
+                          {row.roleName}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    {effectiveLocation === "all" ? (
+                      <TableCell>{row.locationName}</TableCell>
+                    ) : null}
+                    <TableCell>
+                      {shiftDay.format(row.startsAt)}
+                      <span className="block text-muted-foreground">
+                        {shiftTime.format(row.startsAt)}–
+                        {shiftTime.format(row.endsAt)}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {missing.truncated ? (
+              <p className="text-sm text-muted-foreground">
+                Listen viser kun de seneste vagter. Vælg en kortere periode for
+                at se alle.
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <CircleCheckIcon />
+              </EmptyMedia>
+              <EmptyTitle>Ingen manglende registreringer</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
+        )}
+      </CardContent>
+    </Card>
+  );
+
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-center">
+    <div
+      className={
+        missingOnly
+          ? "grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center"
+          : "grid gap-5 sm:grid-cols-(--grid-cols-content-action) sm:items-center"
+      }
+    >
       <div className="flex min-w-0 flex-col gap-2">
-        <PageTitle>
-          Staff food-rapport
-        </PageTitle>
+        <PageTitle>{title}</PageTitle>
       </div>
-      <Button
-        size="lg"
-        disabled={loading || !results.length}
-        onClick={exportCsv}
-      >
-        <DownloadIcon data-icon="inline-start" />
-        Eksportér CSV
-      </Button>
+      {missingOnly ? (
+        <Field>
+          <FieldLabel htmlFor="manager-location" className="sr-only">
+            Lokation
+          </FieldLabel>
+          <LocationField
+            id="manager-location"
+            locations={locations}
+            value={effectiveLocation === "all" ? null : effectiveLocation}
+            locked={isLocked || locations?.length === 1}
+            lockedName={isLocked ? lockedName : locations?.[0]?.name}
+            onValueChange={(value) => {
+              if (organizationId) setManagerLocation(organizationId, value);
+            }}
+          />
+        </Field>
+      ) : (
+        <Button
+          size="lg"
+          disabled={loading || !results.length}
+          onClick={exportCsv}
+        >
+          <DownloadIcon data-icon="inline-start" />
+          Eksportér CSV
+        </Button>
+      )}
     </div>
   );
 
@@ -298,7 +470,7 @@ export function StaffFoodReport() {
     return (
       <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-20">
         <AppPageHeader>
-          <PageTitle>Staff food-rapport</PageTitle>
+          <PageTitle>{title}</PageTitle>
         </AppPageHeader>
         <CardSkeleton>
           <div className="grid gap-5 md:grid-cols-3">
@@ -316,8 +488,17 @@ export function StaffFoodReport() {
       <AppPageHeader>{header}</AppPageHeader>
 
       <Card>
-        <CardContent appearance="summary" className="grid sm:grid-cols-3">
-          <div className="overflow-x-auto pb-1 sm:col-span-3">
+        <CardContent
+          appearance="summary"
+          className={missingOnly ? "grid sm:grid-cols-2" : "grid sm:grid-cols-3"}
+        >
+          <div
+            className={
+              missingOnly
+                ? "overflow-x-auto pb-1 sm:col-span-2"
+                : "overflow-x-auto pb-1 sm:col-span-3"
+            }
+          >
             <ToggleGroup
               value={selectedPreset ? [selectedPreset] : []}
               onValueChange={(values) => {
@@ -361,44 +542,46 @@ export function StaffFoodReport() {
               onValueChange={setTo}
             />
           </Field>
-          <Field>
-            <FieldLabel htmlFor="staff-food-report-location">Lokation</FieldLabel>
-            {isLocked ? (
-              <LocationField
-                id="staff-food-report-location"
-                locations={locations}
-                value={lockedId}
-                locked
-                lockedName={lockedName}
-              />
-            ) : (
-              <Select
-                items={[
-                  { value: "all", label: "Alle lokationer" },
-                  ...locations.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                  })),
-                ]}
-                value={effectiveLocation}
-                onValueChange={(value) => setLocation(value ?? "all")}
-              >
-                <SelectTrigger id="staff-food-report-location">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all">Alle lokationer</SelectItem>
-                    {locations.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
-          </Field>
+          {missingOnly ? null : (
+            <Field>
+              <FieldLabel htmlFor="staff-food-report-location">Lokation</FieldLabel>
+              {isLocked ? (
+                <LocationField
+                  id="staff-food-report-location"
+                  locations={locations}
+                  value={lockedId}
+                  locked
+                  lockedName={lockedName}
+                />
+              ) : (
+                <Select
+                  items={[
+                    { value: "all", label: "Alle lokationer" },
+                    ...locations.map((item) => ({
+                      value: item.id,
+                      label: item.name,
+                    })),
+                  ]}
+                  value={effectiveLocation}
+                  onValueChange={(value) => setLocation(value ?? "all")}
+                >
+                  <SelectTrigger id="staff-food-report-location">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">Alle lokationer</SelectItem>
+                      {locations.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
+            </Field>
+          )}
         </CardContent>
       </Card>
 
@@ -410,6 +593,11 @@ export function StaffFoodReport() {
             må højst være ét år.
           </AlertDescription>
         </Alert>
+      ) : missingOnly ? (
+        <>
+          {streakCard}
+          {missingCard}
+        </>
       ) : loading ? (
         <ReportDataSkeleton />
       ) : (
@@ -503,9 +691,11 @@ export function StaffFoodReport() {
               </CardContent>
             </Card>
           ) : null}
+
+          {missingCard}
         </>
       )}
-      <StaffFoodNavigation />
+      {missingOnly ? <ManagerNavigation /> : <StaffFoodNavigation />}
     </section>
   );
 }
