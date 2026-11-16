@@ -13,6 +13,7 @@ import { setManagerLocation, useManagerLocation } from "@/lib/manager-prefs";
 import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -60,6 +61,8 @@ import { downloadCsv } from "@/lib/download-csv";
 import { payPeriodRange } from "@/lib/pay-period";
 
 const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+// Matches MIN_MISSING_STREAK in convex/staffFood.ts.
+const MIN_MISSING_STREAK = 3;
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 2 }).format(
@@ -307,6 +310,38 @@ export function StaffFoodReport({
     );
     toast.success("CSV-filen er klar");
   }
+
+  const streakCard = missing?.streaks.length ? (
+    <Card appearance="followUp">
+      <CardHeader>
+        <CardTitle>Gentagne manglende registreringer</CardTitle>
+        <CardDescription>
+          Medarbejdere, der ikke har registreret Staff food på deres seneste{" "}
+          {MIN_MISSING_STREAK} eller flere vagter i træk.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="flex flex-col divide-y">
+          {missing.streaks.map((row) => (
+            <li
+              key={row.employeeId}
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0"
+            >
+              <div className="min-w-0">
+                <p className="font-medium">{row.employeeName}</p>
+                <p className="text-sm text-muted-foreground">
+                  Seneste vagt {shiftDay.format(row.latestStartsAt)}
+                </p>
+              </div>
+              <Badge variant="destructive">
+                {row.count} vagter i træk
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  ) : null;
 
   const missingCard = (
     <Card>
@@ -559,7 +594,10 @@ export function StaffFoodReport({
           </AlertDescription>
         </Alert>
       ) : missingOnly ? (
-        missingCard
+        <>
+          {streakCard}
+          {missingCard}
+        </>
       ) : loading ? (
         <ReportDataSkeleton />
       ) : (

@@ -42,6 +42,7 @@ const MAX_SEARCH_RESULTS = 20;
 const MAX_SETTINGS_PRODUCTS = 500;
 const MAX_MODIFIER_ROWS = 200;
 const MAX_MISSING_SHIFTS = 1000;
+const MIN_MISSING_STREAK = 3;
 const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 // Whole-day mode opens shifts that start later in the day.
 const SHIFT_LOOKAHEAD_MS = 30 * 60 * 60 * 1000;
@@ -1886,6 +1887,15 @@ export const missingRegistrations = query({
         roleName: v.union(v.string(), v.null()),
       }),
     ),
+    // Employees whose latest eligible shifts in the period were all missed.
+    streaks: v.array(
+      v.object({
+        employeeId: v.id("employees"),
+        employeeName: v.string(),
+        count: v.number(),
+        latestStartsAt: v.number(),
+      }),
+    ),
     truncated: v.boolean(),
   }),
   handler: async (ctx, args) => {
@@ -1915,7 +1925,7 @@ export const missingRegistrations = query({
         .take(MAX_TIERS),
       staffFoodSettings(ctx, organizationId),
     ]);
-    if (!tiers.length) return { shifts: [], truncated: false };
+    if (!tiers.length) return { shifts: [], streaks: [], truncated: false };
     // Only shifts whose registration window has closed can be missing.
     const closedBefore = args.now - settings.afterShiftMinutes * 60_000;
     const endAt = Math.min(args.endAt, closedBefore);
@@ -1989,7 +1999,7 @@ export const missingRegistrations = query({
       return row !== null;
     }
 
-    const missing = await Promise.all(
+    const checked = await Promise.all(
       shifts.map(async (shift) => {
         const employee = employees.get(shift.employeeId);
         const location = locations.get(shift.locationId);
@@ -2037,22 +2047,62 @@ export const missingRegistrations = query({
             .take(10)),
         ];
         for (const session of sessions) {
-          if (await hasActiveRegistration(session._id)) return null;
+          if (await hasActiveRegistration(session._id)) {
+            return { registered: true as const, employeeId: shift.employeeId };
+          }
         }
         return {
-          shiftId: shift._id,
+          registered: false as const,
           employeeId: employee._id,
-          employeeName: employee.displayName,
-          locationId: location._id,
-          locationName: location.name,
-          startsAt: shift.startsAt,
-          endsAt: shift.endsAt,
-          roleName: shift.roleName,
+          row: {
+            shiftId: shift._id,
+            employeeId: employee._id,
+            employeeName: employee.displayName,
+            locationId: location._id,
+            locationName: location.name,
+            startsAt: shift.startsAt,
+            endsAt: shift.endsAt,
+            roleName: shift.roleName,
+          },
         };
       }),
     );
+    const eligible = checked.filter((shift) => shift !== null);
+    const missing = eligible.flatMap((shift) =>
+      shift.registered ? [] : [shift.row],
+    );
+    // Shifts are newest first, so a streak ends at the first registered shift.
+    const ended = new Set<Id<"employees">>();
+    const streaks = new Map<
+      Id<"employees">,
+      {
+        employeeId: Id<"employees">;
+        employeeName: string;
+        count: number;
+        latestStartsAt: number;
+      }
+    >();
+    for (const shift of eligible) {
+      if (ended.has(shift.employeeId)) continue;
+      if (shift.registered) {
+        ended.add(shift.employeeId);
+        continue;
+      }
+      const streak = streaks.get(shift.employeeId);
+      if (streak) streak.count += 1;
+      else
+        streaks.set(shift.employeeId, {
+          employeeId: shift.employeeId,
+          employeeName: shift.row.employeeName,
+          count: 1,
+          latestStartsAt: shift.row.startsAt,
+        });
+    }
     return {
-      shifts: missing.filter((shift) => shift !== null),
+      shifts: missing,
+      streaks: [...streaks.values()]
+        .filter((streak) => streak.count >= MIN_MISSING_STREAK)
+        .sort((a, b) => b.count - a.count || b.latestStartsAt - a.latestStartsAt),
       truncated: rows.length > MAX_MISSING_SHIFTS,
     };
   },
