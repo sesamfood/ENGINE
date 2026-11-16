@@ -209,6 +209,14 @@ export default defineSchema({
   locationForecasts: defineTable(locationForecastValidator).index(
     "by_organizationId_and_locationId", ["organizationId", "locationId"],
   ),
+  // Week-long copy so dashboard loads do not pay for Place Details reads. Outside Google's caching terms; accepted risk.
+  googlePlaceRatings: defineTable({
+    organizationId: v.string(),
+    placeId: v.string(),
+    rating: v.union(v.number(), v.null()),
+    attributions: v.array(v.object({ provider: v.string(), providerUri: v.optional(v.string()) })),
+    fetchedAt: v.number(),
+  }).index("by_organizationId_and_placeId", ["organizationId", "placeId"]),
   rolePermissions: defineTable({
     organizationId: v.string(),
     role: v.string(),
