@@ -12,7 +12,7 @@ function Progress({
   ...props
 }: ProgressPrimitive.Root.Props & {
   size?: "default" | "lg"
-  tone?: "default" | "success"
+  tone?: "default" | "success" | "destructive"
 }) {
   return (
     <ProgressPrimitive.Root
@@ -23,7 +23,7 @@ function Progress({
     >
       {children}
       <ProgressTrack className={cn(size === "lg" && "h-2")}>
-        <ProgressIndicator className={cn(tone === "success" && "bg-success")} />
+        <ProgressIndicator className={cn(tone === "success" && "bg-success", tone === "destructive" && "bg-destructive")} />
       </ProgressTrack>
     </ProgressPrimitive.Root>
   )

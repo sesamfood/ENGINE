@@ -44,6 +44,8 @@ export type MetricDefinition = {
   /** Whether an increase is good, bad, or neither. Controls delta coloring. */
   direction?: "up-good" | "down-good" | "neutral";
   shareable?: boolean;
+  /** Managers can set a target for it per location. */
+  targetable?: true;
   live?: {
     currentLabel: string;
     sourceLabel: string;
@@ -177,6 +179,7 @@ const definitions = {
   },
   wasteQuantity: {
     id: "wasteQuantity",
+    targetable: true,
     direction: "down-good",
     label: "Waste-mængde",
     category: "Waste",
@@ -234,6 +237,7 @@ const definitions = {
   },
   badDeliveries: {
     id: "badDeliveries",
+    targetable: true,
     direction: "down-good",
     label: "Dårlige leveringer",
     category: "Leveringer",
@@ -249,6 +253,7 @@ const definitions = {
   },
   countCompliance: {
     id: "countCompliance",
+    targetable: true,
     direction: "up-good",
     label: "Gennemførte Counts",
     category: "Count",
@@ -391,6 +396,7 @@ const definitions = {
   },
   salesRevenue: {
     id: "salesRevenue",
+    targetable: true,
     direction: "up-good",
     label: "Omsætning",
     category: "Salg",
@@ -407,6 +413,7 @@ const definitions = {
   },
   salesOrderCount: {
     id: "salesOrderCount",
+    targetable: true,
     direction: "up-good",
     label: "Ordrer",
     category: "Salg",
@@ -423,6 +430,7 @@ const definitions = {
   },
   averageBasket: {
     id: "averageBasket",
+    targetable: true,
     direction: "up-good",
     label: "Gennemsnitlig kurv",
     category: "Salg",
@@ -526,6 +534,8 @@ export const metricRegistry = Object.fromEntries(
 ) as Record<MetricId, MetricDefinition>;
 
 export const metrics: MetricDefinition[] = Object.values(metricRegistry);
+
+export const targetableMetrics = metrics.filter((metric) => metric.targetable);
 
 export const visualizationLabels: Record<VisualizationId, string> = {
   kpi: "Nøgletal",

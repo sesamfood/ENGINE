@@ -12,6 +12,8 @@ import {
 } from "./types";
 
 export type BudgetTotals = { sales: number | null; transactions: number | null; currency: string | null };
+/** The managers' targets for the selected locations, combined into one. */
+export type LocationTargetTotals = { amount: number; period: TargetPeriod; currency: string | null };
 
 export type ResolvedTarget = {
   /** Target for the whole widget period, comparable to the headline value. */
@@ -32,7 +34,7 @@ export const targetVisualizations: readonly VisualizationId[] = ["kpi", "line", 
 
 export const targetPeriodLabels: Record<TargetPeriod, string> = { day: "Dag", week: "Uge", month: "Måned" };
 const targetPeriodPhrases: Record<TargetPeriod, string> = { day: "pr. dag", week: "pr. uge", month: "pr. måned" };
-const targetPeriodDays: Record<TargetPeriod, number> = { day: 1, week: 7, month: 365.25 / 12 };
+export const targetPeriodDays: Record<TargetPeriod, number> = { day: 1, week: 7, month: 365.25 / 12 };
 
 export const budgetMetrics: Partial<Record<MetricId, "sales" | "transactions" | "averageBasket">> = {
   salesRevenue: "sales",
@@ -61,11 +63,24 @@ export function supportsBudgetTarget(widget: Pick<WidgetInstance, "metric">) {
   return widget.metric.kind === "builtin" && budgetMetrics[widget.metric.id] !== undefined;
 }
 
-/** Goal widgets saved before targets had options always aimed a percentage above the comparison. */
-export function widgetTarget(widget: WidgetInstance): WidgetTarget | undefined {
+export function supportsLocationTarget(widget: Pick<WidgetInstance, "metric">) {
+  return widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].targetable === true;
+}
+
+/**
+ * Goal widgets saved before targets had options always aimed a percentage above the comparison.
+ * Other widgets for a targetable metric follow the location target unless they opt out.
+ */
+export function widgetTarget(widget: WidgetInstance): Exclude<WidgetTarget, { kind: "none" }> | undefined {
   if (!supportsTarget(widget)) return undefined;
-  return widget.options?.target
-    ?? (widget.visualization === "goal" ? { kind: "comparison", percent: widget.options?.goalPercent ?? DEFAULT_GOAL_PERCENT } : undefined);
+  const stored = widget.options?.target;
+  if (widget.visualization === "goal") {
+    return stored && stored.kind !== "none"
+      ? stored
+      : { kind: "comparison", percent: widget.options?.goalPercent ?? DEFAULT_GOAL_PERCENT };
+  }
+  if (stored) return stored.kind === "none" ? undefined : stored;
+  return supportsLocationTarget(widget) ? { kind: "location" } : undefined;
 }
 
 export function rangeDays(range: DashboardRange, now: number) {
@@ -112,6 +127,7 @@ export function resolveTarget({
   range,
   now,
   budget,
+  locationTarget,
   previous,
   comparisonLabel,
   formatValue,
@@ -121,6 +137,7 @@ export function resolveTarget({
   range: DashboardRange;
   now: number;
   budget?: BudgetTotals | null;
+  locationTarget?: LocationTargetTotals | null;
   previous: number | null;
   comparisonLabel: string;
   formatValue: (value: number) => string;
@@ -164,16 +181,20 @@ export function resolveTarget({
   if (target.kind === "budget") {
     return fromTotal(metricId ? budgetValue(metricId, budget, result) : null, "Budget for perioden");
   }
-  if (!additive) return fromTotal(target.amount, `Fast mål: ${formatValue(target.amount)}`);
-  const description = `${formatValue(target.amount)} ${targetPeriodPhrases[target.period]}`;
-  const resolved = fromTotal((target.amount / targetPeriodDays[target.period]) * days, description);
-  return resolved && daily && target.period !== "day"
+  const location = target.kind === "location";
+  if (location && (!locationTarget || (locationTarget.currency !== null && result.currency !== undefined
+    && locationTarget.currency !== result.currency))) return null;
+  const { amount, period } = location ? locationTarget! : target;
+  if (!additive) return fromTotal(amount, `${location ? "Lokationsmål" : "Fast mål"}: ${formatValue(amount)}`);
+  const amountText = `${formatValue(amount)} ${targetPeriodPhrases[period]}`;
+  const resolved = fromTotal((amount / targetPeriodDays[period]) * days, location ? `Lokationsmål: ${amountText}` : amountText);
+  return resolved && daily && period !== "day"
     ? {
         ...resolved,
         chart: {
-          period: target.period,
-          dailyTarget: (t) => target.amount / periodPosition(t, target.period).length,
-          caption: `Løbende total mod ${description}`,
+          period,
+          dailyTarget: (t) => amount / periodPosition(t, period).length,
+          caption: `Løbende total mod ${location ? `lokationsmålet på ${amountText}` : amountText}`,
         },
       }
     : resolved;

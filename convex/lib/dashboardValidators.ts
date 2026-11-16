@@ -140,18 +140,22 @@ export const customMetricSpecValidator = v.union(
   }),
 );
 
+export const targetPeriodValidator = v.union(v.literal("day"), v.literal("week"), v.literal("month"));
+
 export const widgetTargetValidator = v.union(
   v.object({
     kind: v.literal("comparison"),
     percent: v.number(),
-    period: v.optional(v.union(v.literal("day"), v.literal("week"), v.literal("month"))),
+    period: v.optional(targetPeriodValidator),
   }),
   v.object({
     kind: v.literal("manual"),
     amount: v.number(),
-    period: v.union(v.literal("day"), v.literal("week"), v.literal("month")),
+    period: targetPeriodValidator,
   }),
   v.object({ kind: v.literal("budget") }),
+  v.object({ kind: v.literal("location") }),
+  v.object({ kind: v.literal("none") }),
 );
 
 export const widgetValidator = v.object({

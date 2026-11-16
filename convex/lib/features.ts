@@ -148,6 +148,7 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "dashboard.viewSales": "dashboard",
   "dashboard.viewFinancials": "dashboard",
   "dashboard.manageBudgets": "dashboard",
+  "dashboard.manageTargets": "dashboard",
   "dashboard.syncData": "dashboard",
   // Sales data also feeds Count, Waste, and Wolt orders.
   "sales.viewAggregate": null,

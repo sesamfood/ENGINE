@@ -503,6 +503,9 @@ export async function deleteLocationWithAuth(
   const forecast = await ctx.db.query("locationForecasts").withIndex("by_organizationId_and_locationId", (q) =>
     q.eq("organizationId", organizationId).eq("locationId", location._id)).unique();
   if (forecast) await ctx.db.delete("locationForecasts", forecast._id);
+  const targets = await ctx.db.query("locationTargets").withIndex("by_organizationId_and_locationId_and_metricId", (q) =>
+    q.eq("organizationId", organizationId).eq("locationId", location._id)).take(100);
+  await Promise.all(targets.map((target) => ctx.db.delete("locationTargets", target._id)));
   await ctx.db.delete("locations", location._id);
   return { kind: "deleted", locationId: location._id };
 }

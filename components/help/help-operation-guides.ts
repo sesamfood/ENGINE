@@ -241,6 +241,46 @@ export const operationFeatures: HelpFeature[] = [
         ],
       },
       {
+        slug: "maal",
+        label: "Lokationsmål",
+        summary:
+          "Sæt mål for lokationens nøgletal, og følg fremgangen på siden Mål og på dashboardet.",
+        appHref: "/dashboard/targets",
+        appLinkLabel: "Åbn Mål",
+        sections: [
+          {
+            id: "saet-maal",
+            title: "Sæt et mål",
+            steps: [
+              "Åbn Dashboard, og vælg Mål.",
+              "Vælg lokationen, hvis du har adgang til flere.",
+              "Vælg Sæt mål på målingen. Angiv målet, og vælg dag, uge eller måned for beløb og antal.",
+              "Vælg Gem mål. Fremgangen vises for den aktuelle dag, uge eller måned.",
+            ],
+          },
+          {
+            id: "paa-dashboardet",
+            title: "Mål på dashboardet",
+            bullets: [
+              "Widgets for målinger med lokationsmål viser målet automatisk, når alle valgte lokationer har et mål. Med flere lokationer lægges målene sammen.",
+              "Gennemsnit og procenter vises kun mod målet, når der er valgt én lokation.",
+              "For målinger, hvor lavere er bedre, er målet et loft.",
+              "En widget kan bruge et andet mål eller Intet mål i widgettens indstillinger.",
+            ],
+          },
+          {
+            id: "adgang",
+            title: "Adgang",
+            bullets: [
+              "Rettigheden Redigere lokationsmål giver adgang til at sætte mål for de lokationer, brugeren har adgang til. Administrator og Manager har den som standard.",
+            ],
+          },
+        ],
+        relatedLinks: [
+          { href: "/help/dashboard/widgets", label: "Opret og brug widgets" },
+        ],
+      },
+      {
         slug: "maanedsrapport",
         label: "Månedsrapport",
         summary:

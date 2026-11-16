@@ -72,7 +72,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import type { CustomMetricDefinition } from "./custom-metric-definition";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 import { TargetSettings } from "./target-settings";
-import { resolveTarget, supportsTarget } from "@/lib/dashboard/target";
+import { resolveTarget, supportsLocationTarget, supportsTarget } from "@/lib/dashboard/target";
 import { comparisonPeriodText, formatMetricValue, previousTotal } from "./visualizations/utils";
 import { widgetComparisonOptions, widgetRangeOptions } from "./widget-card";
 
@@ -724,7 +724,7 @@ export function AddWidgetDialog({
                     key={`${newMetric.id}:${visualization === "goal"}`}
                     id="new-widget-target"
                     metric={newMetric}
-                    value={target}
+                    value={target ?? (visualization !== "goal" && supportsLocationTarget({ metric: newMetric }) ? { kind: "location" } : undefined)}
                     required={visualization === "goal"}
                     onChange={setTarget}
                     onValidityChange={setTargetValid}

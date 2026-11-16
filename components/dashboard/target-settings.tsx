@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { metricRegistry } from "@/lib/dashboard/registry";
-import { supportsBudgetTarget, targetPeriodLabels, targetUsesPeriod } from "@/lib/dashboard/target";
+import { supportsBudgetTarget, supportsLocationTarget, targetPeriodLabels, targetUsesPeriod } from "@/lib/dashboard/target";
 import {
   DEFAULT_GOAL_PERCENT,
   targetPeriods,
@@ -22,17 +22,17 @@ import {
   type WidgetTarget,
 } from "@/lib/dashboard/types";
 
-type TargetKind = WidgetTarget["kind"] | "none";
+type TargetKind = WidgetTarget["kind"];
 
 /** Accepts Danish input such as "40.000" or "12,5". */
-function parseNumber(value: string) {
+export function parseNumber(value: string) {
   const compact = value.trim().replace(/\s/g, "");
   if (!compact) return NaN;
   if (compact.includes(",")) return Number(compact.replace(/\./g, "").replace(",", "."));
   return Number(/^-?\d{1,3}(\.\d{3})+$/.test(compact) ? compact.replace(/\./g, "") : compact);
 }
 
-const formatDraft = (value: number) => String(value).replace(".", ",");
+export const formatDraft = (value: number) => String(value).replace(".", ",");
 
 export function TargetSettings({
   id,
@@ -57,18 +57,21 @@ export function TargetSettings({
     (value?.kind === "manual" || value?.kind === "comparison" ? value.period : undefined) ?? "week",
   );
   const usesPeriod = targetUsesPeriod(metric);
+  const locationTarget = supportsLocationTarget({ metric });
   const unit = metric.kind === "builtin" ? metricRegistry[metric.id].unit : undefined;
   const kindOptions = [
     ...(required ? [] : [{ value: "none", label: "Intet mål" }]),
     { value: "comparison", label: "Procent af sidste år" },
     { value: "manual", label: "Fast mål" },
     ...(supportsBudgetTarget({ metric }) ? [{ value: "budget", label: "Følg budget" }] : []),
+    ...(locationTarget ? [{ value: "location", label: "Lokationsmål" }] : []),
   ];
   const periodOptions = targetPeriods.map((item) => ({ value: item, label: targetPeriodLabels[item] }));
 
   function build(next: { kind: TargetKind; percentDraft: string; amountDraft: string; period: TargetPeriod }): WidgetTarget | undefined | null {
-    if (next.kind === "none") return undefined;
-    if (next.kind === "budget") return { kind: "budget" };
+    // Targetable metrics follow the location target by default, so turning it off is stored.
+    if (next.kind === "none") return locationTarget ? { kind: "none" } : undefined;
+    if (next.kind === "budget" || next.kind === "location") return { kind: next.kind };
     if (next.kind === "comparison") {
       const percent = parseNumber(next.percentDraft);
       return Number.isFinite(percent) && percent > -100
@@ -112,7 +115,7 @@ export function TargetSettings({
           <FieldLabel htmlFor={`${id}-kind`}>Mål</FieldLabel>
           <HelpTooltip
             label="målet"
-            content="Procent af sidste år følger de samme ugedage sidste år dag for dag. Med uge eller måned vises diagrammet som løbende total for hver periode. Fast mål er et beløb eller antal pr. dag, uge eller måned, som omregnes til widgettens periode. Følg budget bruger månedsbudgettet fordelt på dagene i perioden. For målinger, hvor lavere er bedre, er målet et loft."
+            content="Procent af sidste år følger de samme ugedage sidste år dag for dag. Med uge eller måned vises diagrammet som løbende total for hver periode. Fast mål er et beløb eller antal pr. dag, uge eller måned, som omregnes til widgettens periode. Følg budget bruger månedsbudgettet fordelt på dagene i perioden. Lokationsmål bruger de mål, som managere sætter for de valgte lokationer under Mål. For målinger, hvor lavere er bedre, er målet et loft."
           />
         </div>
         <Select items={kindOptions} value={kind} onValueChange={(next) => update({ kind: next as TargetKind }, true)}>
@@ -173,6 +176,9 @@ export function TargetSettings({
           </div>
           {invalid ? <FieldError>Angiv et mål på 0 eller mere.</FieldError> : null}
         </Field>
+      ) : null}
+      {kind === "location" ? (
+        <FieldDescription>Vises, når alle valgte lokationer har et mål for målingen.</FieldDescription>
       ) : null}
       {kind === "budget" ? (
         <FieldDescription>Kræver adgang til månedsrapporten og et budget for alle valgte lokationer.</FieldDescription>

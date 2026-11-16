@@ -7,7 +7,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ChevronDownIcon, EllipsisVerticalIcon, FileTextIcon, LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
+import { ChevronDownIcon, EllipsisVerticalIcon, FileTextIcon, LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon, TargetIcon } from "lucide-react";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
@@ -182,6 +182,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const kioskMode = Boolean(access?.kiosk?.kioskModeEnabled);
   const canManage = usePermission("dashboard.manage") && !kioskMode;
   const canShare = usePermission("dashboard.share") && !kioskMode;
+  const canManageTargets = usePermission("dashboard.manageTargets") && !kioskMode;
   const canSyncData = canSyncDashboardData(access?.permissions) && !kioskMode && Boolean(integrations?.onlinepos || integrations?.workfeed);
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
@@ -448,6 +449,12 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           />
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
+          {canManageTargets ? (
+            <Button type="button" size="lg" variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/targets" />}>
+              <TargetIcon data-icon="inline-start" />
+              Mål
+            </Button>
+          ) : null}
           {canManage ? (
             <Button type="button" size="lg" className="min-h-11 max-sm:hidden" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
               <PencilIcon data-icon="inline-start" />
