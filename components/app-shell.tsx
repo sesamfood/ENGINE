@@ -21,6 +21,7 @@ import {
   WalletIcon,
   RefreshCwIcon,
   SettingsIcon,
+  TargetIcon,
   MonitorIcon,
   PackageCheckIcon,
   PrinterIcon,
@@ -143,6 +144,7 @@ import {
 
 const navigationIcons = {
   dashboard: LayoutDashboardIcon,
+  manager: TargetIcon,
   dateLabels: PrinterIcon,
   woltOrders: ShoppingBagIcon,
   ordering: ShoppingCartIcon,
@@ -975,6 +977,8 @@ function NavigationList() {
               const active =
                 item.id === "organization"
                   ? pathname.startsWith("/administration")
+                  : item.id === "manager"
+                  ? pathname.startsWith("/manager")
                   : pathname === item.href ||
                     pathname.startsWith(`${item.href}/`);
 

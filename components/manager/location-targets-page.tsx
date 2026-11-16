@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
-import { ArrowLeftIcon, PencilIcon, PlusIcon } from "lucide-react";
+import { PencilIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -41,8 +40,8 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { formatDraft, parseNumber } from "./target-settings";
-import { formatMetricValue, total } from "./visualizations/utils";
+import { formatDraft, parseNumber } from "@/components/dashboard/target-settings";
+import { formatMetricValue, total } from "@/components/dashboard/visualizations/utils";
 
 type Target = FunctionReturnType<typeof api.locationTargets.list>["targets"][number];
 
@@ -80,14 +79,7 @@ export function LocationTargetsPage() {
     && (!metric.sensitive || canViewSales));
 
   const header = (
-    <AppPageHeader>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <PageTitle>Mål</PageTitle>
-        <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard" />}>
-          <ArrowLeftIcon data-icon="inline-start" />Dashboard
-        </Button>
-      </div>
-    </AppPageHeader>
+    <AppPageHeader><PageTitle>Mål</PageTitle></AppPageHeader>
   );
 
   if (access && !canView) {

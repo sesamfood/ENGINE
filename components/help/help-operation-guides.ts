@@ -244,15 +244,15 @@ export const operationFeatures: HelpFeature[] = [
         slug: "maal",
         label: "Lokationsmål",
         summary:
-          "Sæt mål for lokationens nøgletal, og følg fremgangen på siden Mål og på dashboardet.",
-        appHref: "/dashboard/targets",
+          "Sæt mål for lokationens nøgletal under Manager, og følg fremgangen på dashboardet.",
+        appHref: "/manager/targets",
         appLinkLabel: "Åbn Mål",
         sections: [
           {
             id: "saet-maal",
             title: "Sæt et mål",
             steps: [
-              "Åbn Dashboard, og vælg Mål.",
+              "Åbn Manager i menuen, og vælg Mål.",
               "Vælg lokationen, hvis du har adgang til flere.",
               "Vælg Sæt mål på målingen. Angiv målet, og vælg dag, uge eller måned for beløb og antal.",
               "Vælg Gem mål. Fremgangen vises for den aktuelle dag, uge eller måned.",

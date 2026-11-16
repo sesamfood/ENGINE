@@ -1,6 +1,7 @@
 import { sidebarItems, type SidebarItemId } from "./sidebar-navigation";
 
-export type FeatureId = Exclude<SidebarItemId, "organization">;
+// Manager is part of the Dashboard feature, not a switch of its own.
+export type FeatureId = Exclude<SidebarItemId, "organization" | "manager">;
 
 export const featureLabels = {
   dashboard: "Dashboard",
@@ -37,6 +38,10 @@ const featurePaths = {
 export function featureForPath(pathname: string): FeatureId | undefined {
   for (const { id } of sidebarItems) {
     if (id === "organization") continue;
+    if (id === "manager") {
+      if (pathname === "/manager" || pathname.startsWith("/manager/")) return "dashboard";
+      continue;
+    }
     const path = featurePaths[id];
     if (pathname === path || pathname.startsWith(`${path}/`)) return id;
   }
