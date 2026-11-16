@@ -5,6 +5,7 @@ import { kioskDestinations } from "../lib/kiosk";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { createAuth, getDatabaseAdapter } from "./auth";
+import { kioskDashboardValidator } from "./lib/dashboardValidators";
 import {
   requireAllLocationAccess,
   requireLocationAccess,
@@ -25,6 +26,7 @@ const settingsValidator = v.object({
   inactivitySeconds: v.union(v.number(), v.null()),
   allowLeavingStartOfDay: v.boolean(),
   pinFeatures: v.array(v.string()),
+  dashboards: v.optional(v.array(kioskDashboardValidator)),
   updatedAt: v.number(),
 });
 const accountValidator = v.object({
@@ -154,9 +156,35 @@ export const getAdminSettings = query({
           inactivitySeconds: settings.inactivitySeconds,
           allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
           pinFeatures: settings.pinFeatures ?? [],
+          dashboards: settings.dashboards,
           updatedAt: settings.updatedAt,
         }
       : null;
+  },
+});
+
+export const listDashboardOptions = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      id: v.id("dashboards"),
+      name: v.string(),
+      defaultPreset: v.string(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const dashboards = await ctx.db
+      .query("dashboards")
+      .withIndex("by_organizationId_and_sortOrder", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(200);
+    return dashboards.map((dashboard) => ({
+      id: dashboard._id,
+      name: dashboard.name,
+      defaultPreset: dashboard.defaultRange.preset,
+    }));
   },
 });
 
@@ -167,6 +195,7 @@ export const saveSettings = mutation({
     inactivitySeconds: v.union(v.number(), v.null()),
     allowLeavingStartOfDay: v.optional(v.boolean()),
     pinFeatures: v.optional(v.array(v.string())),
+    dashboards: v.optional(v.array(kioskDashboardValidator)),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -177,6 +206,19 @@ export const saveSettings = mutation({
       args.inactivitySeconds,
       args.pinFeatures,
     );
+    if (args.dashboards) {
+      const ids = args.dashboards.map((item) => item.dashboardId);
+      if (args.enabledPages.includes("dashboard.view") && !ids.length) {
+        throw new ConvexError("Vælg mindst ét dashboard");
+      }
+      if (new Set(ids).size !== ids.length) {
+        throw new ConvexError("Et dashboard er valgt flere gange");
+      }
+      const dashboards = await Promise.all(ids.map((id) => ctx.db.get("dashboards", id)));
+      if (dashboards.some((dashboard) => dashboard?.organizationId !== organizationId)) {
+        throw new ConvexError("Dashboardet blev ikke fundet");
+      }
+    }
     const current = await ctx.db
       .query("kioskSettings")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))

@@ -1,4 +1,5 @@
 import { organizationRoleCatalog } from "./lib/roles";
+import { kioskDashboardValidator } from "./lib/dashboardValidators";
 import { ConvexError, v } from "convex/values";
 import {
   dataGranularities,
@@ -57,6 +58,7 @@ const kioskSettingsValidator = v.object({
   inactivitySeconds: v.union(v.number(), v.null()),
   allowLeavingStartOfDay: v.boolean(),
   pinFeatures: v.array(v.string()),
+  dashboards: v.optional(v.array(kioskDashboardValidator)),
   updatedAt: v.number(),
 });
 
@@ -366,6 +368,7 @@ async function getAccessContext(ctx: QueryCtx) {
               inactivitySeconds: settings.inactivitySeconds,
               allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
               pinFeatures: settings.pinFeatures ?? [],
+              dashboards: settings.dashboards,
               updatedAt: settings.updatedAt,
             }
           : null,

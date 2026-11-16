@@ -206,6 +206,18 @@ export const rangeValidator = v.object({
   to: v.optional(v.string()),
 });
 
+// A kiosk shows each chosen dashboard with a fixed period; dates of a custom range would go stale.
+export const kioskDashboardValidator = v.object({
+  dashboardId: v.id("dashboards"),
+  preset: v.union(
+    v.literal("today"),
+    v.literal("yesterday"),
+    v.literal("7days"),
+    v.literal("30days"),
+    v.literal("thisMonth"),
+  ),
+});
+
 export const metricPointValidator = v.object({
   t: v.number(),
   value: v.number(),

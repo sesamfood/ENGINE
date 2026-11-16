@@ -70,6 +70,13 @@ import {
 } from "@/lib/kiosk";
 import type { SystemOrganizationRole } from "@/lib/auth-permissions";
 import { featureLabels, type FeatureId } from "@/lib/features";
+import type { WidgetRangePreset } from "@/lib/dashboard/types";
+import { rangePresetOptions } from "@/components/dashboard/range-selector";
+
+type KioskDashboard = { dashboardId: Id<"dashboards">; preset: WidgetRangePreset };
+const kioskPresetItems = rangePresetOptions.filter(
+  (option): option is { value: WidgetRangePreset; label: string } => option.value !== "custom",
+);
 
 const roleLabels: Record<SystemOrganizationRole, string> = {
   admin: "Administrator",
@@ -253,6 +260,10 @@ export function KioskSettings() {
     api.access.listMemberLocationAccess,
     canManageAccounts ? {} : "skip",
   );
+  const dashboardOptions = useQuery(
+    api.kiosk.listDashboardOptions,
+    canManageSettings ? {} : "skip",
+  );
   const locations = canManageAccounts
     ? memberLocationAccess?.locations
     : undefined;
@@ -266,6 +277,7 @@ export function KioskSettings() {
   const [inactivitySeconds, setInactivitySeconds] = useState(60);
   const [allowLeavingStartOfDay, setAllowLeavingStartOfDay] = useState(false);
   const [pinFeatures, setPinFeatures] = useState<FeatureId[]>([]);
+  const [kioskDashboards, setKioskDashboards] = useState<KioskDashboard[]>([]);
   const [settingsPending, setSettingsPending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string>();
@@ -286,6 +298,21 @@ export function KioskSettings() {
     return () => window.clearTimeout(timeout);
   }, [settings]);
 
+  useEffect(() => {
+    if (settings === undefined || dashboardOptions === undefined) return;
+    const timeout = window.setTimeout(() => {
+      // Settings saved before dashboards could be chosen show every dashboard with its own period.
+      setKioskDashboards(
+        settings?.dashboards?.filter((item) => dashboardOptions.some((option) => option.id === item.dashboardId))
+          ?? dashboardOptions.map((option) => ({
+            dashboardId: option.id,
+            preset: kioskPresetItems.find((item) => item.value === option.defaultPreset)?.value ?? "today",
+          })),
+      );
+    });
+    return () => window.clearTimeout(timeout);
+  }, [settings, dashboardOptions]);
+
   if (!access) {
     return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
   }
@@ -300,7 +327,7 @@ export function KioskSettings() {
   }
 
   if (
-    (canManageSettings && settings === undefined) ||
+    (canManageSettings && (settings === undefined || dashboardOptions === undefined)) ||
     (canManageAccounts && (accounts === undefined || locations === undefined))
   ) {
     return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
@@ -330,7 +357,7 @@ export function KioskSettings() {
     event.preventDefault();
     setSettingsPending(true);
     try {
-      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay, pinFeatures: pinFeatures.filter(featureEnabled) });
+      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay, pinFeatures: pinFeatures.filter(featureEnabled), dashboards: kioskDashboards });
       toast.success("Kioskopsætningen er gemt");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
@@ -418,6 +445,63 @@ export function KioskSettings() {
                           </FieldLabel>
                         </Field>
                       ))}
+                    {feature === "dashboard" && enabledPages.includes("dashboard.view") ? (
+                      <>
+                        <FieldSeparator />
+                        <FieldSet>
+                          <FieldLegend variant="label">Dashboards og periode</FieldLegend>
+                          {(dashboardOptions ?? []).map((option) => {
+                            const selected = kioskDashboards.find((item) => item.dashboardId === option.id);
+                            return (
+                              <div key={option.id} className="flex flex-col gap-2">
+                                <Field orientation="horizontal">
+                                  <Checkbox
+                                    id={`kiosk-dashboard-${option.id}`}
+                                    checked={Boolean(selected)}
+                                    onCheckedChange={(checked) =>
+                                      setKioskDashboards(
+                                        checked
+                                          ? [...kioskDashboards, { dashboardId: option.id, preset: "today" }]
+                                          : kioskDashboards.filter((item) => item.dashboardId !== option.id),
+                                      )
+                                    }
+                                  />
+                                  <FieldLabel htmlFor={`kiosk-dashboard-${option.id}`}>{option.name}</FieldLabel>
+                                </Field>
+                                {selected ? (
+                                  <Select
+                                    items={kioskPresetItems}
+                                    value={selected.preset}
+                                    onValueChange={(value) =>
+                                      value &&
+                                      setKioskDashboards(
+                                        kioskDashboards.map((item) =>
+                                          item.dashboardId === option.id ? { ...item, preset: value } : item,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full" aria-label={`Periode for ${option.name}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        {kioskPresetItems.map((item) => (
+                                          <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                          {dashboardOptions?.length ? null : (
+                            <FieldDescription>Der er ingen dashboards endnu.</FieldDescription>
+                          )}
+                        </FieldSet>
+                      </>
+                    ) : null}
                     {featureEnabled(feature) ? (
                       <>
                         <FieldSeparator />

@@ -39,7 +39,7 @@ import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { DashboardGrid } from "./dashboard-grid";
 import { DashboardTabs } from "./dashboard-tabs";
-import { ComparisonSelector, RangeSelector } from "./range-selector";
+import { ComparisonSelector, RangeSelector, rangePresetOptions } from "./range-selector";
 import { ScopeSelector } from "./scope-selector";
 
 const AddWidgetDialog = dynamic(() => import("./add-widget-dialog").then((module) => module.AddWidgetDialog));
@@ -228,7 +228,13 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   }, [dashboardId, dashboardsQuery]);
 
   const currentScope = dashboard ? scopeFromUrl(searchParams, dashboard.defaultScope) : null;
-  const currentRange = dashboard ? rangeFromUrl(searchParams, dashboard.defaultRange) : null;
+  // Kiosk settings can fix the period, so the kiosk cannot change it.
+  const kioskPreset = kioskMode
+    ? access?.kiosk?.settings?.dashboards?.find((item) => item.dashboardId === dashboardId)?.preset
+    : undefined;
+  const currentRange = !dashboard ? null
+    : kioskPreset ? { preset: kioskPreset }
+    : rangeFromUrl(searchParams, dashboard.defaultRange);
   const currentComparison = comparisonPeriods.find((period) => period === searchParams.get("comparison"))
     ?? dashboard?.defaultComparison ?? DEFAULT_COMPARISON_PERIOD;
 
@@ -404,7 +410,13 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       <div className="flex flex-row flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-3 shadow-sm sm:gap-3 sm:p-4 lg:items-end">
         <div className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-2 sm:gap-3 lg:items-end lg:gap-x-6">
           <div className="min-w-32 flex-1 sm:min-w-44 lg:flex-none">
-            <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
+            {kioskPreset ? (
+              <p className="flex min-h-11 items-center text-base font-medium">
+                {rangePresetOptions.find((option) => option.value === kioskPreset)?.label}
+              </p>
+            ) : (
+              <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
+            )}
           </div>
           <div className="max-lg:hidden">
             <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />

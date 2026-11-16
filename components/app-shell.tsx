@@ -127,6 +127,7 @@ import { OrganizationTheme } from "@/components/organization/organization-theme"
 import { kioskDestinationMatches, type KioskDestinationId } from "@/lib/kiosk";
 import { isPreview } from "@/lib/page-title";
 import type { KioskDayTask } from "@/lib/kiosk-day";
+import type { RangePreset } from "@/lib/dashboard/types";
 import {
   normalizeSidebarOrder,
   type SidebarItemId,
@@ -166,6 +167,7 @@ type KioskSettings = {
   inactivitySeconds: number | null;
   allowLeavingStartOfDay: boolean;
   pinFeatures: string[];
+  dashboards?: { dashboardId: string; preset: Exclude<RangePreset, "custom"> }[];
   updatedAt: number;
 };
 
