@@ -163,7 +163,7 @@ type OnlinePosProduct = {
 };
 
 type ProductMapping = {
-  onlinePosProductId: number | null;
+  onlinePosProductIds: number[];
 };
 
 
@@ -335,17 +335,21 @@ function OnlinePosProductMappingField({
 }) {
   const setProductMapping = useAction(api.onlinePos.setProductMapping);
   const [saving, setSaving] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-  const currentMapping = mapping?.onlinePosProductId;
   const options = useOnlinePosProductOptions(onlinePosProducts);
 
-  async function changeMapping(value: number | null) {
+  async function changeMapping(
+    value: number | null,
+    previous: number | null,
+  ) {
     setSaving(true);
     try {
       await setProductMapping({
         productId,
         integrationId,
         onlinePosProductId: value,
+        previousOnlinePosProductId: previous,
       });
       toast.success(
         value === null
@@ -365,25 +369,56 @@ function OnlinePosProductMappingField({
   }
 
   if (!mapping) return null;
+  const ids = mapping.onlinePosProductIds;
 
   return (
     <Field>
       <div className="flex items-center gap-2">
-        <FieldLabel>OnlinePOS-produkt</FieldLabel>
+        <FieldLabel>OnlinePOS-produkter</FieldLabel>
         <HelpTooltip
-          label="OnlinePOS-produkt"
-          content="Koblingen gemmes med det samme."
+          label="OnlinePOS-produkter"
+          content="Et produkt kan kobles til flere OnlinePOS-produkter, fx en takeaway-variant. Koblingen gemmes med det samme. Ryd feltet for at fjerne en kobling."
         />
       </div>
-      <OnlinePosProductSelect
-        options={options}
-        productName={productName}
-        value={currentMapping ?? null}
-        onValueChange={(value) => void changeMapping(value)}
-        ariaLabel={`OnlinePOS-produkt for ${productName}`}
-        onRetry={onRetry}
-        disabled={saving}
-      />
+      {ids.map((id) => (
+        <OnlinePosProductSelect
+          key={id}
+          options={options}
+          productName={productName}
+          value={id}
+          onValueChange={(value) => void changeMapping(value, id)}
+          ariaLabel={`OnlinePOS-produkt for ${productName}`}
+          onRetry={onRetry}
+          disabled={saving}
+        />
+      ))}
+      {ids.length > 0 && !adding ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="self-start"
+          onClick={() => setAdding(true)}
+          disabled={saving}
+        >
+          <PlusIcon data-icon="inline-start" />
+          Tilføj OnlinePOS-produkt
+        </Button>
+      ) : (
+        <OnlinePosProductSelect
+          key={`add-${ids.length}`}
+          options={options}
+          productName={productName}
+          value={null}
+          onValueChange={(value) => {
+            if (value === null) return;
+            setAdding(false);
+            void changeMapping(value, null);
+          }}
+          ariaLabel={`Tilføj OnlinePOS-produkt for ${productName}`}
+          onRetry={onRetry}
+          disabled={saving}
+        />
+      )}
     </Field>
   );
 }

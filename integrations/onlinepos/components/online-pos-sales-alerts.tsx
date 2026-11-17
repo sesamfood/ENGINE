@@ -33,6 +33,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIntegrations } from "@/integrations/use-integrations";
+import {
+  normalizeProductSearch,
+  productNameSearchScore,
+} from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 const WINDOW_DAYS = 30;
@@ -47,6 +51,31 @@ function windowStart() {
   date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() - WINDOW_DAYS);
   return date.getTime();
+}
+
+const MAX_SUGGESTIONS = 3;
+
+// Matches either way round, so "Pointy Green Bowl" suggests "Pointy Green"
+// and "PLUS Selleri" suggests "Selleri".
+function suggestByName<T extends { searchName: string; disabled: boolean }>(
+  options: T[],
+  name: string,
+) {
+  return options
+    .flatMap((option) => {
+      const scores = [
+        productNameSearchScore(option.searchName, name),
+        normalizeProductSearch(option.searchName).length >= 4
+          ? productNameSearchScore(name, option.searchName)
+          : null,
+      ].filter((score) => score !== null);
+      return option.disabled || scores.length === 0
+        ? []
+        : [{ option, score: Math.min(...scores) }];
+    })
+    .sort((left, right) => left.score - right.score)
+    .slice(0, MAX_SUGGESTIONS)
+    .map(({ option }) => option);
 }
 
 const dateFormat = new Intl.DateTimeFormat("da-DK", {
@@ -150,7 +179,8 @@ function UnmappedRow({
 
   const comboboxOptions = useMemo(() => {
     if (!options || !modifiers) return [];
-    const taken = new Set(
+    // Products can have several POS links; a tilvalg/fravalg default has one.
+    const linked = new Set(
       kind === "product"
         ? options.products.flatMap((product) =>
             product.onlinePosProductId === null ? [] : [product.id],
@@ -161,13 +191,20 @@ function UnmappedRow({
     );
     return options.products.map((product) => ({
       value: product.id,
-      label: taken.has(product.id)
-        ? `${product.name} (allerede koblet)`
-        : product.name,
+      label: !linked.has(product.id)
+        ? product.name
+        : kind === "product"
+          ? `${product.name} (har en kobling)`
+          : `${product.name} (allerede koblet)`,
       searchName: product.name,
-      disabled: taken.has(product.id),
+      disabled: kind !== "product" && linked.has(product.id),
     }));
   }, [kind, modifiers, options]);
+
+  const suggestions = useMemo(
+    () => suggestByName(comboboxOptions, item.name),
+    [comboboxOptions, item.name],
+  );
 
   async function connect(value: string | null) {
     if (!value) return;
@@ -180,6 +217,7 @@ function UnmappedRow({
           integrationId: item.integrationId,
           productId,
           onlinePosProductId: item.onlinePosProductId,
+          previousOnlinePosProductId: null,
         });
       } else {
         await setModifierMapping({
@@ -261,6 +299,8 @@ function UnmappedRow({
               ? `Produkt til ${item.name}`
               : `Ingrediens til ${item.name}`
           }
+          suggestionLabel="Forslag ud fra navnet"
+          suggestionOptions={suggestions}
           productSearch
         />
       )}

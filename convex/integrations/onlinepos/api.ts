@@ -45,6 +45,8 @@ const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_INGREDIENTS = 200;
 const MAX_MENUS = 100;
+// A product can be sold under several POS products, e.g. a takeaway variant.
+const MAX_MAPPINGS_PER_PRODUCT = 20;
 
 async function loadModifierMappings(
   ctx: QueryCtx | MutationCtx,
@@ -115,6 +117,10 @@ const onlinePosProductValidator = v.object({
   name: v.string(),
   groupName: v.string(),
 });
+
+const previousMappingArg = {
+  previousOnlinePosProductId: v.optional(v.union(v.number(), v.null())),
+};
 
 const ingredientOnlinePosMappingValidator = v.object({
   ingredientProductId: v.id("products"),
@@ -845,7 +851,10 @@ export const getProductMapping = query({
     productId: v.id("products"),
   },
   returns: v.union(
-    v.object({ onlinePosProductId: v.union(v.number(), v.null()) }),
+    v.object({
+      onlinePosProductId: v.union(v.number(), v.null()),
+      onlinePosProductIds: v.array(v.number()),
+    }),
     v.null(),
   ),
   handler: async (ctx, args) => {
@@ -856,7 +865,7 @@ export const getProductMapping = query({
       organizationId,
       args.integrationId,
     );
-    const [product, mapping] = await Promise.all([
+    const [product, mappings] = await Promise.all([
       ctx.db.get("products", args.productId),
       ctx.db
         .query("onlinePosProductMappings")
@@ -866,13 +875,14 @@ export const getProductMapping = query({
             .eq("integrationId", onlinePosCatalogId(settings))
             .eq("productId", args.productId),
         )
-        .unique(),
+        .take(MAX_MAPPINGS_PER_PRODUCT),
     ]);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
     }
     if (!settings) return null;
-    return { onlinePosProductId: mapping?.onlinePosProductId ?? null };
+    const ids = mappings.map((mapping) => mapping.onlinePosProductId);
+    return { onlinePosProductId: ids[0] ?? null, onlinePosProductIds: ids };
   },
 });
 
@@ -1095,6 +1105,7 @@ export const saveProductMapping = internalMutation({
     organizationId: v.string(),
     productId: v.id("products"),
     onlinePosProductId: v.union(v.number(), v.null()),
+    ...previousMappingArg,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1104,7 +1115,7 @@ export const saveProductMapping = internalMutation({
       args.organizationId,
       args.integrationId,
     );
-    const [product, current, mappings] = await Promise.all([
+    const [product, currents, mappings] = await Promise.all([
       ctx.db.get("products", args.productId),
       ctx.db
         .query("onlinePosProductMappings")
@@ -1114,7 +1125,7 @@ export const saveProductMapping = internalMutation({
             .eq("integrationId", onlinePosCatalogId(settings))
             .eq("productId", args.productId),
         )
-        .unique(),
+        .take(MAX_MAPPINGS_PER_PRODUCT + 1),
       ctx.db
         .query("onlinePosProductMappings")
         .withIndex("by_organizationId_and_integrationId", (q) =>
@@ -1137,15 +1148,36 @@ export const saveProductMapping = internalMutation({
     ) {
       throw new ConvexError("OnlinePOS-produktet er ugyldigt");
     }
+    const onlinePosProductId = args.onlinePosProductId;
+    // undefined replaces every link (older clients), null adds one, and a
+    // number replaces or removes that one link.
+    const previous = args.previousOnlinePosProductId;
+    if (previous === null && onlinePosProductId === null) {
+      throw new ConvexError("Vælg et OnlinePOS-produkt");
+    }
+    const removed = currents.filter((row) =>
+      previous === undefined
+        ? row.onlinePosProductId !== onlinePosProductId
+        : previous !== null && row.onlinePosProductId === previous,
+    );
+    const inserted =
+      onlinePosProductId !== null &&
+      !currents.some(
+        (row) =>
+          row.onlinePosProductId === onlinePosProductId &&
+          !removed.includes(row),
+      )
+        ? onlinePosProductId
+        : null;
     if (
       mappings.length > MAX_PRODUCTS ||
-      (!current &&
-        args.onlinePosProductId !== null &&
-        mappings.length === MAX_PRODUCTS)
+      mappings.length - removed.length + (inserted === null ? 0 : 1) >
+        MAX_PRODUCTS ||
+      currents.length - removed.length + (inserted === null ? 0 : 1) >
+        MAX_MAPPINGS_PER_PRODUCT
     ) {
       throw new ConvexError("Der er for mange produktkoblinger");
     }
-    const onlinePosProductId = args.onlinePosProductId;
     const existingOwners =
       onlinePosProductId === null
         ? []
@@ -1175,23 +1207,16 @@ export const saveProductMapping = internalMutation({
       );
     }
 
-    if (args.onlinePosProductId === null) {
-      if (current) await ctx.db.delete(current._id);
-    } else if (current) {
-      if (current.onlinePosProductId !== args.onlinePosProductId) {
-        await ctx.db.patch(current._id, {
-          onlinePosProductId: args.onlinePosProductId,
-        });
-      }
-    } else {
+    for (const row of removed) await ctx.db.delete(row._id);
+    if (inserted !== null) {
       await ctx.db.insert("onlinePosProductMappings", {
         organizationId: args.organizationId,
         integrationId: onlinePosCatalogId(settings),
         productId: args.productId,
-        onlinePosProductId: args.onlinePosProductId,
+        onlinePosProductId: inserted,
       });
     }
-    if ((current?.onlinePosProductId ?? null) !== args.onlinePosProductId) {
+    if (removed.length > 0 || inserted !== null) {
       await invalidateSalesStockMappings(ctx, args.organizationId);
     }
     return null;
@@ -1784,6 +1809,7 @@ export const setProductMapping = action({
     integrationId: v.optional(v.id("onlinePosIntegrations")),
     productId: v.id("products"),
     onlinePosProductId: v.union(v.number(), v.null()),
+    ...previousMappingArg,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1811,6 +1837,7 @@ export const setProductMapping = action({
       integrationId: settings.integrationId,
       productId: args.productId,
       onlinePosProductId: args.onlinePosProductId,
+      previousOnlinePosProductId: args.previousOnlinePosProductId,
     });
     return null;
   },
