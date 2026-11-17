@@ -257,8 +257,8 @@ function TargetCard({ metric, locationId, target, widget, canManage, now }: {
   );
 }
 
-// Common widget sizes, columns × rows on the 8-column dashboard grid.
-const sizeChoices: WidgetSize[] = ["2x1", "2x2", "4x1", "4x2", "4x3", "8x2"];
+// Columns × rows on the 8-column dashboard grid. Other sizes are set on the dashboard itself.
+const sizeChoices: WidgetSize[] = ["2x1", "2x2", "3x1", "3x2", "4x1", "4x2"];
 const sizeLabel = (size: WidgetSize) => size.replace("x", " × ");
 
 function TargetDialog({ metric, locationId, target, widget, usesPeriod, now }: {

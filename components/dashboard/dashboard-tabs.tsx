@@ -135,8 +135,8 @@ export function DashboardTabs({
       <div className="flex min-w-0 items-center gap-2" aria-label="Dashboardnavigation">
         <Select
           items={[
-            ...order.map((dashboard) => ({ value: String(dashboard.id), label: dashboard.name })),
             ...(showTargets ? [{ value: TARGETS_TAB, label: "Mål" }] : []),
+            ...order.map((dashboard) => ({ value: String(dashboard.id), label: dashboard.name })),
           ]}
           value={activeId}
           onValueChange={(value) => { if (value) onChange(value); }}
@@ -146,19 +146,19 @@ export function DashboardTabs({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
+              {showTargets ? <SelectItem value={TARGETS_TAB}>Mål</SelectItem> : null}
               {order.map((dashboard) => (
                 <SelectItem key={dashboard.id} value={String(dashboard.id)}>
                   {dashboard.name}
                 </SelectItem>
               ))}
-              {showTargets ? <SelectItem value={TARGETS_TAB}>Mål</SelectItem> : null}
             </SelectGroup>
           </SelectContent>
         </Select>
         <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1 max-md:hidden">
           <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFadeBelowLg" aria-label="Dashboards">
-            {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} appearance="standard" className="min-w-28 shrink-0">{dashboard.name}</TabsTrigger>)}
             {showTargets ? <TabsTrigger value={TARGETS_TAB} appearance="standard" className="min-w-28 shrink-0">Mål</TabsTrigger> : null}
+            {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} appearance="standard" className="min-w-28 shrink-0">{dashboard.name}</TabsTrigger>)}
           </TabsList>
         </Tabs>
         {canCreate ? (
