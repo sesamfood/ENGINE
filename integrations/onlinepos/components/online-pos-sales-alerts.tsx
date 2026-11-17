@@ -171,6 +171,7 @@ function IgnoredRow({
 }
 
 const MAX_PRODUCTS_PER_SAVE = 200;
+const MAX_CATEGORY_MATCHES = 5;
 
 type SetupKind = Exclude<ConnectKind, "product">;
 type ModifierSetupData = FunctionReturnType<
@@ -234,15 +235,68 @@ function ModifierSetupForm({
   );
   const setModifierMapping = useAction(api.onlinePos.setModifierMapping);
 
+  const categories = useQuery(api.catalog.listCategoryOptions);
+  const categoryPaths = useMemo(
+    () => new Map(categories?.map((category) => [category.id, category.path])),
+    [categories],
+  );
+  // Products per category, including those in subcategories.
+  const productsByCategory = useMemo(() => {
+    const parents = new Map(
+      categories?.map((category) => [category.id, category.parentCategoryId]),
+    );
+    const result = new Map<Id<"categories">, Set<Id<"products">>>();
+    for (const product of setup.products) {
+      for (const categoryId of product.categoryIds) {
+        let current: Id<"categories"> | null | undefined = categoryId;
+        const seen = new Set<Id<"categories">>();
+        while (current && !seen.has(current)) {
+          seen.add(current);
+          const ids = result.get(current) ?? new Set();
+          ids.add(product.id);
+          result.set(current, ids);
+          current = parents.get(current);
+        }
+      }
+    }
+    return result;
+  }, [categories, setup.products]);
+
   const visible = useMemo(
     () =>
       search.trim()
         ? searchProducts(setup.products, search, (product) => ({
             name: product.name,
+            categoryPath: product.categoryIds
+              .map((id) => categoryPaths.get(id) ?? "")
+              .join(" · "),
           }))
         : setup.products,
-    [search, setup.products],
+    [categoryPaths, search, setup.products],
   );
+  const matchingCategories = useMemo(() => {
+    if (!search.trim() || !categories) return [];
+    return categories
+      .flatMap((category) => {
+        const ids = productsByCategory.get(category.id);
+        const score = productNameSearchScore(category.path, search);
+        return ids && score !== null ? [{ category, ids, score }] : [];
+      })
+      .sort((left, right) => left.score - right.score)
+      .slice(0, MAX_CATEGORY_MATCHES);
+  }, [categories, productsByCategory, search]);
+
+  function toggleAll(ids: Set<Id<"products">>, on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
   const parsed = parseAmount(amount);
 
   async function setOnProducts(ids: Id<"products">[], on: boolean) {
@@ -332,11 +386,32 @@ function ModifierSetupForm({
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Søg i produkter"
-                aria-label="Søg i produkter"
+                placeholder="Søg i produkter og kategorier"
+                aria-label="Søg i produkter og kategorier"
               />
             ) : null}
             <div className="flex max-h-56 flex-col divide-y overflow-y-auto rounded-lg border bg-background">
+              {matchingCategories.map(({ category, ids }) => {
+                const count = [...ids].filter((id) => selected.has(id)).length;
+                return (
+                  <label
+                    key={category.id}
+                    className="flex min-h-11 cursor-pointer items-center gap-3 bg-muted/50 px-3 py-2"
+                  >
+                    <Checkbox
+                      checked={count === ids.size}
+                      indeterminate={count > 0 && count < ids.size}
+                      onCheckedChange={() => toggleAll(ids, count < ids.size)}
+                    />
+                    <span className="min-w-0 flex-1 break-words text-sm font-medium">
+                      Alle i {category.path}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {count} af {ids.size}
+                    </span>
+                  </label>
+                );
+              })}
               {visible.map((product) => (
                 <label
                   key={product.id}

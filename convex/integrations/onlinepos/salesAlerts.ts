@@ -15,6 +15,7 @@ import {
   requireCatalogManager,
   requireIntegrationManager,
 } from "../../lib/auth";
+import { getProductCategoryIds } from "../../lib/productCategories";
 import {
   invalidateSalesStockMappings,
   MAX_MODIFIER_DEFAULTS,
@@ -730,6 +731,7 @@ export const getModifierSetup = query({
         id: v.id("products"),
         name: v.string(),
         enabled: v.boolean(),
+        categoryIds: v.array(v.id("categories")),
       }),
     ),
   }),
@@ -765,7 +767,7 @@ export const getModifierSetup = query({
       )
     ).flat();
 
-    let products: Array<{ id: Id<"products">; name: string; enabled: boolean }>;
+    let candidates: Array<{ product: Doc<"products">; enabled: boolean }>;
     if (args.kind === "removal") {
       // Only products whose recipe holds the ingredient can have it removed.
       const rows = await ctx.db
@@ -784,13 +786,11 @@ export const getModifierSetup = query({
           (removable.get(row.productId) ?? false) || row.removable === true,
         );
       }
-      products = (
+      candidates = (
         await Promise.all(
           [...removable].map(async ([id, enabled]) => {
             const product = await ctx.db.get("products", id);
-            return product?.status === "active"
-              ? [{ id, name: product.name, enabled }]
-              : [];
+            return product?.status === "active" ? [{ product, enabled }] : [];
           }),
         )
       ).flat();
@@ -820,7 +820,7 @@ export const getModifierSetup = query({
       const addable = new Set(additions.map((row) => row.productId));
       const posLinked = new Set(mappings.map((row) => row.productId));
       // Sold products: a sales price, a POS link, or already addable.
-      products = catalog
+      candidates = catalog
         .filter(
           (product) =>
             product._id !== ingredient._id &&
@@ -829,12 +829,16 @@ export const getModifierSetup = query({
               addable.has(product._id)),
         )
         .slice(0, MAX_SETUP_PRODUCTS)
-        .map((product) => ({
-          id: product._id,
-          name: product.name,
-          enabled: addable.has(product._id),
-        }));
+        .map((product) => ({ product, enabled: addable.has(product._id) }));
     }
+    const products = await Promise.all(
+      candidates.map(async ({ product, enabled }) => ({
+        id: product._id,
+        name: product.name,
+        enabled,
+        categoryIds: await getProductCategoryIds(ctx, product),
+      })),
+    );
     return {
       units,
       defaultUnitId: ingredient.defaultUnitId,
