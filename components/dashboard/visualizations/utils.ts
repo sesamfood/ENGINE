@@ -29,9 +29,37 @@ export function comparisonPeriodText(result: MetricResult | undefined, range: Da
     case "yesterday": return "dagen før";
     case "7days": return "de foregående 7 dage";
     case "30days": return "de foregående 30 dage";
-    case "thisMonth": return "den foregående måned";
+    case "thisMonth":
+    case "month": return "den foregående måned";
+    case "week": return "den foregående uge";
     default: return "den foregående tilsvarende periode";
   }
+}
+
+/**
+ * Totals of the whole days before today and the same days in the comparison, so an unfinished
+ * day does not read as a drop. Null for averages and rates, or before the first whole day.
+ */
+export function completeDayTotals(result: MetricResult, now: number) {
+  if (result.headlineTotal !== undefined || result.unit === "percent" || isMixedCurrency(result)) return null;
+  const date = new Date(now);
+  const startOfToday = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  let current = 0;
+  let previous = 0;
+  let days = 0;
+  for (const series of result.series) {
+    if (!series.previousPoints) return null;
+    for (const point of series.points) {
+      if (point.t < startOfToday) {
+        current += point.value;
+        days += 1;
+      }
+    }
+    for (const point of series.previousPoints) {
+      if (point.t < startOfToday) previous += point.value;
+    }
+  }
+  return days ? { current, previous } : null;
 }
 
 export function isMixedCurrency(result: MetricResult) {
@@ -81,7 +109,7 @@ export function seriesSummary(result: MetricResult) {
     .join(". ");
 }
 
-export function chartModel(result: MetricResult) {
+export function chartModel(result: MetricResult, periodEnd?: number) {
   const data = new Map<number, Record<string, number>>();
   const config: ChartConfig = {};
   result.series.forEach((series, index) => {
@@ -100,7 +128,16 @@ export function chartModel(result: MetricResult) {
   // The current day is incomplete; plotting it reads as a collapse.
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const completeRows = rows.length > 1 && rows[rows.length - 1].t >= startOfToday ? rows.slice(0, -1) : rows;
+  const completeRows = periodEnd === undefined && rows.length > 1 && rows[rows.length - 1].t >= startOfToday ? rows.slice(0, -1) : rows;
+  // A period shown so far keeps today and leaves the rest of the period empty.
+  if (periodEnd !== undefined && completeRows.length) {
+    const end = new Date(periodEnd);
+    for (let day = new Date(completeRows[completeRows.length - 1].t); ;) {
+      day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+      if (day > end) break;
+      completeRows.push({ t: day.getTime() });
+    }
+  }
   return {
     config,
     data: completeRows,
@@ -128,11 +165,13 @@ export function targetChartModel(
       actualTotal = 0;
       targetTotal = 0;
     }
-    const value = row[key] ?? 0;
+    const value = row[key];
     const target = chart.dailyTarget(row.t);
-    actualTotal += value;
     // A period cut off by the range start only counts the days shown, for both lines.
     targetTotal += target;
+    // Days still to come only carry the target.
+    if (value === undefined) return running ? { ...row, target: targetTotal } : { ...row, target };
+    actualTotal += value;
     return running
       ? { ...row, daily: value, [key]: actualTotal, target: targetTotal }
       : { ...row, target };

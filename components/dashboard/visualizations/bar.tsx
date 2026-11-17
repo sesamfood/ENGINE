@@ -54,6 +54,7 @@ export function BarVisualization({
   yAxisMin,
   yAxisMax,
   target,
+  periodEnd,
 }: TimeSeriesProps) {
   if (isMixedCurrency(result)) {
     return (
@@ -87,6 +88,7 @@ export function BarVisualization({
       yAxisMin={yAxisMin}
       yAxisMax={yAxisMax}
       target={target}
+      periodEnd={periodEnd}
     />
   );
 }

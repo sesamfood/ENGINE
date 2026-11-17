@@ -58,8 +58,9 @@ import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type Comparison
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { TargetSettings } from "./target-settings";
-import { supportsTarget, targetReached, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
-import { comparisonPeriodText, formatMetricValue, previousTotal, total } from "./visualizations/utils";
+import { supportsTarget, targetReached, targetVisualizations, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
+import { comparisonPeriodText, completeDayTotals, formatMetricValue, previousTotal, total } from "./visualizations/utils";
+import { isTargetWidget } from "@/lib/dashboard/target-dashboard";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
 
@@ -232,6 +233,8 @@ export function WidgetCard({
   onEditCustomMetric,
   onResize,
   onRemove,
+  locked,
+  now,
   children,
 }: {
   widget: WidgetInstance;
@@ -252,6 +255,9 @@ export function WidgetCard({
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
+  /** Generated widgets keep their metric and target; only layout and chart type can change. */
+  locked?: boolean;
+  now?: number;
   children: ReactNode;
 }) {
   const definition = widget.metric.kind === "builtin"
@@ -270,7 +276,8 @@ export function WidgetCard({
   const hasAttributions = live?.kind === "ready" && live.data.attributions.length > 0;
   const compactHeader = widgetSizeSpans[widget.size].rows === 1;
   const compactLive = Boolean(definition?.live) && compactHeader;
-  const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
+  const availableVisualizations = (definition?.visualizations ?? visualizations ?? [])
+    .filter((visualization) => !locked || targetVisualizations.includes(visualization));
   const salesSource = definition && supportsSalesSource(definition.id)
     ? widget.options?.salesSource ?? defaultSalesSource(definition.id)
     : definition?.id === "woltCancellationRate"
@@ -280,11 +287,18 @@ export function WidgetCard({
   const previous = result && result.emptyMessage === undefined && result.series.length > 0 ? previousTotal(result) : null;
   const freshness = result?.freshness;
   const hasFreshness = Boolean(freshness && (freshness.errorLocationCount > 0 || freshness.staleLocationCount > 0));
-  const change = !definition?.live && widget.visualization !== "goal" && current !== null && previous !== null && (financial || previous !== 0)
-    ? financial ? current - previous : ((current - previous) / Math.abs(previous)) * 100
+  // Target widgets include today, so totals are compared over whole days only.
+  const wholeDays = result && isTargetWidget(widget) && now !== undefined
+    && result.headlineTotal === undefined && result.unit !== "percent";
+  const changeBase = wholeDays
+    ? completeDayTotals(result, now)
+    : current !== null && previous !== null ? { current, previous } : null;
+  const change = !definition?.live && widget.visualization !== "goal" && changeBase && (financial || changeBase.previous !== 0)
+    ? financial ? changeBase.current - changeBase.previous : ((changeBase.current - changeBase.previous) / Math.abs(changeBase.previous)) * 100
     : null;
 
-  const comparisonLabel = financial ? "den foregående måned" : comparisonPeriodText(result, range);
+  const comparisonLabel = financial ? "den foregående måned"
+    : `${comparisonPeriodText(result, range)}${wholeDays ? ", hele dage til og med i går" : ""}`;
   // Charts keep the target details in a header pill; KPI and goal widgets show them in the body.
   const chartTarget = target && current !== null && target.total > 0 && result?.series.length === 1
     && visualizationHasYAxis(widget.visualization) ? target : null;
@@ -517,6 +531,7 @@ export function WidgetCard({
                         </DialogContent>
                       </Dialog>
                     ) : null}
+                    {locked ? null : <>
                     {onEditCustomMetric ? (
                       <Button
                         type="button"
@@ -595,6 +610,7 @@ export function WidgetCard({
                     <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
                       <MinusIcon />
                     </Button>
+                    </>}
                   </div>
                 </PopoverContent>
               </Popover>

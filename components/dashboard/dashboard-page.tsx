@@ -58,7 +58,7 @@ function validScopeLevel(value: string | null): DashboardScope["level"] | undefi
     : undefined;
 }
 
-function rangeFromUrl(params: SearchParamsLike, fallback: DashboardRange) {
+export function rangeFromUrl(params: SearchParamsLike, fallback: DashboardRange) {
   const preset = params.get("range");
   if (!validRangePreset(preset)) return fallback;
   if (preset !== "custom") return { preset };
@@ -88,7 +88,7 @@ function scopeFromUrl(params: SearchParamsLike, fallback: DashboardScope): Dashb
   };
 }
 
-function pushUrl(router: ReturnType<typeof useRouter>, pathname: string, params: URLSearchParams) {
+export function pushUrl(router: ReturnType<typeof useRouter>, pathname: string, params: URLSearchParams) {
   const query = params.toString();
   router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
 }
@@ -159,7 +159,7 @@ function DashboardLanding() {
   return <DashboardSkeleton />;
 }
 
-function DashboardSkeleton() {
+export function DashboardSkeleton() {
   return (
     <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-4 lg:gap-6">
       <AppPageHeader><PageTitle>Dashboard</PageTitle></AppPageHeader>
@@ -194,6 +194,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const dashboardsQuery = useQuery(api.dashboard.list, canView ? {} : "skip");
   const dashboardQuery = useQuery(api.dashboard.get, canView ? { dashboardId: dashboardId as Id<"dashboards"> } : "skip");
   const organizationContext = useQuery(api.employees.getContext, canView ? {} : "skip");
+  const targetDashboards = useQuery(api.targetDashboards.list, canView ? {} : "skip");
   const saveConfig = useMutation(api.dashboard.saveConfigRevisioned);
   const saveDefaults = useMutation(api.dashboard.saveDefaults);
   const requestDataSync = useMutation(api.dashboard.requestDataSync);
@@ -406,6 +407,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         onDuplicated={(nextId) => changeDashboard(nextId)}
         onDeleted={() => router.replace("/dashboard")}
         onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
+        showTargets={Boolean(targetDashboards?.locations.length)}
       />
       <div className="flex flex-row flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-3 shadow-sm sm:gap-3 sm:p-4 lg:items-end">
         <div className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-2 sm:gap-3 lg:items-end lg:gap-x-6">

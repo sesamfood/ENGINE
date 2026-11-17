@@ -2,8 +2,8 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { metricFeaturesAvailable } from "../integrations/dashboard";
-import { metricRegistry, targetableMetrics } from "../lib/dashboard/registry";
-import { locationTargetKindLabels, targetPeriodLabels, targetPeriodDays, targetUsesPeriod } from "../lib/dashboard/target";
+import { metricRegistry } from "../lib/dashboard/registry";
+import { locationTargetKindLabels, targetPeriodLabels, targetPeriodDays, targetUsesPeriod, targetVisualizations } from "../lib/dashboard/target";
 import type { MetricId, MetricResult, SalesSource, TargetPeriod } from "../lib/dashboard/types";
 import { addDays, dateKey, daysBetween, zonedStart } from "../lib/date";
 import { hasPermission } from "../lib/auth-permissions";
@@ -22,19 +22,15 @@ import {
   salesSourceValidator,
   scopeValidator,
   targetPeriodValidator,
+  visualizationValidator,
+  widgetSizeValidator,
 } from "./lib/dashboardValidators";
 import { queryMetricComputer, resolveBuiltinSalesSource, resolveMetricParams } from "./lib/dashboardMetrics";
 import { requireOrganizationLocation } from "./lib/locations";
 import { canViewBuiltinMetric, canViewDetailedSales } from "./dashboard";
+import { enabledTargetMetrics, syncTargetDashboard } from "./lib/targetDashboards";
 
 type MetricParams = Awaited<ReturnType<typeof resolveMetricParams>>;
-
-async function enabledTargetMetrics(ctx: QueryCtx, organizationId: string) {
-  const settings = await ctx.db.query("managerSettings")
-    .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
-    .unique();
-  return new Set<MetricId>(settings?.targetMetricIds ?? targetableMetrics.map((metric) => metric.id));
-}
 
 export const getSettings = query({
   args: {},
@@ -62,6 +58,12 @@ export const saveSettings = mutation({
       ? existing._id
       : await ctx.db.insert("managerSettings", { organizationId: auth.organizationId, ...fields });
     if (existing) await ctx.db.patch("managerSettings", existing._id, fields);
+    const locations = await ctx.db.query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId))
+      .take(200);
+    for (const location of locations) {
+      await syncTargetDashboard(ctx, auth.organizationId, location._id, auth.userId);
+    }
     await recordAudit(ctx, auth, {
       action: "managerSettings.updated",
       entityTable: "managerSettings",
@@ -163,7 +165,7 @@ export const getOverview = query({
     const { params } = resolved;
     const salesSource = resolveBuiltinSalesSource(args.metricId);
     const additive = targetUsesPeriod({ kind: "builtin", id: args.metricId });
-    const period: TargetPeriod = additive ? args.period : "month";
+    const period: TargetPeriod = args.period;
     const today = dateKey(args.now, params.timeZone);
     let start: string;
     let previous: [string, string];
@@ -271,7 +273,10 @@ export const getForScope = query({
     if (targets.some((target) => target.value !== first.value)) return null;
     const timeZone = params.timeZone;
     const fromKey = dateKey(params.from, timeZone);
-    const toKey = addDays(dateKey(params.to, timeZone), -1);
+    // Week and month widgets show the period so far but aim at the whole period.
+    const toKey = args.range.preset === "week" ? addDays(fromKey, 6)
+      : args.range.preset === "month" ? addDays(`${addDays(fromKey, 31).slice(0, 8)}01`, -1)
+      : addDays(dateKey(params.to, timeZone), -1);
     const shift = first.kind === "lastYear" ? 364 : daysBetween(fromKey, toKey) + 1;
     const result = await computeRange(ctx, params, args.metricId, resolveBuiltinSalesSource(args.metricId, args.salesSource),
       addDays(fromKey, -shift), addDays(toKey, -shift));
@@ -318,18 +323,23 @@ export const upsert = mutation({
     kind: locationTargetKindValidator,
     value: v.number(),
     period: targetPeriodValidator,
+    visualization: v.optional(visualizationValidator),
+    size: v.optional(widgetSizeValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { auth, location, definition, existing } = await requireTargetManager(ctx, args.locationId, args.metricId);
+    if (args.visualization && !(definition.visualizations.includes(args.visualization) && targetVisualizations.includes(args.visualization))) {
+      throw new ConvexError("Diagramtypen kan ikke vise et mål");
+    }
     if (!Number.isFinite(args.value) || args.value < 0) throw new ConvexError("Angiv et mål på 0 eller mere");
     if (args.kind !== "amount" && args.value > 1000) throw new ConvexError("Angiv en procent på højst 1.000");
     if (args.kind === "amount" && definition.unit === "percent" && args.value > 100) {
       throw new ConvexError("Angiv en procent på højst 100");
     }
     const usesPeriod = targetUsesPeriod({ kind: "builtin", id: args.metricId });
-    // Levels such as averages have no period of their own.
-    const period = usesPeriod ? args.period : "day";
+    // For levels such as averages the period only picks which days the level is measured over.
+    const period = args.period;
     const fields = { kind: args.kind, value: args.value, period, updatedAt: Date.now(), updatedBy: auth.userId };
     const targetId = existing
       ? existing._id
@@ -340,13 +350,16 @@ export const upsert = mutation({
           ...fields,
         });
     if (existing) await ctx.db.patch("locationTargets", existing._id, fields);
+    await syncTargetDashboard(ctx, auth.organizationId, args.locationId, auth.userId, args.visualization && args.size
+      ? { metricId: args.metricId, visualization: args.visualization, size: args.size }
+      : undefined);
     const valueText = args.kind === "amount" ? String(args.value) : `${args.value} %`;
     await recordAudit(ctx, auth, {
       action: "locationTargets.updated",
       entityTable: "locationTargets",
       entityId: targetId,
       summary: `Målet for ${definition.label} på ${location.name} blev sat til ${valueText} (${locationTargetKindLabels[args.kind].toLowerCase()}${
-        usesPeriod ? `, pr. ${targetPeriodLabels[period].toLowerCase()}` : ""})`,
+        usesPeriod ? `, pr. ${targetPeriodLabels[period].toLowerCase()}` : `, ${targetPeriodLabels[period].toLowerCase()}`})`,
       locationId: args.locationId,
     });
     return null;
@@ -360,6 +373,7 @@ export const remove = mutation({
     const { auth, location, definition, existing } = await requireTargetManager(ctx, args.locationId, args.metricId);
     if (!existing) return null;
     await ctx.db.delete("locationTargets", existing._id);
+    await syncTargetDashboard(ctx, auth.organizationId, args.locationId, auth.userId);
     await recordAudit(ctx, auth, {
       action: "locationTargets.removed",
       entityTable: "locationTargets",

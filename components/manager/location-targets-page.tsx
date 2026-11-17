@@ -10,9 +10,10 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { metricFeaturesAvailable, metricSourceAvailable } from "@/integrations/dashboard";
 import { useIntegrations } from "@/integrations/use-integrations";
-import { targetableMetrics, type MetricDefinition } from "@/lib/dashboard/registry";
-import { locationTargetKindLabels, locationTargetKinds, targetPeriodLabels, targetUsesPeriod, type LocationTargetKind } from "@/lib/dashboard/target";
-import { targetPeriods, type TargetPeriod } from "@/lib/dashboard/types";
+import { targetableMetrics, visualizationLabels, type MetricDefinition } from "@/lib/dashboard/registry";
+import { targetWidget } from "@/lib/dashboard/target-dashboard";
+import { locationTargetKindLabels, locationTargetKinds, targetPeriodLabels, targetUsesPeriod, targetVisualizations, type LocationTargetKind } from "@/lib/dashboard/target";
+import { targetPeriods, type TargetPeriod, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAccess, usePermission } from "@/components/app-shell";
@@ -60,6 +61,7 @@ export function LocationTargetsPage() {
   const locations = scopeOptions?.locations ?? [];
   const location = locations.find((item) => item.id === storedLocationId) ?? locations[0];
   const data = useQuery(api.locationTargets.list, location ? { locationId: location.id } : "skip");
+  const board = useQuery(api.targetDashboards.get, location ? { locationId: location.id } : "skip");
   const now = useDashboardNow();
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
@@ -127,6 +129,7 @@ export function LocationTargetsPage() {
               metric={metric}
               locationId={location.id}
               target={data.targets.find((target) => target.metricId === metric.id)}
+              widget={board?.widgets.find((widget) => widget.key === targetWidget(metric.id).key)}
               canManage={data.canManage}
               now={now}
             />
@@ -140,6 +143,7 @@ export function LocationTargetsPage() {
 
 const periodTitles: Record<TargetPeriod, string> = { day: "I dag", week: "Denne uge", month: "Denne måned" };
 const periodPhrases: Record<TargetPeriod, string> = { day: "pr. dag", week: "pr. uge", month: "pr. måned" };
+const levelPhrases: Record<TargetPeriod, string> = { day: "for dagen", week: "for ugen", month: "for måneden" };
 const previousLabels: Record<TargetPeriod, string> = { day: "I går", week: "Forrige uge", month: "Forrige måned" };
 const lastYearLabels: Record<TargetPeriod, string> = {
   day: "Samme ugedag sidste år",
@@ -188,15 +192,16 @@ function ReferenceFigures({ metric, overview, period }: {
   );
 }
 
-function TargetCard({ metric, locationId, target, canManage, now }: {
+function TargetCard({ metric, locationId, target, widget, canManage, now }: {
   metric: MetricDefinition;
   locationId: Id<"locations">;
   target: Target | undefined;
+  widget: WidgetInstance | undefined;
   canManage: boolean;
   now: number;
 }) {
   const usesPeriod = targetUsesPeriod({ kind: "builtin", id: metric.id });
-  const period: TargetPeriod = usesPeriod ? target?.period ?? "week" : "month";
+  const period: TargetPeriod = target?.period ?? "week";
   const overview = useQuery(api.locationTargets.getOverview, { locationId, metricId: metric.id, period, now });
   const format = (value: number | null) => formatMetricValue(value, { unit: metric.unit, currency: overview?.currency ?? undefined });
   const ceiling = metric.direction === "down-good";
@@ -207,8 +212,8 @@ function TargetCard({ metric, locationId, target, canManage, now }: {
   const targetText = !target
     ? "Intet mål"
     : target.kind === "amount"
-      ? `Mål: ${format(target.value)}${usesPeriod ? ` ${periodPhrases[target.period]}` : ""}`
-      : `Mål: ${formatPercent(target.value)} af ${target.kind === "lastYear" ? "sidste år" : "forrige periode"}${usesPeriod ? ` ${periodPhrases[target.period]}` : ""}${goal === null ? "" : ` (${format(goal)})`}`;
+      ? `Mål: ${format(target.value)} ${(usesPeriod ? periodPhrases : levelPhrases)[target.period]}`
+      : `Mål: ${formatPercent(target.value)} af ${target.kind === "lastYear" ? "sidste år" : "forrige periode"} ${(usesPeriod ? periodPhrases : levelPhrases)[target.period]}${goal === null ? "" : ` (${format(goal)})`}`;
 
   return (
     <Card>
@@ -217,7 +222,7 @@ function TargetCard({ metric, locationId, target, canManage, now }: {
         <CardDescription>{targetText}{target && ceiling ? " · loft" : ""}</CardDescription>
         {canManage ? (
           <CardAction>
-            <TargetDialog metric={metric} locationId={locationId} target={target} usesPeriod={usesPeriod} now={now} />
+            <TargetDialog metric={metric} locationId={locationId} target={target} widget={widget} usesPeriod={usesPeriod} now={now} />
           </CardAction>
         ) : null}
       </CardHeader>
@@ -253,10 +258,15 @@ function TargetCard({ metric, locationId, target, canManage, now }: {
   );
 }
 
-function TargetDialog({ metric, locationId, target, usesPeriod, now }: {
+// Columns × rows on the 8-column dashboard grid. Other sizes are set on the dashboard itself.
+const sizeChoices: WidgetSize[] = ["2x1", "2x2", "3x1", "3x2", "4x1", "4x2"];
+const sizeLabel = (size: WidgetSize) => size.replace("x", " × ");
+
+function TargetDialog({ metric, locationId, target, widget, usesPeriod, now }: {
   metric: MetricDefinition;
   locationId: Id<"locations">;
   target: Target | undefined;
+  widget: WidgetInstance | undefined;
   usesPeriod: boolean;
   now: number;
 }) {
@@ -266,9 +276,12 @@ function TargetDialog({ metric, locationId, target, usesPeriod, now }: {
   const [kind, setKind] = useState<LocationTargetKind>(target?.kind ?? "lastYear");
   const [valueDraft, setValueDraft] = useState(target ? formatDraft(target.value) : "100");
   const [period, setPeriod] = useState<TargetPeriod>(target?.period ?? "week");
+  const defaultWidget = widget ?? targetWidget(metric.id);
+  const [visualization, setVisualization] = useState<VisualizationId>(defaultWidget.visualization);
+  const [size, setSize] = useState<WidgetSize>(defaultWidget.size);
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState(false);
-  const shownPeriod: TargetPeriod = usesPeriod ? period : "month";
+  const shownPeriod: TargetPeriod = period;
   const overview = useQuery(api.locationTargets.getOverview, open ? { locationId, metricId: metric.id, period: shownPeriod, now } : "skip");
   const value = parseNumber(valueDraft);
   const percent = kind !== "amount";
@@ -278,6 +291,11 @@ function TargetDialog({ metric, locationId, target, usesPeriod, now }: {
   const format = (amount: number | null) => formatMetricValue(amount, { unit: metric.unit, currency: overview?.currency ?? undefined });
   const kindOptions = locationTargetKinds.map((item) => ({ value: item, label: locationTargetKindLabels[item] }));
   const periodOptions = targetPeriods.map((item) => ({ value: item, label: targetPeriodLabels[item] }));
+  const visualizationOptions = metric.visualizations
+    .filter((item) => targetVisualizations.includes(item))
+    .map((item) => ({ value: item, label: visualizationLabels[item] }));
+  const sizeOptions = (sizeChoices.includes(size) ? sizeChoices : [size, ...sizeChoices])
+    .map((item) => ({ value: item, label: sizeLabel(item) }));
 
   function onOpenChange(next: boolean) {
     setOpen(next);
@@ -285,6 +303,8 @@ function TargetDialog({ metric, locationId, target, usesPeriod, now }: {
       setKind(target?.kind ?? "lastYear");
       setValueDraft(target ? formatDraft(target.value) : "100");
       setPeriod(target?.period ?? "week");
+      setVisualization(defaultWidget.visualization);
+      setSize(defaultWidget.size);
       setTouched(false);
     }
   }
@@ -303,7 +323,7 @@ function TargetDialog({ metric, locationId, target, usesPeriod, now }: {
     if (invalid) return;
     setSaving(true);
     try {
-      await upsert({ locationId, metricId: metric.id, kind, value, period: usesPeriod ? period : "day" });
+      await upsert({ locationId, metricId: metric.id, kind, value, period, visualization, size });
       toast.success("Målet er gemt");
       setOpen(false);
     } catch (error) {
@@ -373,14 +393,12 @@ function TargetDialog({ metric, locationId, target, usesPeriod, now }: {
                   </InputGroupAddon>
                 ) : null}
               </InputGroup>
-              {usesPeriod ? (
-                <Select items={periodOptions} value={period} onValueChange={(next) => setPeriod(next as TargetPeriod)}>
-                  <SelectTrigger className="h-11 w-28" aria-label="Periode for målet"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectGroup>
-                    {periodOptions.map((option) => <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>)}
-                  </SelectGroup></SelectContent>
-                </Select>
-              ) : null}
+              <Select items={periodOptions} value={period} onValueChange={(next) => setPeriod(next as TargetPeriod)}>
+                <SelectTrigger className="h-11 w-28" aria-label="Periode for målet"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  {periodOptions.map((option) => <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
             </div>
             {touched && invalid ? (
               <FieldError>
@@ -393,6 +411,26 @@ function TargetDialog({ metric, locationId, target, usesPeriod, now }: {
               </FieldDescription>
             ) : null}
           </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor={`target-${metric.id}-visualization`}>Diagramtype</FieldLabel>
+              <Select items={visualizationOptions} value={visualization} onValueChange={(next) => setVisualization(next as VisualizationId)}>
+                <SelectTrigger id={`target-${metric.id}-visualization`} className="h-11 w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  {visualizationOptions.map((option) => <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`target-${metric.id}-size`}>Størrelse på dashboardet</FieldLabel>
+              <Select items={sizeOptions} value={size} onValueChange={(next) => setSize(next as WidgetSize)}>
+                <SelectTrigger id={`target-${metric.id}-size`} className="h-11 w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  {sizeOptions.map((option) => <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
+            </Field>
+          </div>
           <div className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">Tal for {periodTitles[shownPeriod].toLowerCase()}</h3>
             <ReferenceFigures metric={metric} overview={overview} period={shownPeriod} />

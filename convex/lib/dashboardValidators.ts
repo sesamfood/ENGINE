@@ -70,6 +70,8 @@ export const widgetRangePresetValidator = v.union(
   v.literal("7days"),
   v.literal("30days"),
   v.literal("thisMonth"),
+  v.literal("week"),
+  v.literal("month"),
 );
 
 export const comparisonPeriodValidator = v.union(
@@ -200,6 +202,8 @@ export const rangeValidator = v.object({
     v.literal("7days"),
     v.literal("30days"),
     v.literal("thisMonth"),
+    v.literal("week"),
+    v.literal("month"),
     v.literal("custom"),
   ),
   from: v.optional(v.string()),

@@ -74,9 +74,10 @@ import { featureLabels, type FeatureId } from "@/lib/features";
 import type { WidgetRangePreset } from "@/lib/dashboard/types";
 import { rangePresetOptions } from "@/components/dashboard/range-selector";
 
-type KioskDashboard = { dashboardId: Id<"dashboards">; preset: WidgetRangePreset };
+type KioskPreset = Exclude<WidgetRangePreset, "week" | "month">;
+type KioskDashboard = { dashboardId: Id<"dashboards">; preset: KioskPreset };
 const kioskPresetItems = rangePresetOptions.filter(
-  (option): option is { value: WidgetRangePreset; label: string } => option.value !== "custom",
+  (option): option is { value: KioskPreset; label: string } => option.value !== "custom",
 );
 
 const roleLabels: Record<SystemOrganizationRole, string> = {

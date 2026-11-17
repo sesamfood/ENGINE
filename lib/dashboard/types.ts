@@ -78,6 +78,9 @@ export const rangePresets = [
   "7days",
   "30days",
   "thisMonth",
+  // The calendar period so far, measured against the whole period's target. Used by target widgets.
+  "week",
+  "month",
   "custom",
 ] as const;
 

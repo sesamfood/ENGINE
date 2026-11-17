@@ -40,6 +40,7 @@ export type TimeSeriesProps = {
   yAxisMin?: number;
   yAxisMax?: number;
   target?: ResolvedTarget | null;
+  periodEnd?: number;
 };
 
 function TimeSeriesAxes({
@@ -106,6 +107,7 @@ export function TimeSeriesVisualization({
   yAxisMin,
   yAxisMax,
   target,
+  periodEnd,
 }: TimeSeriesProps & { variant: "line" | "area" | "bar" }) {
   if (isMixedCurrency(result)) {
     return (
@@ -117,7 +119,7 @@ export function TimeSeriesVisualization({
   // A single target line only makes sense for one series.
   const singleTarget = target && result.series.length === 1 ? target : undefined;
   const targetChart = singleTarget?.chart;
-  const baseModel = chartModel(result);
+  const baseModel = chartModel(result, periodEnd);
   const model = targetChart ? targetChartModel(baseModel, targetChart) : { ...baseModel, running: false };
   const targetValue = singleTarget && !targetChart ? singleTarget.perPoint : undefined;
   const extraValues = targetChart

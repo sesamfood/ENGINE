@@ -105,8 +105,19 @@ export function rangeDays(range: DashboardRange, now: number) {
     case "7days": return 7;
     case "30days": return 30;
     case "thisMonth": return new Date(now).getDate();
+    case "week": return targetPeriodDays.week;
+    case "month": return targetPeriodDays.month;
     case "custom": return range.from && range.to ? inclusiveDateRangeDays(range.from, range.to) : NaN;
   }
+}
+
+/** Midnight of the last day of a week or month range shown so far. */
+export function periodEnd(range: DashboardRange, now: number) {
+  if (range.preset !== "week" && range.preset !== "month") return undefined;
+  const date = new Date(now);
+  const today = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const { dayIndex, length } = periodPosition(today.getTime(), range.preset);
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate() + length - 1 - dayIndex).getTime();
 }
 
 /** Where a day falls within its target period. Weeks start on Monday. */

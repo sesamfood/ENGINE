@@ -81,7 +81,7 @@ import type { DataGranularity } from "../lib/auth-permissions";
 import { rateLimiter } from "./lib/rateLimits";
 import { requestWorkfeedEmployeeSync } from "./integrations/workfeed/lib/syncRequest";
 
-const MAX_WIDGETS = 24;
+export const MAX_WIDGETS = 24;
 const MAX_DASHBOARDS = 8;
 const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
@@ -217,7 +217,7 @@ const shareSourceValidator = v.object({
   customMetricSnapshots: v.array(customMetricSnapshotValidator),
 });
 
-async function validateWidgets(
+export async function validateWidgets(
   ctx: MutationCtx,
   organizationId: string,
   widgets: WidgetInstance[],
@@ -609,7 +609,7 @@ async function kioskDashboardIds(
     : null;
 }
 
-async function availableWidgets(
+export async function availableWidgets(
   ctx: QueryCtx | MutationCtx,
   auth: DashboardAccess & {
     organizationId: string;
