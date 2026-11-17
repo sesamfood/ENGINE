@@ -143,6 +143,7 @@ export function LocationTargetsPage() {
 
 const periodTitles: Record<TargetPeriod, string> = { day: "I dag", week: "Denne uge", month: "Denne måned" };
 const periodPhrases: Record<TargetPeriod, string> = { day: "pr. dag", week: "pr. uge", month: "pr. måned" };
+const levelPhrases: Record<TargetPeriod, string> = { day: "for dagen", week: "for ugen", month: "for måneden" };
 const previousLabels: Record<TargetPeriod, string> = { day: "I går", week: "Forrige uge", month: "Forrige måned" };
 const lastYearLabels: Record<TargetPeriod, string> = {
   day: "Samme ugedag sidste år",
@@ -200,7 +201,7 @@ function TargetCard({ metric, locationId, target, widget, canManage, now }: {
   now: number;
 }) {
   const usesPeriod = targetUsesPeriod({ kind: "builtin", id: metric.id });
-  const period: TargetPeriod = usesPeriod ? target?.period ?? "week" : "month";
+  const period: TargetPeriod = target?.period ?? "week";
   const overview = useQuery(api.locationTargets.getOverview, { locationId, metricId: metric.id, period, now });
   const format = (value: number | null) => formatMetricValue(value, { unit: metric.unit, currency: overview?.currency ?? undefined });
   const ceiling = metric.direction === "down-good";
@@ -211,8 +212,8 @@ function TargetCard({ metric, locationId, target, widget, canManage, now }: {
   const targetText = !target
     ? "Intet mål"
     : target.kind === "amount"
-      ? `Mål: ${format(target.value)}${usesPeriod ? ` ${periodPhrases[target.period]}` : ""}`
-      : `Mål: ${formatPercent(target.value)} af ${target.kind === "lastYear" ? "sidste år" : "forrige periode"}${usesPeriod ? ` ${periodPhrases[target.period]}` : ""}${goal === null ? "" : ` (${format(goal)})`}`;
+      ? `Mål: ${format(target.value)} ${(usesPeriod ? periodPhrases : levelPhrases)[target.period]}`
+      : `Mål: ${formatPercent(target.value)} af ${target.kind === "lastYear" ? "sidste år" : "forrige periode"} ${(usesPeriod ? periodPhrases : levelPhrases)[target.period]}${goal === null ? "" : ` (${format(goal)})`}`;
 
   return (
     <Card>
@@ -280,7 +281,7 @@ function TargetDialog({ metric, locationId, target, widget, usesPeriod, now }: {
   const [size, setSize] = useState<WidgetSize>(defaultWidget.size);
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState(false);
-  const shownPeriod: TargetPeriod = usesPeriod ? period : "month";
+  const shownPeriod: TargetPeriod = period;
   const overview = useQuery(api.locationTargets.getOverview, open ? { locationId, metricId: metric.id, period: shownPeriod, now } : "skip");
   const value = parseNumber(valueDraft);
   const percent = kind !== "amount";
@@ -322,7 +323,7 @@ function TargetDialog({ metric, locationId, target, widget, usesPeriod, now }: {
     if (invalid) return;
     setSaving(true);
     try {
-      await upsert({ locationId, metricId: metric.id, kind, value, period: usesPeriod ? period : "day", visualization, size });
+      await upsert({ locationId, metricId: metric.id, kind, value, period, visualization, size });
       toast.success("Målet er gemt");
       setOpen(false);
     } catch (error) {
@@ -392,14 +393,12 @@ function TargetDialog({ metric, locationId, target, widget, usesPeriod, now }: {
                   </InputGroupAddon>
                 ) : null}
               </InputGroup>
-              {usesPeriod ? (
-                <Select items={periodOptions} value={period} onValueChange={(next) => setPeriod(next as TargetPeriod)}>
-                  <SelectTrigger className="h-11 w-28" aria-label="Periode for målet"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectGroup>
-                    {periodOptions.map((option) => <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>)}
-                  </SelectGroup></SelectContent>
-                </Select>
-              ) : null}
+              <Select items={periodOptions} value={period} onValueChange={(next) => setPeriod(next as TargetPeriod)}>
+                <SelectTrigger className="h-11 w-28" aria-label="Periode for målet"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  {periodOptions.map((option) => <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
             </div>
             {touched && invalid ? (
               <FieldError>
