@@ -99,6 +99,7 @@ export function DashboardWidget({
       onResize={onResize}
       onRemove={onRemove}
       locked={locked}
+      now={now}
     >
       {live ? <LiveMetricContent widget={widget} state={live} compact={compact} onRetry={onLiveRetry} /> : error ? (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>

@@ -36,6 +36,32 @@ export function comparisonPeriodText(result: MetricResult | undefined, range: Da
   }
 }
 
+/**
+ * Totals of the whole days before today and the same days in the comparison, so an unfinished
+ * day does not read as a drop. Null for averages and rates, or before the first whole day.
+ */
+export function completeDayTotals(result: MetricResult, now: number) {
+  if (result.headlineTotal !== undefined || result.unit === "percent" || isMixedCurrency(result)) return null;
+  const date = new Date(now);
+  const startOfToday = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  let current = 0;
+  let previous = 0;
+  let days = 0;
+  for (const series of result.series) {
+    if (!series.previousPoints) return null;
+    for (const point of series.points) {
+      if (point.t < startOfToday) {
+        current += point.value;
+        days += 1;
+      }
+    }
+    for (const point of series.previousPoints) {
+      if (point.t < startOfToday) previous += point.value;
+    }
+  }
+  return days ? { current, previous } : null;
+}
+
 export function isMixedCurrency(result: MetricResult) {
   return result.unit === "currency" && result.mixedCurrency === true;
 }
