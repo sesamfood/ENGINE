@@ -1161,6 +1161,12 @@ export default defineSchema({
       "ingredientProductId",
     ]),
 
+  // Sold products the missing-ingredients banner should skip.
+  missingIngredientIgnores: defineTable({
+    organizationId: v.string(),
+    productId: v.id("products"),
+  }).index("by_organizationId_and_productId", ["organizationId", "productId"]),
+
   // Standard amount for an addable ingredient; product additions without an amount use it.
   ingredientAdditionDefaults: defineTable({
     organizationId: v.string(),

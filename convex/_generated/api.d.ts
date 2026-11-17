@@ -70,6 +70,7 @@ import type * as integrations_onlinepos_lib_connections from "../integrations/on
 import type * as integrations_onlinepos_lib_financialApi from "../integrations/onlinepos/lib/financialApi.js";
 import type * as integrations_onlinepos_lifecycle from "../integrations/onlinepos/lifecycle.js";
 import type * as integrations_onlinepos_menus from "../integrations/onlinepos/menus.js";
+import type * as integrations_onlinepos_salesAlerts from "../integrations/onlinepos/salesAlerts.js";
 import type * as integrations_onlinepos_stock from "../integrations/onlinepos/stock.js";
 import type * as integrations_onlinepos_sync from "../integrations/onlinepos/sync.js";
 import type * as integrations_state from "../integrations/state.js";
@@ -288,6 +289,7 @@ declare const fullApi: ApiFromModules<{
   "integrations/onlinepos/lib/financialApi": typeof integrations_onlinepos_lib_financialApi;
   "integrations/onlinepos/lifecycle": typeof integrations_onlinepos_lifecycle;
   "integrations/onlinepos/menus": typeof integrations_onlinepos_menus;
+  "integrations/onlinepos/salesAlerts": typeof integrations_onlinepos_salesAlerts;
   "integrations/onlinepos/stock": typeof integrations_onlinepos_stock;
   "integrations/onlinepos/sync": typeof integrations_onlinepos_sync;
   "integrations/state": typeof integrations_state;

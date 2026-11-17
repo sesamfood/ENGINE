@@ -51,6 +51,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import type { PermissionId } from "@/lib/auth-permissions";
 import type { FeatureId } from "@/lib/features";
+import { OnlinePosSalesAlerts } from "@/integrations/onlinepos/client";
 
 type AdministrationPermission = Extract<
   PermissionId,
@@ -404,6 +405,7 @@ export function AdministrationOverview() {
 
   return (
     <div className="flex flex-col gap-10 pb-10">
+      <OnlinePosSalesAlerts />
       <InputGroup className="h-12 max-w-xl">
         <InputGroupAddon>
           <SearchIcon />
