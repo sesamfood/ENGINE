@@ -91,6 +91,26 @@ export const onlineposTables = {
       "onlinePosProductId",
     ]),
 
+  // One row per POS product seen in sales, per master catalog. Drives the unmapped-sales banner.
+  onlinePosSoldProducts: defineTable({
+    organizationId: v.string(),
+    integrationId: v.id("onlinePosIntegrations"),
+    onlinePosProductId: v.number(),
+    name: v.string(),
+    lastSoldAt: v.number(),
+    ignored: v.optional(v.boolean()),
+  })
+    .index("by_organizationId_and_integrationId_and_onlinePosProductId", [
+      "organizationId",
+      "integrationId",
+      "onlinePosProductId",
+    ])
+    .index("by_organizationId_and_integrationId_and_lastSoldAt", [
+      "organizationId",
+      "integrationId",
+      "lastSoldAt",
+    ]),
+
   // Default POS product for removing or adding an ingredient on any product.
   onlinePosModifierMappings: defineTable({
     organizationId: v.string(),

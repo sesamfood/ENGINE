@@ -37,6 +37,7 @@ import {
 } from "../../lib/salesRollup";
 import { resolveTimeZone } from "../../lib/timeZone";
 import { queueStockSync } from "./stock";
+import { recordSoldProducts } from "./salesAlerts";
 
 const SOURCE = "onlinePos";
 const STUCK_MS = 30 * 60 * 1_000;
@@ -1729,6 +1730,7 @@ export const ingestSalesBatch = internalMutation({
         stockRevision: (status.stockRevision ?? 0) + 1,
       });
     }
+    await recordSoldProducts(ctx, args.organizationId, args.locationId, lines);
     await markStockChanged(ctx, status, stockChangedFrom, fullStockSync);
     return null;
   },
