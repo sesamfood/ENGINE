@@ -17,14 +17,13 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
-import { comparisonPeriods, DEFAULT_COMPARISON_PERIOD, type ComparisonPeriod, type DashboardRange, type WidgetInstance } from "@/lib/dashboard/types";
+import type { DashboardRange, WidgetInstance } from "@/lib/dashboard/types";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { DashboardGrid } from "./dashboard-grid";
-import { DashboardSkeleton, pushUrl, rangeFromUrl } from "./dashboard-page";
+import { DashboardSkeleton, pushUrl } from "./dashboard-page";
 import { DashboardTabs, TARGETS_TAB } from "./dashboard-tabs";
-import { ComparisonSelector, RangeSelector } from "./range-selector";
 
 const AddWidgetDialog = dynamic(() => import("./add-widget-dialog").then((module) => module.AddWidgetDialog));
 
@@ -43,7 +42,6 @@ function TargetDashboardContent() {
   const searchParams = useSearchParams();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
   const targets = useQuery(api.targetDashboards.list, canView ? {} : "skip");
-  const organizationContext = useQuery(api.employees.getContext, canView ? {} : "skip");
   const requestedLocation = searchParams.get("loc")?.split(",")[0];
   const locationId = targets?.locations.find((location) => location.id === requestedLocation)?.id
     ?? targets?.locations[0]?.id;
@@ -63,23 +61,13 @@ function TargetDashboardContent() {
     expectedUpdatedAt.current = boardQuery.updatedAt;
   }, [board?.locationId, boardQuery, locationId]);
 
-  const range: DashboardRange = rangeFromUrl(searchParams, { preset: "today" });
-  const comparison = comparisonPeriods.find((period) => period === searchParams.get("comparison")) ?? DEFAULT_COMPARISON_PERIOD;
+  // Target widgets carry their own period; added widgets default to today.
+  const range: DashboardRange = { preset: "today" };
 
   function updateParams(update: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString());
     update(params);
     pushUrl(router, pathname, params);
-  }
-
-  function updateRange(next: DashboardRange) {
-    updateParams((params) => {
-      params.set("range", next.preset);
-      for (const key of ["from", "to"] as const) {
-        const value = next.preset === "custom" ? next[key] : undefined;
-        if (value) params.set(key, value); else params.delete(key);
-      }
-    });
   }
 
   function commitWidgets(widgets: WidgetInstance[]) {
@@ -156,39 +144,27 @@ function TargetDashboardContent() {
       />
       {board && locationId && boardQuery !== null ? (
         <>
-          <div className="flex flex-row flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-3 shadow-sm sm:gap-3 sm:p-4 lg:items-end">
-            <div className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-2 sm:gap-3 lg:items-end lg:gap-x-6">
-              <div className="min-w-32 flex-1 sm:min-w-44 lg:flex-none">
-                <RangeSelector range={range} onChange={updateRange} timeZone={organizationContext?.timeZone} />
-              </div>
-              <ComparisonSelector
-                comparison={comparison}
-                onChange={(next: ComparisonPeriod) => updateParams((params) => params.set("comparison", next))}
-              />
+          {canEdit ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {editing ? (
+                <AddWidgetDialog
+                  canViewSensitive={canViewSales}
+                  scope={scope}
+                  range={range}
+                  now={now}
+                  onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...board.widgets, widget]))}
+                />
+              ) : null}
+              <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
+                <PencilIcon data-icon="inline-start" />
+                {editing ? "Færdig" : "Redigér"}
+              </Button>
             </div>
-            {canEdit ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
-                  <PencilIcon data-icon="inline-start" />
-                  {editing ? "Færdig" : "Redigér"}
-                </Button>
-                {editing ? (
-                  <AddWidgetDialog
-                    canViewSensitive={canViewSales}
-                    scope={scope}
-                    range={range}
-                    now={now}
-                    onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...board.widgets, widget]))}
-                  />
-                ) : null}
-              </div>
-            ) : null}
-          </div>
+          ) : null}
           <DashboardGrid
             widgets={board.widgets}
             scope={scope}
             range={range}
-            comparison={comparison}
             now={now}
             editable={canEdit && editing}
             lockTargetWidgets

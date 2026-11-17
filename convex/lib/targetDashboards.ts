@@ -3,7 +3,10 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { metricRegistry, targetableMetrics } from "../../lib/dashboard/registry";
 import { layoutDashboardWidgets } from "../../lib/dashboard/layout";
 import { isTargetWidget, targetWidget } from "../../lib/dashboard/target-dashboard";
-import type { MetricId, VisualizationId, WidgetSize } from "../../lib/dashboard/types";
+import { targetUsesPeriod } from "../../lib/dashboard/target";
+import type { MetricId, TargetPeriod, VisualizationId, WidgetRangePreset, WidgetSize } from "../../lib/dashboard/types";
+
+const periodRanges: Record<TargetPeriod, WidgetRangePreset> = { day: "today", week: "week", month: "month" };
 
 export type TargetWidgetDisplay = { metricId: MetricId; visualization: VisualizationId; size: WidgetSize };
 
@@ -33,22 +36,26 @@ export async function syncTargetDashboard(
         q.eq("organizationId", organizationId).eq("locationId", locationId))
       .unique(),
   ]);
-  const wanted = new Set(targets.map((target) => target.metricId)
-    .filter((metricId) => enabled.has(metricId) && metricRegistry[metricId]?.targetable));
+  const periods = new Map(targets
+    .filter((target) => enabled.has(target.metricId) && metricRegistry[target.metricId]?.targetable)
+    .map((target) => [target.metricId, target.period]));
   const current = existing?.widgets ?? [];
   const kept = current.filter((widget) =>
-    !isTargetWidget(widget) || (widget.metric.kind === "builtin" && wanted.has(widget.metric.id)));
+    !isTargetWidget(widget) || (widget.metric.kind === "builtin" && periods.has(widget.metric.id)));
   const keptKeys = new Set(kept.map((widget) => widget.key));
-  const added = [...wanted].map(targetWidget).filter((widget) => !keptKeys.has(widget.key));
-  const displayKey = display && wanted.has(display.metricId) ? targetWidget(display.metricId).key : undefined;
-  const next = [...kept, ...added].map((widget) => widget.key === displayKey
-    ? { ...widget, visualization: display!.visualization, size: display!.size }
-    : widget);
-  const displayChanged = displayKey !== undefined && !current.some((widget) => widget.key === displayKey
-    && widget.visualization === display!.visualization && widget.size === display!.size);
-  if (!added.length && kept.length === current.length && !displayChanged) return;
-
+  const added = [...periods.keys()].map(targetWidget).filter((widget) => !keptKeys.has(widget.key));
+  const displayKey = display && periods.has(display.metricId) ? targetWidget(display.metricId).key : undefined;
+  const next = [...kept, ...added].map((widget) => {
+    if (!isTargetWidget(widget) || widget.metric.kind !== "builtin") return widget;
+    // Target widgets always show the target's whole period.
+    const period = periods.get(widget.metric.id)!;
+    const range = targetUsesPeriod(widget.metric) ? periodRanges[period] : "month";
+    return widget.key === displayKey
+      ? { ...widget, range, visualization: display!.visualization, size: display!.size }
+      : { ...widget, range };
+  });
   const widgets = layoutDashboardWidgets(next, displayKey);
+  if (JSON.stringify(widgets) === JSON.stringify(current)) return;
   if (!widgets.length) {
     if (existing) await ctx.db.delete("locationTargetDashboards", existing._id);
     return;

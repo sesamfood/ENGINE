@@ -105,6 +105,8 @@ export function rangeDays(range: DashboardRange, now: number) {
     case "7days": return 7;
     case "30days": return 30;
     case "thisMonth": return new Date(now).getDate();
+    case "week": return targetPeriodDays.week;
+    case "month": return targetPeriodDays.month;
     case "custom": return range.from && range.to ? inclusiveDateRangeDays(range.from, range.to) : NaN;
   }
 }

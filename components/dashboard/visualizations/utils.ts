@@ -29,7 +29,9 @@ export function comparisonPeriodText(result: MetricResult | undefined, range: Da
     case "yesterday": return "dagen før";
     case "7days": return "de foregående 7 dage";
     case "30days": return "de foregående 30 dage";
-    case "thisMonth": return "den foregående måned";
+    case "thisMonth":
+    case "month": return "den foregående måned";
+    case "week": return "den foregående uge";
     default: return "den foregående tilsvarende periode";
   }
 }

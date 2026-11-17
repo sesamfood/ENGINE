@@ -163,6 +163,14 @@ export function resolveDashboardRange(
     fromDate = addDays(today, -29);
   } else if (range.preset === "thisMonth") {
     fromDate = `${today.slice(0, 8)}01`;
+  } else if (range.preset === "week") {
+    // Weeks start on Monday.
+    fromDate = addDays(today, -((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
+    toDate = addDays(fromDate, 6);
+  } else if (range.preset === "month") {
+    fromDate = `${today.slice(0, 8)}01`;
+    const lastDay = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate();
+    toDate = `${today.slice(0, 8)}${String(lastDay).padStart(2, "0")}`;
   } else if (range.preset === "custom") {
     if (
       !validDate(range.from) ||
