@@ -3,7 +3,7 @@ import { mutation, query, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { hasPermission } from "../lib/auth-permissions";
 import { layoutDashboardWidgets } from "../lib/dashboard/layout";
-import { isTargetWidget, widgetContent } from "../lib/dashboard/target-dashboard";
+import { isTargetWidget, targetWidgetIdentity } from "../lib/dashboard/target-dashboard";
 import { getIntegrationState } from "./integrations/state";
 import { requireDashboardViewer, requireHumanPrincipal, requireLocationAccess } from "./lib/auth";
 import { widgetValidator } from "./lib/dashboardValidators";
@@ -105,10 +105,10 @@ export const saveLayout = mutation({
     }
     const targetWidgetsChanged = visible.filter(isTargetWidget).some((widget) => {
       const next = submitted.get(widget.key);
-      return !next || widgetContent(next) !== widgetContent(widget);
+      return !next || targetWidgetIdentity(next) !== targetWidgetIdentity(widget);
     }) || args.widgets.some((widget) => isTargetWidget(widget) && !visibleKeys.has(widget.key));
     if (targetWidgetsChanged) {
-      throw new ConvexError("Widgets for lokationsmål kan kun flyttes og ændre størrelse");
+      throw new ConvexError("Widgets for lokationsmål kan kun flyttes, ændre størrelse og skifte diagramtype");
     }
     if (args.widgets.length + preserved.length > MAX_WIDGETS) {
       throw new ConvexError(`Dashboardet kan højst have ${MAX_WIDGETS} widgets`);

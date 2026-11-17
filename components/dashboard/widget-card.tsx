@@ -58,7 +58,7 @@ import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type Comparison
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { TargetSettings } from "./target-settings";
-import { supportsTarget, targetReached, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
+import { supportsTarget, targetReached, targetVisualizations, widgetTarget, type ResolvedTarget } from "@/lib/dashboard/target";
 import { comparisonPeriodText, formatMetricValue, previousTotal, total } from "./visualizations/utils";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
@@ -253,7 +253,7 @@ export function WidgetCard({
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
-  /** Generated widgets can be moved and resized but not changed or removed. */
+  /** Generated widgets keep their metric and target; only layout and chart type can change. */
   locked?: boolean;
   children: ReactNode;
 }) {
@@ -273,7 +273,8 @@ export function WidgetCard({
   const hasAttributions = live?.kind === "ready" && live.data.attributions.length > 0;
   const compactHeader = widgetSizeSpans[widget.size].rows === 1;
   const compactLive = Boolean(definition?.live) && compactHeader;
-  const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
+  const availableVisualizations = (definition?.visualizations ?? visualizations ?? [])
+    .filter((visualization) => !locked || targetVisualizations.includes(visualization));
   const salesSource = definition && supportsSalesSource(definition.id)
     ? widget.options?.salesSource ?? defaultSalesSource(definition.id)
     : definition?.id === "woltCancellationRate"
@@ -424,7 +425,7 @@ export function WidgetCard({
               </CardDescription>
             ) : null}
           </div>
-          {editable && !locked ? (
+          {editable ? (
             <div data-dashboard-no-drag className="shrink-0" onPointerDown={(event) => event.stopPropagation()}>
               <Popover>
                 <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${metricLabel}`} />}>
@@ -520,6 +521,7 @@ export function WidgetCard({
                         </DialogContent>
                       </Dialog>
                     ) : null}
+                    {locked ? null : <>
                     {onEditCustomMetric ? (
                       <Button
                         type="button"
@@ -598,6 +600,7 @@ export function WidgetCard({
                     <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
                       <MinusIcon />
                     </Button>
+                    </>}
                   </div>
                 </PopoverContent>
               </Popover>

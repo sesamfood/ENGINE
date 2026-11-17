@@ -3,7 +3,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import type { Id } from "./_generated/dataModel";
 import { metricFeaturesAvailable } from "../integrations/dashboard";
 import { metricRegistry } from "../lib/dashboard/registry";
-import { locationTargetKindLabels, targetPeriodLabels, targetPeriodDays, targetUsesPeriod } from "../lib/dashboard/target";
+import { locationTargetKindLabels, targetPeriodLabels, targetPeriodDays, targetUsesPeriod, targetVisualizations } from "../lib/dashboard/target";
 import type { MetricId, MetricResult, SalesSource, TargetPeriod } from "../lib/dashboard/types";
 import { addDays, dateKey, daysBetween, zonedStart } from "../lib/date";
 import { hasPermission } from "../lib/auth-permissions";
@@ -22,6 +22,8 @@ import {
   salesSourceValidator,
   scopeValidator,
   targetPeriodValidator,
+  visualizationValidator,
+  widgetSizeValidator,
 } from "./lib/dashboardValidators";
 import { queryMetricComputer, resolveBuiltinSalesSource, resolveMetricParams } from "./lib/dashboardMetrics";
 import { requireOrganizationLocation } from "./lib/locations";
@@ -318,10 +320,15 @@ export const upsert = mutation({
     kind: locationTargetKindValidator,
     value: v.number(),
     period: targetPeriodValidator,
+    visualization: v.optional(visualizationValidator),
+    size: v.optional(widgetSizeValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { auth, location, definition, existing } = await requireTargetManager(ctx, args.locationId, args.metricId);
+    if (args.visualization && !(definition.visualizations.includes(args.visualization) && targetVisualizations.includes(args.visualization))) {
+      throw new ConvexError("Diagramtypen kan ikke vise et mål");
+    }
     if (!Number.isFinite(args.value) || args.value < 0) throw new ConvexError("Angiv et mål på 0 eller mere");
     if (args.kind !== "amount" && args.value > 1000) throw new ConvexError("Angiv en procent på højst 1.000");
     if (args.kind === "amount" && definition.unit === "percent" && args.value > 100) {
@@ -340,7 +347,9 @@ export const upsert = mutation({
           ...fields,
         });
     if (existing) await ctx.db.patch("locationTargets", existing._id, fields);
-    await syncTargetDashboard(ctx, auth.organizationId, args.locationId, auth.userId);
+    await syncTargetDashboard(ctx, auth.organizationId, args.locationId, auth.userId, args.visualization && args.size
+      ? { metricId: args.metricId, visualization: args.visualization, size: args.size }
+      : undefined);
     const valueText = args.kind === "amount" ? String(args.value) : `${args.value} %`;
     await recordAudit(ctx, auth, {
       action: "locationTargets.updated",

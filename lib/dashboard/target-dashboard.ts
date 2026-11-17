@@ -1,6 +1,6 @@
 import type { MetricId, WidgetInstance } from "./types";
 
-// Widgets generated from location targets. Users may move and resize them, nothing else.
+// Widgets generated from location targets. Users may change their layout and chart type, nothing else.
 const TARGET_WIDGET_PREFIX = "target-";
 
 export function isTargetWidget(widget: Pick<WidgetInstance, "key">) {
@@ -17,7 +17,7 @@ export function targetWidget(metricId: MetricId): WidgetInstance {
   };
 }
 
-/** Everything about a widget except where it sits and how big it is. */
-export function widgetContent(widget: WidgetInstance) {
-  return JSON.stringify([widget.metric, widget.visualization, widget.range ?? null, widget.comparison ?? null, widget.options ?? null]);
+/** What a target widget must keep: its metric and the location target. */
+export function targetWidgetIdentity(widget: WidgetInstance) {
+  return JSON.stringify([widget.metric, widget.options?.target ?? null]);
 }

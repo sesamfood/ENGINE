@@ -3,7 +3,9 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { metricRegistry, targetableMetrics } from "../../lib/dashboard/registry";
 import { layoutDashboardWidgets } from "../../lib/dashboard/layout";
 import { isTargetWidget, targetWidget } from "../../lib/dashboard/target-dashboard";
-import type { MetricId } from "../../lib/dashboard/types";
+import type { MetricId, VisualizationId, WidgetSize } from "../../lib/dashboard/types";
+
+export type TargetWidgetDisplay = { metricId: MetricId; visualization: VisualizationId; size: WidgetSize };
 
 export async function enabledTargetMetrics(ctx: QueryCtx, organizationId: string) {
   const settings = await ctx.db.query("managerSettings")
@@ -18,6 +20,7 @@ export async function syncTargetDashboard(
   organizationId: string,
   locationId: Id<"locations">,
   userId: string,
+  display?: TargetWidgetDisplay,
 ) {
   const [targets, enabled, existing] = await Promise.all([
     ctx.db.query("locationTargets")
@@ -37,9 +40,15 @@ export async function syncTargetDashboard(
     !isTargetWidget(widget) || (widget.metric.kind === "builtin" && wanted.has(widget.metric.id)));
   const keptKeys = new Set(kept.map((widget) => widget.key));
   const added = [...wanted].map(targetWidget).filter((widget) => !keptKeys.has(widget.key));
-  if (!added.length && kept.length === current.length) return;
+  const displayKey = display && wanted.has(display.metricId) ? targetWidget(display.metricId).key : undefined;
+  const next = [...kept, ...added].map((widget) => widget.key === displayKey
+    ? { ...widget, visualization: display!.visualization, size: display!.size }
+    : widget);
+  const displayChanged = displayKey !== undefined && !current.some((widget) => widget.key === displayKey
+    && widget.visualization === display!.visualization && widget.size === display!.size);
+  if (!added.length && kept.length === current.length && !displayChanged) return;
 
-  const widgets = layoutDashboardWidgets([...kept, ...added]);
+  const widgets = layoutDashboardWidgets(next, displayKey);
   if (!widgets.length) {
     if (existing) await ctx.db.delete("locationTargetDashboards", existing._id);
     return;
