@@ -128,49 +128,51 @@ function TargetDashboardContent() {
           ) : null}
         </div>
       </AppPageHeader>
-      <DashboardTabs
-        dashboards={dashboards.dashboards as DashboardRecord[]}
-        activeId={TARGETS_TAB}
-        canManage={canManage}
-        showTargets
-        onChange={(nextId) => {
-          if (nextId !== TARGETS_TAB) router.push(query ? `/dashboard/${nextId}?${query}` : `/dashboard/${nextId}`, { scroll: false });
-        }}
-        onReordered={() => undefined}
-        onSettingsSaved={() => undefined}
-        onDuplicated={(nextId) => router.push(`/dashboard/${nextId}`)}
-        onDeleted={() => undefined}
-        onCreated={(nextId) => router.push(`/dashboard/${nextId}`)}
-      />
-      {board && locationId && boardQuery !== null ? (
-        <>
-          {canEdit ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {editing ? (
-                <AddWidgetDialog
-                  canViewSensitive={canViewSales}
-                  scope={scope}
-                  range={range}
-                  now={now}
-                  onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...board.widgets, widget]))}
-                />
-              ) : null}
-              <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
-                <PencilIcon data-icon="inline-start" />
-                {editing ? "Færdig" : "Redigér"}
-              </Button>
-            </div>
-          ) : null}
-          <DashboardGrid
-            widgets={board.widgets}
-            scope={scope}
-            range={range}
-            now={now}
-            editable={canEdit && editing}
-            lockTargetWidgets
-            onChange={commitWidgets}
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <DashboardTabs
+            dashboards={dashboards.dashboards as DashboardRecord[]}
+            activeId={TARGETS_TAB}
+            canManage={canManage}
+            showTargets
+            onChange={(nextId) => {
+              if (nextId !== TARGETS_TAB) router.push(query ? `/dashboard/${nextId}?${query}` : `/dashboard/${nextId}`, { scroll: false });
+            }}
+            onReordered={() => undefined}
+            onSettingsSaved={() => undefined}
+            onDuplicated={(nextId) => router.push(`/dashboard/${nextId}`)}
+            onDeleted={() => undefined}
+            onCreated={(nextId) => router.push(`/dashboard/${nextId}`)}
           />
-        </>
+        </div>
+        {canEdit && board && boardQuery !== null ? (
+          <>
+            {editing ? (
+              <AddWidgetDialog
+                canViewSensitive={canViewSales}
+                scope={scope}
+                range={range}
+                now={now}
+                onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...board.widgets, widget]))}
+              />
+            ) : null}
+            <Button type="button" size="lg" className="min-h-11 min-w-11 shrink-0" variant={editing ? "default" : "outline"} aria-label={editing ? "Færdig" : "Redigér"} onClick={() => setEditing((value) => !value)}>
+              <PencilIcon data-icon="inline-start" />
+              <span className="max-sm:sr-only">{editing ? "Færdig" : "Redigér"}</span>
+            </Button>
+          </>
+        ) : null}
+      </div>
+      {board && locationId && boardQuery !== null ? (
+        <DashboardGrid
+          widgets={board.widgets}
+          scope={scope}
+          range={range}
+          now={now}
+          editable={canEdit && editing}
+          lockTargetWidgets
+          onChange={commitWidgets}
+        />
       ) : (
         <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>

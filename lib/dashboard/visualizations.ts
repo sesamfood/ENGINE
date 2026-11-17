@@ -18,6 +18,8 @@ export type VisualizationProps = {
   yAxisMin?: number;
   yAxisMax?: number;
   target?: ResolvedTarget | null;
+  /** Last day of a week or month shown so far; charts stretch to it and keep today. */
+  periodEnd?: number;
 };
 
 const visualizationLoading = () =>

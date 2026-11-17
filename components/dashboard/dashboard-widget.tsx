@@ -3,7 +3,7 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ComparisonPeriod, DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, WidgetTarget, VisualizationId } from "@/lib/dashboard/types";
-import { resolveTarget, type BudgetTotals, type LocationTargetTotals } from "@/lib/dashboard/target";
+import { periodEnd, resolveTarget, type BudgetTotals, type LocationTargetTotals } from "@/lib/dashboard/target";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
@@ -111,7 +111,7 @@ export function DashboardWidget({
           </p>
         </div>
       ) : (
-        <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} target={target} />
+        <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} target={target} periodEnd={widgetRange && periodEnd(widgetRange, now)} />
       )}
     </WidgetCard>
   );

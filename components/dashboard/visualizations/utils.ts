@@ -83,7 +83,7 @@ export function seriesSummary(result: MetricResult) {
     .join(". ");
 }
 
-export function chartModel(result: MetricResult) {
+export function chartModel(result: MetricResult, periodEnd?: number) {
   const data = new Map<number, Record<string, number>>();
   const config: ChartConfig = {};
   result.series.forEach((series, index) => {
@@ -102,7 +102,16 @@ export function chartModel(result: MetricResult) {
   // The current day is incomplete; plotting it reads as a collapse.
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const completeRows = rows.length > 1 && rows[rows.length - 1].t >= startOfToday ? rows.slice(0, -1) : rows;
+  const completeRows = periodEnd === undefined && rows.length > 1 && rows[rows.length - 1].t >= startOfToday ? rows.slice(0, -1) : rows;
+  // A period shown so far keeps today and leaves the rest of the period empty.
+  if (periodEnd !== undefined && completeRows.length) {
+    const end = new Date(periodEnd);
+    for (let day = new Date(completeRows[completeRows.length - 1].t); ;) {
+      day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+      if (day > end) break;
+      completeRows.push({ t: day.getTime() });
+    }
+  }
   return {
     config,
     data: completeRows,
@@ -130,11 +139,13 @@ export function targetChartModel(
       actualTotal = 0;
       targetTotal = 0;
     }
-    const value = row[key] ?? 0;
+    const value = row[key];
     const target = chart.dailyTarget(row.t);
-    actualTotal += value;
     // A period cut off by the range start only counts the days shown, for both lines.
     targetTotal += target;
+    // Days still to come only carry the target.
+    if (value === undefined) return running ? { ...row, target: targetTotal } : { ...row, target };
+    actualTotal += value;
     return running
       ? { ...row, daily: value, [key]: actualTotal, target: targetTotal }
       : { ...row, target };
