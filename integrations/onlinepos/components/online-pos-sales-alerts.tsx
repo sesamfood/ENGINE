@@ -178,12 +178,19 @@ type ModifierSetupData = FunctionReturnType<
   typeof api.integrations.onlinepos.salesAlerts.getModifierSetup
 >;
 
-function ModifierSetup(props: {
-  item: SoldItem;
+type SetupItem = Pick<SoldItem, "integrationId" | "onlinePosProductId" | "name">;
+type SetupProps = {
+  item: SetupItem;
   kind: SetupKind;
   ingredientId: Id<"products">;
   ingredientName: string;
-}) {
+  // Products to tick on top of those already set up.
+  preselect?: Id<"products">[];
+  // False when the POS link already exists and only products change.
+  link?: boolean;
+};
+
+function ModifierSetup(props: SetupProps) {
   const setup = useQuery(api.integrations.onlinepos.salesAlerts.getModifierSetup, {
     ingredientProductId: props.ingredientId,
     kind: props.kind,
@@ -197,14 +204,10 @@ function ModifierSetupForm({
   kind,
   ingredientId,
   ingredientName,
+  preselect = [],
+  link = true,
   setup,
-}: {
-  item: SoldItem;
-  kind: SetupKind;
-  ingredientId: Id<"products">;
-  ingredientName: string;
-  setup: ModifierSetupData;
-}) {
+}: SetupProps & { setup: ModifierSetupData }) {
   const addition = kind === "addition";
   const [amount, setAmount] = useState<Amount>(() => ({
     quantity: setup.standard
@@ -219,11 +222,14 @@ function ModifierSetupForm({
   // A sold fravalg means the ingredient is removable, so start with every recipe.
   const [selected, setSelected] = useState(
     () =>
-      new Set(
-        enabled.length === 0 && !addition
+      new Set([
+        ...(enabled.length === 0 && !addition && preselect.length === 0
           ? setup.products.map((product) => product.id)
-          : enabled,
-      ),
+          : enabled),
+        ...preselect.filter((id) =>
+          setup.products.some((product) => product.id === id),
+        ),
+      ]),
   );
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -332,14 +338,18 @@ function ModifierSetupForm({
         enabled.filter((id) => !selected.has(id)),
         false,
       );
-      await setModifierMapping({
-        expectedIntegrationId: item.integrationId,
-        kind,
-        ingredientProductId: ingredientId,
-        onlinePosProductId: item.onlinePosProductId,
-      });
+      if (link) {
+        await setModifierMapping({
+          expectedIntegrationId: item.integrationId,
+          kind,
+          ingredientProductId: ingredientId,
+          onlinePosProductId: item.onlinePosProductId,
+        });
+      }
       toast.success(
-        `${item.name} er koblet som ${addition ? "tilvalg" : "fravalg"} til ${ingredientName}`,
+        link
+          ? `${item.name} er koblet som ${addition ? "tilvalg" : "fravalg"} til ${ingredientName}`
+          : `${item.name} er opdateret på produkterne`,
       );
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Koblingen kunne ikke gemmes"));
@@ -443,7 +453,7 @@ function ModifierSetupForm({
         )}
       </Field>
       <Button onClick={save} disabled={saving || (addition && !parsed)}>
-        {addition ? "Kobl tilvalg" : "Kobl fravalg"}
+        {!link ? "Gem produkter" : addition ? "Kobl tilvalg" : "Kobl fravalg"}
       </Button>
     </div>
   );
@@ -793,6 +803,175 @@ function MissingIngredientsAlert({ since }: { since: number }) {
   );
 }
 
+type UncoupledItem = FunctionReturnType<
+  typeof api.integrations.onlinepos.salesAlerts.getUncoupledModifiers
+>[number];
+
+function UncoupledRow({ item }: { item: UncoupledItem }) {
+  const [fixing, setFixing] = useState(false);
+  const setIgnored = useMutation(
+    api.integrations.onlinepos.salesAlerts.setModifierPairIgnored,
+  );
+  const addition = item.kind === "addition";
+  // A fravalg can only be removable where the ingredient is in the recipe.
+  const fixable = item.products.filter(
+    (product) => addition || product.inRecipe,
+  );
+  const notInRecipe = item.products.filter(
+    (product) => !addition && !product.inRecipe,
+  );
+
+  function ignore(productId: Id<"products">, name: string, ignored: boolean) {
+    setIgnored({
+      integrationId: item.integrationId,
+      onlinePosProductId: item.onlinePosProductId,
+      productId,
+      ignored,
+    })
+      .then(() => {
+        if (ignored) toast.success(`${item.name} ignoreres på ${name}`);
+      })
+      .catch((error) =>
+        toast.error(getUserErrorMessage(error, "Koblingen kunne ikke opdateres")),
+      );
+  }
+
+  return (
+    <li className="flex flex-col gap-3 rounded-lg border p-3">
+      <div className="flex flex-col">
+        <span className="font-medium break-words">{item.name}</span>
+        <span className="text-sm text-muted-foreground">
+          {addition ? "Tilvalg" : "Fravalg"} af {item.ingredientName}
+        </span>
+      </div>
+      {item.products.length > 0 ? (
+        <div className="flex flex-col divide-y rounded-lg border">
+          {item.products.map((product) => (
+            <div
+              key={product.productId}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <div className="flex min-w-0 flex-col">
+                <span className="text-sm break-words">{product.name}</span>
+                {!addition && !product.inRecipe ? (
+                  <span className="text-xs text-muted-foreground">
+                    {item.ingredientName} er ikke i opskriften
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => ignore(product.productId, product.name, true)}
+                >
+                  Ignorér
+                </Button>
+                {!addition && !product.inRecipe ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    nativeButton={false}
+                    render={
+                      <Link href={`/administration/products/${product.productId}`} />
+                    }
+                  >
+                    Åbn produkt
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {fixable.length > 0 && !fixing ? (
+        <Button onClick={() => setFixing(true)}>
+          {addition
+            ? `Tillad tilvalget på ${fixable.length === 1 ? "produktet" : `${fixable.length} produkter`}`
+            : `Tillad fravalget på ${fixable.length === 1 ? "produktet" : `${fixable.length} produkter`}`}
+        </Button>
+      ) : null}
+      {fixing ? (
+        <ModifierSetup
+          item={item}
+          kind={item.kind}
+          ingredientId={item.ingredientProductId}
+          ingredientName={item.ingredientName}
+          preselect={fixable.map((product) => product.productId)}
+          link={false}
+        />
+      ) : null}
+      {notInRecipe.length > 0 && fixable.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Tilføj {item.ingredientName} til opskriften, før det kan fravælges.
+        </p>
+      ) : null}
+      <IgnoredList count={item.ignored.length}>
+        {item.ignored.map((product) => (
+          <IgnoredRow
+            key={product.productId}
+            title={product.name}
+            onRestore={() => ignore(product.productId, product.name, false)}
+          />
+        ))}
+      </IgnoredList>
+    </li>
+  );
+}
+
+function UncoupledModifiersAlert({ since }: { since: number }) {
+  const [open, setOpen] = useState(false);
+  const data = useQuery(
+    api.integrations.onlinepos.salesAlerts.getUncoupledModifiers,
+    { since },
+  );
+  const active = data?.filter((item) => item.products.length > 0) ?? [];
+  if (!data || (active.length === 0 && !open)) return null;
+  const count = active.length;
+
+  return (
+    <>
+      <AlertBanner
+        title={
+          count === 1
+            ? "1 tilvalg eller fravalg mangler på produkter, det sælges med"
+            : `${count} tilvalg og fravalg mangler på produkter, de sælges med`
+        }
+        description="Salget trækkes ikke fra lageret, før tilvalget eller fravalget er tilladt på produktet."
+        onOpen={() => setOpen(true)}
+      />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Tilvalg og fravalg uden produktkobling</DialogTitle>
+            <DialogDescription>
+              Solgt de seneste {WINDOW_DAYS} dage sammen med produkter, hvor
+              tilvalget eller fravalget ikke er tilladt. Tillad det, eller
+              ignorér produktet.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-w-0 flex-col gap-4">
+            {data.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Alle tilvalg og fravalg er koblet til deres produkter.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {data.map((item) => (
+                  <UncoupledRow
+                    key={`${item.integrationId}:${item.onlinePosProductId}`}
+                    item={item}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function OnlinePosSalesAlerts() {
   const [since] = useState(windowStart);
   const integrations = useIntegrations();
@@ -804,6 +983,7 @@ export function OnlinePosSalesAlerts() {
     <div className="flex flex-col gap-3 empty:hidden">
       {canIntegrations ? <UnmappedSalesAlert since={since} /> : null}
       {canCatalog ? <MissingIngredientsAlert since={since} /> : null}
+      {canCatalog ? <UncoupledModifiersAlert since={since} /> : null}
     </div>
   );
 }

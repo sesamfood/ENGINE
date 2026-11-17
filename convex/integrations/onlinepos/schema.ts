@@ -111,6 +111,28 @@ export const onlineposTables = {
       "lastSoldAt",
     ]),
 
+  // POS items without a product link (tilvalg/fravalg candidates) and the
+  // products sold in the same order. Drives the uncoupled-modifier banner.
+  onlinePosModifierPairs: defineTable({
+    organizationId: v.string(),
+    integrationId: v.id("onlinePosIntegrations"),
+    onlinePosProductId: v.number(),
+    productId: v.id("products"),
+    lastSoldAt: v.number(),
+    ignored: v.optional(v.boolean()),
+  })
+    .index("by_org_integration_posProduct_product", [
+      "organizationId",
+      "integrationId",
+      "onlinePosProductId",
+      "productId",
+    ])
+    .index("by_organizationId_and_integrationId_and_lastSoldAt", [
+      "organizationId",
+      "integrationId",
+      "lastSoldAt",
+    ]),
+
   // Default POS product for removing or adding an ingredient on any product.
   onlinePosModifierMappings: defineTable({
     organizationId: v.string(),

@@ -43,9 +43,12 @@ export async function recordSoldProducts(
   organizationId: string,
   locationId: Id<"locations">,
   lines: Array<{
+    externalId: string;
     externalProductId: string;
     productName: string;
     occurredAt: number;
+    quantity: number;
+    orderKey: string;
   }>,
 ) {
   const latest = new Map<number, { name: string; occurredAt: number }>();
@@ -91,6 +94,97 @@ export async function recordSoldProducts(
       await ctx.db.patch("onlinePosSoldProducts", row._id, {
         name: sale.name,
         lastSoldAt: sale.occurredAt,
+      });
+    }
+  }
+  await recordModifierPairs(ctx, organizationId, master, lines);
+}
+
+const MAX_PAIR_LINES = 500;
+
+// Pairs each sold POS item without a product link with the products sold in the
+// same order, so tilvalg/fravalg missing on those products can be found later.
+async function recordModifierPairs(
+  ctx: MutationCtx,
+  organizationId: string,
+  master: Doc<"onlinePosIntegrations">,
+  lines: Array<{
+    externalId: string;
+    externalProductId: string;
+    occurredAt: number;
+    quantity: number;
+    orderKey: string;
+  }>,
+) {
+  const orders = new Map<string, typeof lines>();
+  for (const line of lines.slice(0, MAX_PAIR_LINES)) {
+    if (line.quantity <= 0) continue;
+    const order = orders.get(line.orderKey) ?? [];
+    order.push(line);
+    orders.set(line.orderKey, order);
+  }
+  if (![...orders.values()].some((order) => order.length > 1)) return;
+  const catalog = await loadCatalog(ctx, organizationId, master);
+  const pairs = new Map<
+    string,
+    { onlinePosProductId: number; productId: Id<"products">; occurredAt: number }
+  >();
+  // OnlinePOS lists a tilvalg/fravalg right after the line it belongs to, so
+  // pair it with the nearest product line before it in the same order.
+  const lineNumber = (line: (typeof lines)[number]) =>
+    Number(line.externalId.slice(line.externalId.lastIndexOf(":") + 1));
+  for (const order of orders.values()) {
+    if (order.length < 2) continue;
+    order.sort((left, right) => lineNumber(left) - lineNumber(right));
+    let owner: Id<"products">[] = [];
+    for (const line of order) {
+      const id = Number(line.externalProductId);
+      if (!Number.isSafeInteger(id)) continue;
+      const menu = catalog.menus.get(id);
+      const productId = catalog.products.get(id);
+      if (productId) {
+        owner = [productId];
+        continue;
+      }
+      // A menu's items follow as their own lines and own its modifiers.
+      if (menu) {
+        owner = [];
+        continue;
+      }
+      for (const productId of owner) {
+        const key = `${id}:${productId}`;
+        const current = pairs.get(key);
+        if (!current || line.occurredAt > current.occurredAt)
+          pairs.set(key, {
+            onlinePosProductId: id,
+            productId,
+            occurredAt: line.occurredAt,
+          });
+      }
+    }
+  }
+  for (const pair of pairs.values()) {
+    const row = await ctx.db
+      .query("onlinePosModifierPairs")
+      .withIndex("by_org_integration_posProduct_product", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("integrationId", master._id)
+          .eq("onlinePosProductId", pair.onlinePosProductId)
+          .eq("productId", pair.productId),
+      )
+      .unique();
+    if (!row) {
+      await ctx.db.insert("onlinePosModifierPairs", {
+        organizationId,
+        integrationId: master._id,
+        onlinePosProductId: pair.onlinePosProductId,
+        productId: pair.productId,
+        lastSoldAt: pair.occurredAt,
+      });
+    } else if (pair.occurredAt > row.lastSoldAt + LAST_SOLD_PRECISION_MS) {
+      await ctx.db.patch("onlinePosModifierPairs", row._id, {
+        lastSoldAt: pair.occurredAt,
       });
     }
   }
@@ -493,7 +587,7 @@ export const backfillSoldProducts = internalMutation({
       ctx,
       args.organizationId,
       connection.locationId,
-      page.page,
+      page.page.map((line) => ({ ...line, orderKey: line.orderId })),
     );
     await ctx.scheduler.runAfter(
       0,
@@ -849,5 +943,213 @@ export const getModifierSetup = query({
         left.name.localeCompare(right.name, "da"),
       ),
     };
+  },
+});
+
+const uncoupledProductValidator = v.object({
+  productId: v.id("products"),
+  name: v.string(),
+  // A fravalg needs the ingredient in the recipe before it can be removable.
+  inRecipe: v.boolean(),
+});
+
+const uncoupledItemValidator = v.object({
+  integrationId: v.id("onlinePosIntegrations"),
+  onlinePosProductId: v.number(),
+  name: v.string(),
+  kind: v.union(v.literal("addition"), v.literal("removal")),
+  ingredientProductId: v.id("products"),
+  ingredientName: v.string(),
+  hasStandardAmount: v.boolean(),
+  products: v.array(uncoupledProductValidator),
+  ignored: v.array(uncoupledProductValidator),
+});
+
+// Tilvalg/fravalg sold with products that do not allow that ingredient, so the
+// stock sync skips them.
+export const getUncoupledModifiers = query({
+  args: { since: v.number() },
+  returns: v.array(uncoupledItemValidator),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const masters = await loadMasters(ctx, organizationId);
+    const items: Array<typeof uncoupledItemValidator.type> = [];
+    let rows:
+      | {
+          removals: Doc<"productIngredients">[];
+          additions: Doc<"productIngredientAdditions">[];
+          standards: Set<Id<"products">>;
+        }
+      | undefined;
+    const products = new Map<Id<"products">, Doc<"products"> | null>();
+    async function product(id: Id<"products">) {
+      if (!products.has(id)) products.set(id, await ctx.db.get("products", id));
+      const doc = products.get(id);
+      return doc && doc.organizationId === organizationId ? doc : null;
+    }
+    for (const master of masters) {
+      const pairs = await ctx.db
+        .query("onlinePosModifierPairs")
+        .withIndex("by_organizationId_and_integrationId_and_lastSoldAt", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("integrationId", master._id)
+            .gte("lastSoldAt", args.since),
+        )
+        .take(MAX_SOLD * 2);
+      if (pairs.length === 0) continue;
+      rows ??= {
+        removals: await ctx.db
+          .query("productIngredients")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .take(MAX_INGREDIENT_ROWS),
+        additions: await ctx.db
+          .query("productIngredientAdditions")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .take(MAX_INGREDIENT_ROWS),
+        standards: new Set(
+          (
+            await ctx.db
+              .query("ingredientAdditionDefaults")
+              .withIndex("by_organizationId", (q) =>
+                q.eq("organizationId", organizationId),
+              )
+              .take(MAX_MODIFIER_DEFAULTS)
+          ).map((row) => row.ingredientProductId),
+        ),
+      };
+      // POS id -> what it adds or removes. Defaults win over per-product links.
+      const modifiers = new Map<
+        number,
+        { kind: "addition" | "removal"; ingredientProductId: Id<"products"> }
+      >();
+      for (const row of rows.removals) {
+        const id = rowModifierIds(master, [row], []).values().next().value;
+        if (id !== undefined)
+          modifiers.set(id, {
+            kind: "removal",
+            ingredientProductId: row.ingredientProductId,
+          });
+      }
+      for (const row of rows.additions) {
+        const id = rowModifierIds(master, [], [row]).values().next().value;
+        if (id !== undefined)
+          modifiers.set(id, {
+            kind: "addition",
+            ingredientProductId: row.ingredientProductId,
+          });
+      }
+      const defaults = await ctx.db
+        .query("onlinePosModifierMappings")
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q.eq("organizationId", organizationId).eq("integrationId", master._id),
+        )
+        .take(MAX_MODIFIER_DEFAULTS);
+      for (const row of defaults)
+        modifiers.set(row.onlinePosProductId, {
+          kind: row.kind,
+          ingredientProductId: row.ingredientProductId,
+        });
+      if (modifiers.size === 0) continue;
+
+      const removable = new Set<string>();
+      const inRecipe = new Set<string>();
+      for (const row of rows.removals) {
+        if (row.packaging) continue;
+        inRecipe.add(`${row.productId}:${row.ingredientProductId}`);
+        if (row.removable)
+          removable.add(`${row.productId}:${row.ingredientProductId}`);
+      }
+      const addable = new Set(
+        rows.additions.map((row) => `${row.productId}:${row.ingredientProductId}`),
+      );
+
+      const byModifier = new Map<number, typeof uncoupledItemValidator.type>();
+      for (const pair of pairs) {
+        const modifier = modifiers.get(pair.onlinePosProductId);
+        if (!modifier || pair.productId === modifier.ingredientProductId)
+          continue;
+        const key = `${pair.productId}:${modifier.ingredientProductId}`;
+        if (modifier.kind === "addition" ? addable.has(key) : removable.has(key))
+          continue;
+        const [sold, ingredient] = await Promise.all([
+          product(pair.productId),
+          product(modifier.ingredientProductId),
+        ]);
+        if (!sold || sold.status !== "active" || !ingredient) continue;
+        let item = byModifier.get(pair.onlinePosProductId);
+        if (!item) {
+          const soldRow = await ctx.db
+            .query("onlinePosSoldProducts")
+            .withIndex(
+              "by_organizationId_and_integrationId_and_onlinePosProductId",
+              (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("integrationId", master._id)
+                  .eq("onlinePosProductId", pair.onlinePosProductId),
+            )
+            .unique();
+          item = {
+            integrationId: master._id,
+            onlinePosProductId: pair.onlinePosProductId,
+            name: soldRow?.name ?? `OnlinePOS ${pair.onlinePosProductId}`,
+            kind: modifier.kind,
+            ingredientProductId: ingredient._id,
+            ingredientName: ingredient.name,
+            hasStandardAmount: rows.standards.has(ingredient._id),
+            products: [],
+            ignored: [],
+          };
+          byModifier.set(pair.onlinePosProductId, item);
+        }
+        const entry = {
+          productId: sold._id,
+          name: sold.name,
+          inRecipe: inRecipe.has(key),
+        };
+        if (pair.ignored) item.ignored.push(entry);
+        else item.products.push(entry);
+      }
+      for (const item of byModifier.values()) {
+        if (items.length >= MAX_ITEMS) break;
+        item.products.sort((a, b) => a.name.localeCompare(b.name, "da"));
+        item.ignored.sort((a, b) => a.name.localeCompare(b.name, "da"));
+        items.push(item);
+      }
+    }
+    return items.sort((a, b) => a.name.localeCompare(b.name, "da"));
+  },
+});
+
+export const setModifierPairIgnored = mutation({
+  args: {
+    integrationId: v.id("onlinePosIntegrations"),
+    onlinePosProductId: v.number(),
+    productId: v.id("products"),
+    ignored: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const row = await ctx.db
+      .query("onlinePosModifierPairs")
+      .withIndex("by_org_integration_posProduct_product", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("integrationId", args.integrationId)
+          .eq("onlinePosProductId", args.onlinePosProductId)
+          .eq("productId", args.productId),
+      )
+      .unique();
+    if (!row) throw new ConvexError("Koblingen blev ikke fundet");
+    await ctx.db.patch("onlinePosModifierPairs", row._id, {
+      ignored: args.ignored || undefined,
+    });
+    return null;
   },
 });

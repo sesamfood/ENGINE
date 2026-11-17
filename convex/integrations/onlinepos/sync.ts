@@ -1730,7 +1730,20 @@ export const ingestSalesBatch = internalMutation({
         stockRevision: (status.stockRevision ?? 0) + 1,
       });
     }
-    await recordSoldProducts(ctx, args.organizationId, args.locationId, lines);
+    await recordSoldProducts(
+      ctx,
+      args.organizationId,
+      args.locationId,
+      lines.map((line) => ({
+        ...line,
+        orderKey: orderKey(
+          args.locationId,
+          dayStartOf(line.occurredAt, timeZone),
+          line.orderNumber,
+          line.department,
+        ),
+      })),
+    );
     await markStockChanged(ctx, status, stockChangedFrom, fullStockSync);
     return null;
   },
