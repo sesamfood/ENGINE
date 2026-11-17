@@ -33,6 +33,7 @@ import {
   requestSales,
   type OnlinePosProduct,
 } from "./lib/api";
+import { requestMappableProducts } from "./salesAlerts";
 import { getProductCategoryIds } from "../../lib/productCategories";
 import { recordAudit } from "../../lib/audit";
 import {
@@ -825,11 +826,16 @@ export const listProducts = action({
   args: { integrationId: v.optional(v.id("onlinePosIntegrations")) },
   returns: v.array(onlinePosProductValidator),
   handler: async (ctx, args): Promise<OnlinePosProduct[]> => {
-    const { settings } = await requireConnectedSettings(
+    const { organizationId, settings } = await requireConnectedSettings(
       ctx,
       args.integrationId,
     );
-    return requestProducts(settings);
+    return requestMappableProducts(
+      ctx,
+      organizationId,
+      settings.integrationId,
+      settings,
+    );
   },
 });
 
@@ -1360,7 +1366,12 @@ export const setIngredientRemovalMappings = action({
       throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
     }
     if (args.mappings.length > 0) {
-      const onlinePosProducts = await requestProducts(settings);
+      const onlinePosProducts = await requestMappableProducts(
+        ctx,
+        organizationId,
+        settings.integrationId,
+        settings,
+      );
       const onlinePosProductIds = new Set(
         onlinePosProducts.map((product) => product.id),
       );
@@ -1554,7 +1565,12 @@ export const setIngredientAdditionMappings = action({
       throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
     }
     if (args.mappings.length > 0) {
-      const onlinePosProducts = await requestProducts(settings);
+      const onlinePosProducts = await requestMappableProducts(
+        ctx,
+        organizationId,
+        settings.integrationId,
+        settings,
+      );
       const onlinePosProductIds = new Set(
         onlinePosProducts.map((product) => product.id),
       );
@@ -1738,15 +1754,13 @@ export const setModifierMapping = action({
     if (!settings.enabled) {
       throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
     }
-    if (
-      onlinePosProductId !== null &&
-      !(await ctx.runQuery(internal.integrations.onlinepos.salesAlerts.wasSold, {
+    if (onlinePosProductId !== null) {
+      const onlinePosProducts = await requestMappableProducts(
+        ctx,
         organizationId,
-        integrationId: settings.integrationId,
-        onlinePosProductId,
-      }))
-    ) {
-      const onlinePosProducts = await requestProducts(settings);
+        settings.integrationId,
+        settings,
+      );
       if (!onlinePosProducts.some((product) => product.id === onlinePosProductId)) {
         throw new ConvexError(
           "Et valgt produkt findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",
@@ -1778,15 +1792,13 @@ export const setProductMapping = action({
       args.integrationId,
     );
 
-    if (
-      args.onlinePosProductId !== null &&
-      !(await ctx.runQuery(internal.integrations.onlinepos.salesAlerts.wasSold, {
+    if (args.onlinePosProductId !== null) {
+      const products = await requestMappableProducts(
+        ctx,
         organizationId,
-        integrationId: settings.integrationId,
-        onlinePosProductId: args.onlinePosProductId,
-      }))
-    ) {
-      const products = await requestProducts(settings);
+        settings.integrationId,
+        settings,
+      );
       if (!products.some((product) => product.id === args.onlinePosProductId)) {
         throw new ConvexError(
           "Produktet findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",

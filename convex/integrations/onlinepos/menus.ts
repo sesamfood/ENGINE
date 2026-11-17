@@ -13,8 +13,8 @@ import { recordAudit } from "../../lib/audit";
 import { invalidateSalesStockMappings } from "../../lib/salesStock";
 import { menuGroupInputValidator, menuGroups } from "../../lib/menuGroups";
 import type { Infer } from "convex/values";
+import { requestMappableProducts } from "./salesAlerts";
 import {
-  requestProducts,
   type OnlinePosProduct,
   type OnlinePosSettings,
 } from "./lib/api";
@@ -231,12 +231,14 @@ export const listOnlinePosProducts = action({
   handler: async (ctx, args): Promise<OnlinePosProduct[]> => {
     const { organizationId } = await requireIntegrationManager(ctx);
     await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
-    const { settings } = await enabledSettings(
+    const { integrationId, settings } = await enabledSettings(
       ctx,
       organizationId,
       args.integrationId,
     );
-    return normalizeProducts(await requestProducts(settings));
+    return normalizeProducts(
+      await requestMappableProducts(ctx, organizationId, integrationId, settings),
+    );
   },
 });
 
@@ -448,7 +450,12 @@ export const save = action({
       args.integrationId,
     );
     const onlinePosProducts = normalizeProducts(
-      await requestProducts(connection.settings),
+      await requestMappableProducts(
+        ctx,
+        auth.organizationId,
+        connection.integrationId,
+        connection.settings,
+      ),
     );
     const onlinePosProductsById = new Map(
       onlinePosProducts.map((product) => [product.id, product]),

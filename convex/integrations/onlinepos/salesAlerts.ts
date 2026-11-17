@@ -1,9 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
+import { internal } from "../../_generated/api";
 import {
+  internalAction,
+  internalMutation,
   internalQuery,
   mutation,
   query,
+  type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "../../_generated/server";
@@ -11,13 +15,21 @@ import {
   requireCatalogManager,
   requireIntegrationManager,
 } from "../../lib/auth";
-import { MAX_MODIFIER_DEFAULTS } from "../../lib/salesStock";
+import {
+  invalidateSalesStockMappings,
+  MAX_MODIFIER_DEFAULTS,
+} from "../../lib/salesStock";
 import { isIntegrationEnabled } from "../state";
 import {
   getOnlinePosLocationMaster,
   onlinePosCatalogId,
   MAX_MASTER_CONNECTIONS,
 } from "./lib/connections";
+import {
+  requestProducts,
+  type OnlinePosProduct,
+  type OnlinePosSettings,
+} from "./lib/api";
 
 const MAX_SOLD = 1000;
 const MAX_ITEMS = 200;
@@ -173,29 +185,64 @@ function rowModifierIds(
   return ids;
 }
 
-// Sales export koncern ids that getProducts may not list; a recorded sale proves the id.
-export const wasSold = internalQuery({
+export const listSold = internalQuery({
   args: {
     organizationId: v.string(),
     integrationId: v.id("onlinePosIntegrations"),
-    onlinePosProductId: v.number(),
   },
-  returns: v.boolean(),
+  returns: v.array(v.object({ id: v.number(), name: v.string() })),
   handler: async (ctx, args) => {
-    const row = await ctx.db
+    const rows = await ctx.db
       .query("onlinePosSoldProducts")
-      .withIndex(
-        "by_organizationId_and_integrationId_and_onlinePosProductId",
-        (q) =>
-          q
-            .eq("organizationId", args.organizationId)
-            .eq("integrationId", args.integrationId)
-            .eq("onlinePosProductId", args.onlinePosProductId),
+      .withIndex("by_organizationId_and_integrationId_and_lastSoldAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("integrationId", args.integrationId),
       )
-      .unique();
-    return row !== null;
+      .order("desc")
+      .take(MAX_SOLD);
+    return rows.map((row) => ({ id: row.onlinePosProductId, name: row.name }));
   },
 });
+
+type SoldName = { id: number; name: string };
+type RemapCounts = typeof remapCountsValidator.type;
+
+function nameKey(name: string) {
+  return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("da");
+}
+
+// Sales arrive with koncern ids, while getProducts can return a shop's local
+// ids for the same products. Prefer the ids seen in sales, since stock matching
+// uses them, and keep unsold catalog products whose names have no sold match.
+export async function requestMappableProducts(
+  ctx: ActionCtx,
+  organizationId: string,
+  integrationId: Id<"onlinePosIntegrations">,
+  settings: OnlinePosSettings,
+): Promise<OnlinePosProduct[]> {
+  const catalog = await requestProducts(settings);
+  const sold: SoldName[] = await ctx.runQuery(
+    internal.integrations.onlinepos.salesAlerts.listSold,
+    { organizationId, integrationId },
+  );
+  const groups = new Map(
+    catalog.map((product) => [nameKey(product.name), product.groupName]),
+  );
+  const soldIds = new Set(sold.map((product) => product.id));
+  const soldNames = new Set(sold.map((product) => nameKey(product.name)));
+  return [
+    ...sold.map((product) => ({
+      id: product.id,
+      name: product.name.trim(),
+      groupName: groups.get(nameKey(product.name)) ?? "",
+    })),
+    ...catalog.filter(
+      (product) =>
+        !soldIds.has(product.id) && !soldNames.has(nameKey(product.name)),
+    ),
+  ];
+}
 
 const soldItemValidator = v.object({
   integrationId: v.id("onlinePosIntegrations"),
@@ -406,5 +453,259 @@ export const setMissingIngredientsIgnored = mutation({
       await ctx.db.delete("missingIngredientIgnores", current._id);
     }
     return null;
+  },
+});
+
+const BACKFILL_DAYS = 90;
+const BACKFILL_PAGE = 200;
+
+// One-off: seed onlinePosSoldProducts from stored sales lines.
+export const backfillSoldProducts = internalMutation({
+  args: {
+    organizationId: v.string(),
+    since: v.optional(v.number()),
+    locationIndex: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const since = args.since ?? Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000;
+    const index = args.locationIndex ?? 0;
+    const connections = await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .take(201);
+    const connection = connections[index];
+    if (!connection) return null;
+    const page = await ctx.db
+      .query("salesLines")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", connection.locationId)
+          .gte("occurredAt", since),
+      )
+      .paginate({ numItems: BACKFILL_PAGE, cursor: args.cursor ?? null });
+    await recordSoldProducts(
+      ctx,
+      args.organizationId,
+      connection.locationId,
+      page.page,
+    );
+    await ctx.scheduler.runAfter(
+      0,
+      internal.integrations.onlinepos.salesAlerts.backfillSoldProducts,
+      page.isDone
+        ? { organizationId: args.organizationId, since, locationIndex: index + 1 }
+        : {
+            organizationId: args.organizationId,
+            since,
+            locationIndex: index,
+            cursor: page.continueCursor,
+          },
+    );
+    return null;
+  },
+});
+
+export const listMasterIds = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.array(v.id("onlinePosIntegrations")),
+  handler: async (ctx, args) => {
+    const masters = await ctx.db
+      .query("onlinePosIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .take(MAX_MASTER_CONNECTIONS);
+    return masters.map((master) => master._id);
+  },
+});
+
+const remapCountsValidator = v.object({
+  products: v.number(),
+  modifiers: v.number(),
+  menus: v.number(),
+  removals: v.number(),
+  additions: v.number(),
+  conflicts: v.number(),
+});
+
+export const applyIdRemap = internalMutation({
+  args: {
+    organizationId: v.string(),
+    integrationId: v.id("onlinePosIntegrations"),
+    pairs: v.array(v.object({ from: v.number(), to: v.number() })),
+  },
+  returns: remapCountsValidator,
+  handler: async (ctx, args) => {
+    const { organizationId } = args;
+    const master = await ctx.db.get("onlinePosIntegrations", args.integrationId);
+    if (!master || master.organizationId !== organizationId)
+      throw new ConvexError("Masterforbindelsen blev ikke fundet");
+    const remap = new Map(args.pairs.map((pair) => [pair.from, pair.to]));
+    const catalogId = onlinePosCatalogId(master);
+    const counts = {
+      products: 0,
+      modifiers: 0,
+      menus: 0,
+      removals: 0,
+      additions: 0,
+      conflicts: 0,
+    };
+    const [mappings, modifiers, menus, removals, additions] = await Promise.all([
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q.eq("organizationId", organizationId).eq("integrationId", catalogId),
+        )
+        .take(501),
+      ctx.db
+        .query("onlinePosModifierMappings")
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q.eq("organizationId", organizationId).eq("integrationId", master._id),
+        )
+        .take(MAX_MODIFIER_DEFAULTS + 1),
+      ctx.db
+        .query("onlinePosMenus")
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q.eq("organizationId", organizationId).eq("integrationId", catalogId),
+        )
+        .take(101),
+      ctx.db
+        .query("productIngredients")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_INGREDIENT_ROWS),
+      ctx.db
+        .query("productIngredientAdditions")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_INGREDIENT_ROWS),
+    ]);
+    // Product, modifier and menu ids must stay unique within their table.
+    for (const [rows, table, key] of [
+      [mappings, "onlinePosProductMappings", "products"],
+      [modifiers, "onlinePosModifierMappings", "modifiers"],
+      [menus, "onlinePosMenus", "menus"],
+    ] as const) {
+      const used = new Set(rows.map((row) => row.onlinePosProductId));
+      for (const row of rows) {
+        const to = remap.get(row.onlinePosProductId);
+        if (to === undefined) continue;
+        if (used.has(to)) {
+          counts.conflicts += 1;
+          continue;
+        }
+        used.delete(row.onlinePosProductId);
+        used.add(to);
+        await ctx.db.patch(table, row._id, { onlinePosProductId: to });
+        counts[key] += 1;
+      }
+    }
+    const legacy = (integrationId?: Id<"onlinePosIntegrations">, companyId?: number) =>
+      integrationId === master._id && companyId === master.companyId;
+    for (const row of removals) {
+      const list = row.onlinePosRemovalMappings?.map((mapping) =>
+        mapping.integrationId === master._id && remap.has(mapping.onlinePosProductId)
+          ? { ...mapping, onlinePosProductId: remap.get(mapping.onlinePosProductId)! }
+          : mapping,
+      );
+      const legacyTo =
+        row.onlinePosRemovalProductId !== undefined &&
+        legacy(row.onlinePosRemovalIntegrationId, row.onlinePosRemovalCompanyId)
+          ? remap.get(row.onlinePosRemovalProductId)
+          : undefined;
+      const changed =
+        legacyTo !== undefined ||
+        list?.some((m, i) => m !== row.onlinePosRemovalMappings![i]);
+      if (!changed) continue;
+      await ctx.db.patch("productIngredients", row._id, {
+        onlinePosRemovalMappings: list,
+        ...(legacyTo !== undefined ? { onlinePosRemovalProductId: legacyTo } : {}),
+      });
+      counts.removals += 1;
+    }
+    for (const row of additions) {
+      const list = row.onlinePosAdditionMappings?.map((mapping) =>
+        mapping.integrationId === master._id && remap.has(mapping.onlinePosProductId)
+          ? { ...mapping, onlinePosProductId: remap.get(mapping.onlinePosProductId)! }
+          : mapping,
+      );
+      const legacyTo =
+        row.onlinePosAdditionProductId !== undefined &&
+        legacy(row.onlinePosAdditionIntegrationId, row.onlinePosAdditionCompanyId)
+          ? remap.get(row.onlinePosAdditionProductId)
+          : undefined;
+      const changed =
+        legacyTo !== undefined ||
+        list?.some((m, i) => m !== row.onlinePosAdditionMappings![i]);
+      if (!changed) continue;
+      await ctx.db.patch("productIngredientAdditions", row._id, {
+        onlinePosAdditionMappings: list,
+        ...(legacyTo !== undefined ? { onlinePosAdditionProductId: legacyTo } : {}),
+      });
+      counts.additions += 1;
+    }
+    if (
+      counts.products +
+        counts.modifiers +
+        counts.menus +
+        counts.removals +
+        counts.additions >
+      0
+    )
+      await invalidateSalesStockMappings(ctx, organizationId);
+    return counts;
+  },
+});
+
+// One-off: move mappings saved with local getProducts ids to the koncern id
+// that sales use, matched by exact product name. Run after backfillSoldProducts.
+export const remapLocalProductIds = internalAction({
+  args: { organizationId: v.string() },
+  returns: v.array(remapCountsValidator),
+  handler: async (ctx, args): Promise<RemapCounts[]> => {
+    const ids: Id<"onlinePosIntegrations">[] = await ctx.runQuery(
+      internal.integrations.onlinepos.salesAlerts.listMasterIds,
+      args,
+    );
+    const results: RemapCounts[] = [];
+    for (const integrationId of ids) {
+      const settings = await ctx.runQuery(internal.onlinePos.getPrivateSettings, {
+        organizationId: args.organizationId,
+        integrationId,
+      });
+      if (!settings) continue;
+      const catalog = await requestProducts(settings);
+      const sold: SoldName[] = await ctx.runQuery(
+        internal.integrations.onlinepos.salesAlerts.listSold,
+        { organizationId: args.organizationId, integrationId },
+      );
+      const soldIds = new Set(sold.map((product) => product.id));
+      const soldByName = new Map<string, number | null>();
+      for (const product of sold) {
+        const key = nameKey(product.name);
+        // Ambiguous names are skipped.
+        soldByName.set(key, soldByName.has(key) ? null : product.id);
+      }
+      const pairs = catalog.flatMap((product) => {
+        const to = soldByName.get(nameKey(product.name));
+        return to != null && !soldIds.has(product.id) && to !== product.id
+          ? [{ from: product.id, to }]
+          : [];
+      });
+      results.push(
+        await ctx.runMutation(
+          internal.integrations.onlinepos.salesAlerts.applyIdRemap,
+          { organizationId: args.organizationId, integrationId, pairs },
+        ),
+      );
+    }
+    return results;
   },
 });
