@@ -24,12 +24,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIntegrations } from "@/integrations/use-integrations";
@@ -77,8 +77,9 @@ function AlertBanner({
         </button>
       </AlertTitle>
       <AlertDescription>{description}</AlertDescription>
-      <AlertAction>
-        <ChevronRightIcon aria-hidden="true" className="mt-1.5 mr-1" />
+      {/* Clicks pass through to the stretched button. */}
+      <AlertAction className="pointer-events-none top-1/2 -translate-y-1/2">
+        <ChevronRightIcon aria-hidden="true" className="mr-1" />
       </AlertAction>
     </Alert>
   );
@@ -289,16 +290,16 @@ function UnmappedSalesAlert({ since }: { since: number }) {
         description="Kobl dem til et produkt, et tilvalg eller et fravalg, så salget kan trækkes fra lageret."
         onOpen={() => setOpen(true)}
       />
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-full! overflow-y-auto sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>Ukoblede salgsprodukter</SheetTitle>
-            <SheetDescription>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Ukoblede salgsprodukter</DialogTitle>
+            <DialogDescription>
               OnlinePOS-produkter solgt de seneste {WINDOW_DAYS} dage uden
               kobling. Vælg, hvad de skal kobles til, eller ignorér dem.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex flex-col gap-4 px-4 pb-6">
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-w-0 flex-col gap-4">
             {count === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Alle solgte produkter er koblet.
@@ -334,8 +335,8 @@ function UnmappedSalesAlert({ since }: { since: number }) {
               ))}
             </IgnoredList>
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -373,17 +374,17 @@ function MissingIngredientsAlert({ since }: { since: number }) {
         description="Tilføj ingredienser, så salget trækker de rigtige råvarer fra lageret."
         onOpen={() => setOpen(true)}
       />
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-full! overflow-y-auto sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>Produkter uden ingredienser</SheetTitle>
-            <SheetDescription>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Produkter uden ingredienser</DialogTitle>
+            <DialogDescription>
               Produkter solgt de seneste {WINDOW_DAYS} dage, som ikke har
               ingredienser. Åbn produktet for at tilføje dem, eller ignorér
               produkter, der sælges, som de er.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex flex-col gap-4 px-4 pb-6">
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-w-0 flex-col gap-4">
             {count === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Alle solgte produkter har ingredienser.
@@ -430,8 +431,8 @@ function MissingIngredientsAlert({ since }: { since: number }) {
               ))}
             </IgnoredList>
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

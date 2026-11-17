@@ -1738,7 +1738,14 @@ export const setModifierMapping = action({
     if (!settings.enabled) {
       throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
     }
-    if (onlinePosProductId !== null) {
+    if (
+      onlinePosProductId !== null &&
+      !(await ctx.runQuery(internal.integrations.onlinepos.salesAlerts.wasSold, {
+        organizationId,
+        integrationId: settings.integrationId,
+        onlinePosProductId,
+      }))
+    ) {
       const onlinePosProducts = await requestProducts(settings);
       if (!onlinePosProducts.some((product) => product.id === onlinePosProductId)) {
         throw new ConvexError(
@@ -1771,7 +1778,14 @@ export const setProductMapping = action({
       args.integrationId,
     );
 
-    if (args.onlinePosProductId !== null) {
+    if (
+      args.onlinePosProductId !== null &&
+      !(await ctx.runQuery(internal.integrations.onlinepos.salesAlerts.wasSold, {
+        organizationId,
+        integrationId: settings.integrationId,
+        onlinePosProductId: args.onlinePosProductId,
+      }))
+    ) {
       const products = await requestProducts(settings);
       if (!products.some((product) => product.id === args.onlinePosProductId)) {
         throw new ConvexError(

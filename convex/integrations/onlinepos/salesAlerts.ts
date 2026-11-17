@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import {
+  internalQuery,
   mutation,
   query,
   type MutationCtx,
@@ -171,6 +172,30 @@ function rowModifierIds(
   }
   return ids;
 }
+
+// Sales export koncern ids that getProducts may not list; a recorded sale proves the id.
+export const wasSold = internalQuery({
+  args: {
+    organizationId: v.string(),
+    integrationId: v.id("onlinePosIntegrations"),
+    onlinePosProductId: v.number(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("onlinePosSoldProducts")
+      .withIndex(
+        "by_organizationId_and_integrationId_and_onlinePosProductId",
+        (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("integrationId", args.integrationId)
+            .eq("onlinePosProductId", args.onlinePosProductId),
+      )
+      .unique();
+    return row !== null;
+  },
+});
 
 const soldItemValidator = v.object({
   integrationId: v.id("onlinePosIntegrations"),
