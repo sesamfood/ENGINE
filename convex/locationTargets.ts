@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { metricFeaturesAvailable } from "../integrations/dashboard";
-import { metricRegistry, targetableMetrics } from "../lib/dashboard/registry";
+import { metricRegistry } from "../lib/dashboard/registry";
 import { locationTargetKindLabels, targetPeriodLabels, targetPeriodDays, targetUsesPeriod } from "../lib/dashboard/target";
 import type { MetricId, MetricResult, SalesSource, TargetPeriod } from "../lib/dashboard/types";
 import { addDays, dateKey, daysBetween, zonedStart } from "../lib/date";
@@ -26,15 +26,9 @@ import {
 import { queryMetricComputer, resolveBuiltinSalesSource, resolveMetricParams } from "./lib/dashboardMetrics";
 import { requireOrganizationLocation } from "./lib/locations";
 import { canViewBuiltinMetric, canViewDetailedSales } from "./dashboard";
+import { enabledTargetMetrics, syncTargetDashboard } from "./lib/targetDashboards";
 
 type MetricParams = Awaited<ReturnType<typeof resolveMetricParams>>;
-
-async function enabledTargetMetrics(ctx: QueryCtx, organizationId: string) {
-  const settings = await ctx.db.query("managerSettings")
-    .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
-    .unique();
-  return new Set<MetricId>(settings?.targetMetricIds ?? targetableMetrics.map((metric) => metric.id));
-}
 
 export const getSettings = query({
   args: {},
@@ -62,6 +56,12 @@ export const saveSettings = mutation({
       ? existing._id
       : await ctx.db.insert("managerSettings", { organizationId: auth.organizationId, ...fields });
     if (existing) await ctx.db.patch("managerSettings", existing._id, fields);
+    const locations = await ctx.db.query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId))
+      .take(200);
+    for (const location of locations) {
+      await syncTargetDashboard(ctx, auth.organizationId, location._id, auth.userId);
+    }
     await recordAudit(ctx, auth, {
       action: "managerSettings.updated",
       entityTable: "managerSettings",
@@ -340,6 +340,7 @@ export const upsert = mutation({
           ...fields,
         });
     if (existing) await ctx.db.patch("locationTargets", existing._id, fields);
+    await syncTargetDashboard(ctx, auth.organizationId, args.locationId, auth.userId);
     const valueText = args.kind === "amount" ? String(args.value) : `${args.value} %`;
     await recordAudit(ctx, auth, {
       action: "locationTargets.updated",
@@ -360,6 +361,7 @@ export const remove = mutation({
     const { auth, location, definition, existing } = await requireTargetManager(ctx, args.locationId, args.metricId);
     if (!existing) return null;
     await ctx.db.delete("locationTargets", existing._id);
+    await syncTargetDashboard(ctx, auth.organizationId, args.locationId, auth.userId);
     await recordAudit(ctx, auth, {
       action: "locationTargets.removed",
       entityTable: "locationTargets",

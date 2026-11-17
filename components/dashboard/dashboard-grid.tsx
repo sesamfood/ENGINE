@@ -25,6 +25,7 @@ import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { canBatchCustomMetric, customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
+import { isTargetWidget } from "@/lib/dashboard/target-dashboard";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import { dashboardMetricUsesSummary } from "@/lib/dashboard/summary-sources";
 import {
@@ -297,6 +298,7 @@ function DraggableWidget({
   onLiveRetry,
   onResize,
   onRemove,
+  locked,
 }: {
   widget: WidgetInstance;
   sourceSize: WidgetSize;
@@ -316,6 +318,7 @@ function DraggableWidget({
   onResize: (size: WidgetSize, complete: boolean) => void;
   onSalesSourceChange: (salesSource: SalesSource) => void;
   onRemove: () => void;
+  locked?: boolean;
 }) {
   const draggable = useDraggable({ id: widget.key, disabled: !editable, data: { kind: "widget" } });
   const droppable = useDroppable({ id: widget.key, disabled: !editable, data: { kind: "widget" } });
@@ -413,6 +416,7 @@ function DraggableWidget({
         onLiveRetry={onLiveRetry}
         onResize={onResize}
         onRemove={onRemove}
+        locked={locked}
       />
     </div>
   );
@@ -426,6 +430,7 @@ export function DashboardGrid({
   now,
   editable = false,
   publicAccess,
+  lockTargetWidgets = false,
   onChange,
 }: {
   widgets: WidgetInstance[];
@@ -435,6 +440,7 @@ export function DashboardGrid({
   now: number;
   editable?: boolean;
   publicAccess?: { token: string; accessKey: string };
+  lockTargetWidgets?: boolean;
   onChange?: (widgets: WidgetInstance[]) => void;
 }) {
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -637,6 +643,7 @@ export function DashboardGrid({
                 }
               }}
               onRemove={() => onChange?.(layout.filter((item) => item.key !== widget.key))}
+              locked={lockTargetWidgets && isTargetWidget(widget)}
             />
           );
         })}

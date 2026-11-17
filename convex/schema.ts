@@ -654,6 +654,15 @@ export default defineSchema({
     updatedBy: v.string(),
   }).index("by_organizationId_and_locationId_and_metricId", ["organizationId", "locationId", "metricId"]),
 
+  /** One generated target dashboard per location, kept in sync with its location targets. */
+  locationTargetDashboards: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    widgets: v.array(widgetValidator),
+    updatedAt: v.number(),
+    updatedBy: v.string(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
   managerSettings: defineTable({
     organizationId: v.string(),
     /** Metrics managers can set targets for. No row means every targetable metric. */

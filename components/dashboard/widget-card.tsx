@@ -232,6 +232,7 @@ export function WidgetCard({
   onEditCustomMetric,
   onResize,
   onRemove,
+  locked,
   children,
 }: {
   widget: WidgetInstance;
@@ -252,6 +253,8 @@ export function WidgetCard({
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
+  /** Generated widgets can be moved and resized but not changed or removed. */
+  locked?: boolean;
   children: ReactNode;
 }) {
   const definition = widget.metric.kind === "builtin"
@@ -421,7 +424,7 @@ export function WidgetCard({
               </CardDescription>
             ) : null}
           </div>
-          {editable ? (
+          {editable && !locked ? (
             <div data-dashboard-no-drag className="shrink-0" onPointerDown={(event) => event.stopPropagation()}>
               <Popover>
                 <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${metricLabel}`} />}>

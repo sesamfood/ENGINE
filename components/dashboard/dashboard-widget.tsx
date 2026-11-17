@@ -36,6 +36,7 @@ export function DashboardWidget({
   onLiveRetry,
   onResize,
   onRemove,
+  locked,
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
@@ -60,6 +61,7 @@ export function DashboardWidget({
   onLiveRetry?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
+  locked?: boolean;
 }) {
   const Visualization = visualizationRegistry[widget.visualization];
   const compact = widgetSizeSpans[widget.size].rows === 1;
@@ -96,6 +98,7 @@ export function DashboardWidget({
       onEditCustomMetric={onEditCustomMetric}
       onResize={onResize}
       onRemove={onRemove}
+      locked={locked}
     >
       {live ? <LiveMetricContent widget={widget} state={live} compact={compact} onRetry={onLiveRetry} /> : error ? (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>

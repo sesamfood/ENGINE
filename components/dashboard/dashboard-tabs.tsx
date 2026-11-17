@@ -27,6 +27,7 @@ import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 const DashboardSettingsDialog = dynamic(() => import("./dashboard-settings-dialog").then((module) => module.DashboardSettingsDialog));
 
 const MAX_DASHBOARDS = 8;
+export const TARGETS_TAB = "targets";
 
 function CreateDashboardDialog({
   open,
@@ -93,6 +94,7 @@ export function DashboardTabs({
   onDuplicated,
   onDeleted,
   onCreated,
+  showTargets = false,
 }: {
   dashboards: DashboardRecord[];
   activeId: string;
@@ -103,6 +105,8 @@ export function DashboardTabs({
   onDuplicated: (dashboardId: string) => void;
   onDeleted: (dashboardId: string) => void;
   onCreated: (dashboardId: string) => void;
+  /** Adds the generated location target dashboard as its own tab. */
+  showTargets?: boolean;
 }) {
   const reorder = useMutation(api.dashboard.reorder);
   const [settingsId, setSettingsId] = useState<string | null>(null);
@@ -130,7 +134,10 @@ export function DashboardTabs({
     <>
       <div className="flex min-w-0 items-center gap-2" aria-label="Dashboardnavigation">
         <Select
-          items={order.map((dashboard) => ({ value: String(dashboard.id), label: dashboard.name }))}
+          items={[
+            ...order.map((dashboard) => ({ value: String(dashboard.id), label: dashboard.name })),
+            ...(showTargets ? [{ value: TARGETS_TAB, label: "Mål" }] : []),
+          ]}
           value={activeId}
           onValueChange={(value) => { if (value) onChange(value); }}
         >
@@ -144,12 +151,14 @@ export function DashboardTabs({
                   {dashboard.name}
                 </SelectItem>
               ))}
+              {showTargets ? <SelectItem value={TARGETS_TAB}>Mål</SelectItem> : null}
             </SelectGroup>
           </SelectContent>
         </Select>
         <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1 max-md:hidden">
           <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" appearance="scrollFadeBelowLg" aria-label="Dashboards">
             {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} appearance="standard" className="min-w-28 shrink-0">{dashboard.name}</TabsTrigger>)}
+            {showTargets ? <TabsTrigger value={TARGETS_TAB} appearance="standard" className="min-w-28 shrink-0">Mål</TabsTrigger> : null}
           </TabsList>
         </Tabs>
         {canCreate ? (

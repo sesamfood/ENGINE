@@ -5,6 +5,7 @@ import type { DataModel } from "./_generated/dataModel";
 import { unitPriceFromLineTotal } from "./integrations/onlinepos/lib/api";
 import { backfillDailyPaymentTypes } from "./lib/salesRollup";
 import { gramsPerUnit } from "../lib/containers";
+import { syncTargetDashboard } from "./lib/targetDashboards";
 
 const ONLINE_POS_SOURCE = "onlinePos";
 
@@ -138,5 +139,14 @@ export const packagingWeightsToContainers = migrations.define({
       });
     }
     await ctx.db.patch("productUnits", row._id, { packagingWeight: undefined });
+  },
+});
+
+// Creates the generated target dashboards for targets set before they existed.
+export const createLocationTargetDashboards = migrations.define({
+  table: "locationTargets",
+  batchSize: 50,
+  migrateOne: async (ctx, target) => {
+    await syncTargetDashboard(ctx, target.organizationId, target.locationId, target.updatedBy);
   },
 });
