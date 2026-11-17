@@ -34,8 +34,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIntegrations } from "@/integrations/use-integrations";
 import {
+  AmountInput,
+  parseAmount,
+  type Amount,
+} from "@/components/catalog/modifier-manager";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+} from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { Input } from "@/components/ui/input";
+import {
   normalizeProductSearch,
   productNameSearchScore,
+  searchProducts,
 } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
@@ -156,6 +170,210 @@ function IgnoredRow({
   );
 }
 
+const MAX_PRODUCTS_PER_SAVE = 200;
+
+type SetupKind = Exclude<ConnectKind, "product">;
+type ModifierSetupData = FunctionReturnType<
+  typeof api.integrations.onlinepos.salesAlerts.getModifierSetup
+>;
+
+function ModifierSetup(props: {
+  item: SoldItem;
+  kind: SetupKind;
+  ingredientId: Id<"products">;
+  ingredientName: string;
+}) {
+  const setup = useQuery(api.integrations.onlinepos.salesAlerts.getModifierSetup, {
+    ingredientProductId: props.ingredientId,
+    kind: props.kind,
+  });
+  if (!setup) return <Skeleton className="h-40 w-full" />;
+  return <ModifierSetupForm {...props} setup={setup} />;
+}
+
+function ModifierSetupForm({
+  item,
+  kind,
+  ingredientId,
+  ingredientName,
+  setup,
+}: {
+  item: SoldItem;
+  kind: SetupKind;
+  ingredientId: Id<"products">;
+  ingredientName: string;
+  setup: ModifierSetupData;
+}) {
+  const addition = kind === "addition";
+  const [amount, setAmount] = useState<Amount>(() => ({
+    quantity: setup.standard
+      ? setup.standard.quantity.toLocaleString("da-DK")
+      : "",
+    unitId: setup.standard?.unitId ?? setup.defaultUnitId,
+  }));
+  const enabled = useMemo(
+    () => setup.products.filter((product) => product.enabled).map((product) => product.id),
+    [setup.products],
+  );
+  // A sold fravalg means the ingredient is removable, so start with every recipe.
+  const [selected, setSelected] = useState(
+    () =>
+      new Set(
+        enabled.length === 0 && !addition
+          ? setup.products.map((product) => product.id)
+          : enabled,
+      ),
+  );
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const saveAdditionDefault = useMutation(
+    api.catalogModifiers.saveAdditionDefault,
+  );
+  const saveProductModifiers = useMutation(
+    api.catalogModifiers.saveProductModifiers,
+  );
+  const setModifierMapping = useAction(api.onlinePos.setModifierMapping);
+
+  const visible = useMemo(
+    () =>
+      search.trim()
+        ? searchProducts(setup.products, search, (product) => ({
+            name: product.name,
+          }))
+        : setup.products,
+    [search, setup.products],
+  );
+  const parsed = parseAmount(amount);
+
+  async function setOnProducts(ids: Id<"products">[], on: boolean) {
+    for (let index = 0; index < ids.length; index += MAX_PRODUCTS_PER_SAVE) {
+      await saveProductModifiers({
+        productIds: ids.slice(index, index + MAX_PRODUCTS_PER_SAVE),
+        removals: addition ? [] : [{ ingredientProductId: ingredientId, removable: on }],
+        additions: addition ? [{ ingredientProductId: ingredientId, enabled: on }] : [],
+      });
+    }
+  }
+
+  async function save() {
+    if (addition && !parsed) {
+      toast.error("Angiv en mængde og en enhed for tilvalget");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (
+        addition &&
+        parsed &&
+        (setup.standard?.quantity !== parsed.quantity ||
+          setup.standard.unitId !== parsed.unitId)
+      ) {
+        await saveAdditionDefault({ ingredientProductId: ingredientId, ...parsed });
+      }
+      await setOnProducts(
+        [...selected].filter((id) => !enabled.includes(id)),
+        true,
+      );
+      await setOnProducts(
+        enabled.filter((id) => !selected.has(id)),
+        false,
+      );
+      await setModifierMapping({
+        expectedIntegrationId: item.integrationId,
+        kind,
+        ingredientProductId: ingredientId,
+        onlinePosProductId: item.onlinePosProductId,
+      });
+      toast.success(
+        `${item.name} er koblet som ${addition ? "tilvalg" : "fravalg"} til ${ingredientName}`,
+      );
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Koblingen kunne ikke gemmes"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
+      {addition ? (
+        <Field>
+          <div className="flex items-center gap-2">
+            <FieldLabel>Mængde pr. tilvalg</FieldLabel>
+            <HelpTooltip
+              label="Mængde pr. tilvalg"
+              content={`Trækkes fra lageret, hver gang ${item.name} sælges. Gemmes som standardmængde for ${ingredientName}.`}
+            />
+          </div>
+          <AmountInput
+            amount={amount}
+            units={setup.units}
+            label={ingredientName}
+            onChange={setAmount}
+          />
+        </Field>
+      ) : null}
+      <Field>
+        <FieldLabel>
+          {addition
+            ? `Produkter, der kan få ${ingredientName}`
+            : `Produkter, hvor ${ingredientName} kan fravælges`}
+        </FieldLabel>
+        {setup.products.length === 0 ? (
+          <FieldDescription>
+            {addition
+              ? "Der er ingen produkter med salgspris."
+              : `Ingen produkter har ${ingredientName} som ingrediens. Fravalget trækker derfor ikke noget fra lageret.`}
+          </FieldDescription>
+        ) : (
+          <>
+            {setup.products.length > 8 ? (
+              <Input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Søg i produkter"
+                aria-label="Søg i produkter"
+              />
+            ) : null}
+            <div className="flex max-h-56 flex-col divide-y overflow-y-auto rounded-lg border bg-background">
+              {visible.map((product) => (
+                <label
+                  key={product.id}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2"
+                >
+                  <Checkbox
+                    checked={selected.has(product.id)}
+                    onCheckedChange={(checked) =>
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (checked) next.add(product.id);
+                        else next.delete(product.id);
+                        return next;
+                      })
+                    }
+                  />
+                  <span className="min-w-0 flex-1 break-words text-sm">
+                    {product.name}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <FieldDescription>
+              {selected.size === 0
+                ? "Vælg mindst ét produkt, ellers trækkes salget ikke fra lageret."
+                : `${selected.size} valgt`}
+            </FieldDescription>
+          </>
+        )}
+      </Field>
+      <Button onClick={save} disabled={saving || (addition && !parsed)}>
+        {addition ? "Kobl tilvalg" : "Kobl fravalg"}
+      </Button>
+    </div>
+  );
+}
+
 function UnmappedRow({
   item,
   showMaster,
@@ -164,7 +382,11 @@ function UnmappedRow({
   showMaster: boolean;
 }) {
   const [kind, setKind] = useState<ConnectKind>("product");
+  const [ingredientId, setIngredientId] = useState<Id<"products"> | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
+  const canCatalog = usePermission("catalog.manage");
   const options = useQuery(api.onlinePos.listMappingOptions, {
     integrationId: item.integrationId,
   });
@@ -270,8 +492,10 @@ function UnmappedRow({
         value={[kind]}
         onValueChange={(values) => {
           const next = values[0];
-          if (next === "product" || next === "addition" || next === "removal")
+          if (next === "product" || next === "addition" || next === "removal") {
             setKind(next);
+            setIngredientId(null);
+          }
         }}
       >
         <ToggleGroupItem value="product" className="min-h-11 flex-1">
@@ -290,8 +514,13 @@ function UnmappedRow({
         <CreatableCombobox
           key={kind}
           options={comboboxOptions}
-          value={null}
-          onValueChange={connect}
+          value={kind === "product" ? null : ingredientId}
+          onValueChange={(value) => {
+            // Catalog managers set amount and products before linking.
+            if (kind !== "product" && canCatalog)
+              setIngredientId(value as Id<"products"> | null);
+            else void connect(value);
+          }}
           disabled={saving}
           placeholder={kind === "product" ? "Vælg produkt" : "Vælg ingrediens"}
           ariaLabel={
@@ -304,6 +533,18 @@ function UnmappedRow({
           productSearch
         />
       )}
+      {kind !== "product" && ingredientId && canCatalog ? (
+        <ModifierSetup
+          key={`${kind}:${ingredientId}`}
+          item={item}
+          kind={kind}
+          ingredientId={ingredientId}
+          ingredientName={
+            options?.products.find((row) => row.id === ingredientId)?.name ??
+            "ingrediensen"
+          }
+        />
+      ) : null}
     </li>
   );
 }

@@ -709,3 +709,141 @@ export const remapLocalProductIds = internalAction({
     return results;
   },
 });
+
+const MAX_SETUP_PRODUCTS = 500;
+
+// What the unmapped-sales dialog needs to set up a tilvalg or fravalg in one go.
+export const getModifierSetup = query({
+  args: {
+    ingredientProductId: v.id("products"),
+    kind: v.union(v.literal("addition"), v.literal("removal")),
+  },
+  returns: v.object({
+    units: v.array(v.object({ id: v.id("units"), name: v.string() })),
+    defaultUnitId: v.id("units"),
+    standard: v.union(
+      v.object({ quantity: v.number(), unitId: v.id("units") }),
+      v.null(),
+    ),
+    products: v.array(
+      v.object({
+        id: v.id("products"),
+        name: v.string(),
+        enabled: v.boolean(),
+      }),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const ingredient = await ctx.db.get("products", args.ingredientProductId);
+    if (!ingredient || ingredient.organizationId !== organizationId)
+      throw new ConvexError("Ingrediensen blev ikke fundet");
+    const [productUnits, standard] = await Promise.all([
+      ctx.db
+        .query("productUnits")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", ingredient._id),
+        )
+        .take(50),
+      ctx.db
+        .query("ingredientAdditionDefaults")
+        .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("ingredientProductId", ingredient._id),
+        )
+        .first(),
+    ]);
+    const units = (
+      await Promise.all(
+        productUnits.map(async (row) => {
+          const unit = await ctx.db.get("units", row.unitId);
+          return unit ? [{ id: unit._id, name: unit.name }] : [];
+        }),
+      )
+    ).flat();
+
+    let products: Array<{ id: Id<"products">; name: string; enabled: boolean }>;
+    if (args.kind === "removal") {
+      // Only products whose recipe holds the ingredient can have it removed.
+      const rows = await ctx.db
+        .query("productIngredients")
+        .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("ingredientProductId", ingredient._id),
+        )
+        .take(MAX_SETUP_PRODUCTS);
+      const removable = new Map<Id<"products">, boolean>();
+      for (const row of rows) {
+        if (row.packaging) continue;
+        removable.set(
+          row.productId,
+          (removable.get(row.productId) ?? false) || row.removable === true,
+        );
+      }
+      products = (
+        await Promise.all(
+          [...removable].map(async ([id, enabled]) => {
+            const product = await ctx.db.get("products", id);
+            return product?.status === "active"
+              ? [{ id, name: product.name, enabled }]
+              : [];
+          }),
+        )
+      ).flat();
+    } else {
+      const [catalog, additions, mappings] = await Promise.all([
+        ctx.db
+          .query("products")
+          .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+            q.eq("organizationId", organizationId).eq("status", "active"),
+          )
+          .take(2000),
+        ctx.db
+          .query("productIngredientAdditions")
+          .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("ingredientProductId", ingredient._id),
+          )
+          .take(MAX_SETUP_PRODUCTS),
+        ctx.db
+          .query("onlinePosProductMappings")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .take(2000),
+      ]);
+      const addable = new Set(additions.map((row) => row.productId));
+      const posLinked = new Set(mappings.map((row) => row.productId));
+      // Sold products: a sales price, a POS link, or already addable.
+      products = catalog
+        .filter(
+          (product) =>
+            product._id !== ingredient._id &&
+            (product.salesPrice !== undefined ||
+              posLinked.has(product._id) ||
+              addable.has(product._id)),
+        )
+        .slice(0, MAX_SETUP_PRODUCTS)
+        .map((product) => ({
+          id: product._id,
+          name: product.name,
+          enabled: addable.has(product._id),
+        }));
+    }
+    return {
+      units,
+      defaultUnitId: ingredient.defaultUnitId,
+      standard: standard
+        ? { quantity: standard.quantity, unitId: standard.unitId }
+        : null,
+      products: products.sort((left, right) =>
+        left.name.localeCompare(right.name, "da"),
+      ),
+    };
+  },
+});

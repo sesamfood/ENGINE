@@ -103,7 +103,7 @@ type CatalogItem = NonNullable<
   >
 >[number];
 type OnlinePosProducts = FunctionReturnType<typeof api.onlinePos.listProducts>;
-type Amount = { quantity: string; unitId: Id<"units"> | null };
+export type Amount = { quantity: string; unitId: Id<"units"> | null };
 type AdditionDraft = { enabled: boolean; amount: Amount | null };
 
 const ALL_CATEGORIES = "__all__";
@@ -139,7 +139,7 @@ function ProductImage({ product }: { product: SoldProduct }) {
   );
 }
 
-function AmountInput({
+export function AmountInput({
   amount,
   units,
   label,
@@ -188,7 +188,7 @@ function AmountInput({
   );
 }
 
-function parseAmount(amount: Amount) {
+export function parseAmount(amount: Amount) {
   const quantity = parseDecimal(amount.quantity);
   return Number.isFinite(quantity) && quantity > 0 && amount.unitId
     ? { quantity, unitId: amount.unitId }
