@@ -69,7 +69,7 @@ const sectionTitles = [
   { value: "expenses", label: "Udgift" },
   { value: "wolt-orders", label: "Wolt-ordrer" },
   { value: "staff-food", label: "Staff food" },
-  { value: "own-checks", label: "Egenkontrol" },
+  { value: "food-safety", label: "Egenkontrol" },
   { value: "count", label: "Count" },
   { value: "ordering", label: "Bestilling" },
   { value: "date-labels", label: "Datomærkning" },

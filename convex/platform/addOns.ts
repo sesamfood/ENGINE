@@ -6,6 +6,7 @@ import {
   requirePlatformMember,
 } from "../lib/platformAuth";
 import { accessFields, uniqueName } from "./plans";
+import { storedFeatures } from "../lib/features";
 
 async function addOnName(
   ctx: MutationCtx,
@@ -40,7 +41,7 @@ export const list = query({
       .map((addOn) => ({
         id: addOn._id,
         name: addOn.name,
-        features: addOn.features,
+        features: storedFeatures(addOn.features),
         integrations: addOn.integrations,
         deprecated: addOn.deprecated,
         planCount: plans.filter((plan) => plan.addOnIds?.includes(addOn._id))

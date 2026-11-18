@@ -68,7 +68,7 @@ type AdministrationPermission = Extract<
     | "locations.manage"
     | "members.manage"
     | "organization.settings"
-    | "ownChecks.manage"
+    | "foodSafety.manage"
     | "roles.manage"
     | "staffFood.manage"
     | "waste.settings"
@@ -206,10 +206,10 @@ const categories: AdministrationCategory[] = [
       {
         title: "Egenkontrol",
         description: "Opret kontroller, tidsplaner og regler for dokumentation.",
-        href: "/administration/own-checks",
-        feature: "ownChecks",
+        href: "/administration/food-safety",
+        feature: "foodSafety",
         icon: ClipboardCheckIcon,
-        permissions: ["ownChecks.manage", "organization.settings"],
+        permissions: ["foodSafety.manage", "organization.settings"],
       },
       {
         title: "Staff food",
@@ -331,7 +331,7 @@ export function AdministrationOverview() {
   const canWasteSettings = usePermission("waste.settings");
   const canExpenseSettings = usePermission("expenses.settings");
   const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
-  const canOwnChecksManage = usePermission("ownChecks.manage");
+  const canFoodSafetyManage = usePermission("foodSafety.manage");
   const canStaffFood = usePermission("staffFood.manage");
   const canDayTasks = usePermission("kiosk.dayTasks.manage");
   const canIntegrations = usePermission("integrations.manage");
@@ -351,7 +351,7 @@ export function AdministrationOverview() {
     "locations.manage": canLocations,
     "members.manage": canMembers,
     "organization.settings": canOrganizationSettings,
-    "ownChecks.manage": canOwnChecksManage,
+    "foodSafety.manage": canFoodSafetyManage,
     "roles.manage": canRoles,
     "staffFood.manage": canStaffFood,
     "waste.settings": canWasteSettings,

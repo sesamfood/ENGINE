@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query, type MutationCtx } from "../_generated/server";
 import { integrationIdValidator } from "../integrations/state";
-import { featureIdValidator } from "../lib/features";
+import { featureIdValidator, storedFeatures } from "../lib/features";
 import { recordPlatformAudit, requirePlatformMember } from "../lib/platformAuth";
 
 export const accessFields = {
@@ -77,7 +77,7 @@ export const list = query({
         return {
           id: plan._id,
           name: plan.name,
-          features: plan.features,
+          features: storedFeatures(plan.features),
           integrations: plan.integrations,
           addOnIds: plan.addOnIds ?? [],
           deprecated: plan.deprecated,

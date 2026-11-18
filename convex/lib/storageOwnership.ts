@@ -28,10 +28,17 @@ export async function getStorageReferences(
     ctx.db.query("badDeliveryAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
       .take(2),
-    ctx.db.query("ownCheckAttachments")
+    ctx.db.query("foodSafetyAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
       .take(2),
     // Check photos always have an owner row; one version reference keeps them alive.
+    ctx.db.query("foodSafetyTemplateVersions")
+      .withIndex("by_imageStorageId", (q) => q.eq("imageStorageId", storageId))
+      .take(1),
+    // Legacy rows keep their files alive until the foodSafety copy migration is verified.
+    ctx.db.query("ownCheckAttachments")
+      .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
+      .take(2),
     ctx.db.query("ownCheckTemplateVersions")
       .withIndex("by_imageStorageId", (q) => q.eq("imageStorageId", storageId))
       .take(1),

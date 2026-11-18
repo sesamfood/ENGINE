@@ -14,7 +14,7 @@ import {
 } from "pdf-lib";
 import { allergenIconPaths } from "./allergen-icons";
 import { allergens, type AllergenId } from "./allergens";
-import { sanitizePdfText } from "./own-check-pdf";
+import { sanitizePdfText } from "./food-safety-pdf";
 
 // A4 landscape.
 const PAGE_WIDTH = 841.89;

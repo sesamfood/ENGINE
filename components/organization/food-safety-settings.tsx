@@ -1,0 +1,192 @@
+"use client";
+
+import { SettingsSwitchField } from "./settings-switch-field";
+
+import { getUserErrorMessage } from "@/lib/user-errors";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { Input } from "@/components/ui/input";
+import { FormCardSkeleton } from "@/components/page-skeletons";
+import { Spinner } from "@/components/ui/spinner";
+
+import { api } from "@/convex/_generated/api";
+import { useAccess, usePermission } from "@/components/app-shell";
+import type { FoodSafetyPage } from "@/convex/lib/foodSafetySettings";
+
+const pages: { id: FoodSafetyPage; label: string }[] = [
+  { id: "foodSafety.today", label: "I dag" },
+  { id: "foodSafety.overview", label: "Oversigt" },
+  { id: "foodSafety.documentation", label: "Dokumentation" },
+  { id: "foodSafety.allergens", label: "Allergener" },
+  { id: "foodSafety.guidance", label: "Vejledning" },
+];
+
+export function FoodSafetySettings() {
+  const access = useAccess();
+  const canManage = usePermission("foodSafety.manage");
+  const settings = useQuery(
+    api.foodSafetyTemplates.getSettings,
+    canManage ? {} : "skip",
+  );
+  const saveSettings = useMutation(api.foodSafetyTemplates.saveSettings);
+  const [lateSubmissionDays, setLateSubmissionDays] = useState<number | null>(
+    null,
+  );
+  const [requireSecondPersonApproval, setRequireSecondPersonApproval] = useState<boolean | null>(null);
+  const [blockDuringCount, setBlockDuringCount] = useState<boolean | null>(
+    null,
+  );
+  const [hiddenPagesDraft, setHiddenPages] = useState<FoodSafetyPage[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+
+  if (!access || (canManage && settings === undefined)) {
+    return <FormCardSkeleton className="max-w-3xl" />;
+  }
+  if (!canManage) {
+    return (
+      <Alert variant="destructive" className="max-w-xl">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>Du har ikke adgang til at administrere egenkontroller.</AlertDescription>
+      </Alert>
+    );
+  }
+  if (!settings) return <FormCardSkeleton className="max-w-3xl" />;
+
+  const days = lateSubmissionDays ?? settings.lateSubmissionDays;
+  const secondPerson =
+    requireSecondPersonApproval ?? settings.requireSecondPersonApproval;
+  const blockCount = blockDuringCount ?? settings.blockDuringCount;
+  const hiddenPages = hiddenPagesDraft ?? settings.hiddenPages;
+
+  async function save() {
+    setSaving(true);
+    try {
+      await saveSettings({
+        lateSubmissionDays: days,
+        requireSecondPersonApproval: secondPerson,
+        blockDuringCount: blockCount,
+        hiddenPages,
+      });
+      toast.success("Egenkontrolindstillingerne er gemt");
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Egenkontrolindstillingerne kunne ikke gemmes. Prøv igen."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <CardTitle>Indstillinger for egenkontrol</CardTitle>
+          <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og Count og hvilke sider der vises.</CardDescription>
+        </CardHeader>
+        <CardContent appearance="spacious" className="flex flex-col">
+          <FieldGroup>
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="food-safety-late-days">Frist for efterregistrering</FieldLabel>
+                <HelpTooltip label="Frist for efterregistrering" content="Hvor mange dage tilbage en egenkontrol må registreres. 0 betyder kun samme dag." />
+              </div>
+              <Input id="food-safety-late-days" type="number" min={0} max={30} value={days} onChange={(event) => setLateSubmissionDays(Number(event.target.value))} className="h-11 max-w-xs" />
+            </Field>
+            <SettingsSwitchField
+              label="Godkendelse kræver en anden person"
+              id="food-safety-second-person"
+              checked={secondPerson}
+              onCheckedChange={setRequireSecondPersonApproval}
+              help={{
+                label: "Godkendelse kræver en anden person",
+                content:
+                  "Personen, der udførte kontrollen, kan ikke godkende den. Brugere med rettigheden til at administrere egenkontroller er undtaget.",
+              }}
+            />
+            <SettingsSwitchField
+              label="Blokér egenkontrol under Count"
+              id="food-safety-count-lock"
+              checked={blockCount}
+              onCheckedChange={(checked) => {
+                if (checked && !blockCount) setConfirmBlock(true);
+                else setBlockDuringCount(checked);
+              }}
+              description={
+                <FieldDescription
+                  appearance={blockCount ? "destructive" : undefined}
+                >
+                  Advarsel: Egenkontroller kan ikke udføres, mens en Count låser
+                  lokationen.
+                </FieldDescription>
+              }
+              invalid={blockCount}
+            />
+            <FieldSet>
+              <FieldLegend variant="label">Sider i egenkontrol</FieldLegend>
+              <FieldDescription>Mindst én side skal være slået til.</FieldDescription>
+              {pages.map((page) => {
+                const shown = !hiddenPages.includes(page.id);
+                return (
+                  <SettingsSwitchField
+                    key={page.id}
+                    label={page.label}
+                    id={`food-safety-page-${page.id}`}
+                    checked={shown}
+                    disabled={shown && hiddenPages.length >= pages.length - 1}
+                    onCheckedChange={(checked) =>
+                      setHiddenPages(checked ? hiddenPages.filter((id) => id !== page.id) : [...hiddenPages, page.id])
+                    }
+                  />
+                );
+              })}
+            </FieldSet>
+          </FieldGroup>
+        </CardContent>
+        <CardFooter className="justify-end">
+          <Button type="button" size="lg" disabled={saving} onClick={() => void save()}>
+            {saving ? <Spinner data-icon="inline-start" /> : null}
+            Gem indstillinger
+          </Button>
+        </CardFooter>
+      </Card>
+      <AlertDialog open={confirmBlock} onOpenChange={setConfirmBlock}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Blokér egenkontroller under Count?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Advarsel: Egenkontroller kan ikke udføres, mens en Count låser lokationen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annullér</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setBlockDuringCount(true)}>Jeg forstår, aktivér</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

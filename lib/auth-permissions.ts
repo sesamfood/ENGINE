@@ -85,12 +85,12 @@ export const permissionCatalog = [
   {
     group: "Egenkontrol",
     permissions: [
-      { id: "ownChecks.perform", label: "Udføre egenkontroller" },
-      { id: "ownChecks.correct", label: "Registrere korrigerende handlinger" },
-      { id: "ownChecks.view", label: "Se tidligere egenkontroller" },
-      { id: "ownChecks.approve", label: "Godkende egenkontroller" },
-      { id: "ownChecks.edit", label: "Rette indsendte egenkontroller" },
-      { id: "ownChecks.export", label: "Eksportere kontroldokumentation" },
+      { id: "foodSafety.perform", label: "Udføre egenkontroller" },
+      { id: "foodSafety.correct", label: "Registrere korrigerende handlinger" },
+      { id: "foodSafety.view", label: "Se tidligere egenkontroller" },
+      { id: "foodSafety.approve", label: "Godkende egenkontroller" },
+      { id: "foodSafety.edit", label: "Rette indsendte egenkontroller" },
+      { id: "foodSafety.export", label: "Eksportere kontroldokumentation" },
     ],
   },
   {
@@ -167,7 +167,7 @@ export const permissionCatalog = [
       { id: "locations.manage", label: "Administrere lokationer" },
       { id: "count.settings", label: "Administrere Count-indstillinger" },
       { id: "waste.settings", label: "Administrere Waste-indstillinger" },
-      { id: "ownChecks.manage", label: "Administrere egenkontroller" },
+      { id: "foodSafety.manage", label: "Administrere egenkontroller" },
       { id: "kiosk.dayTasks.manage", label: "Administrere dagsopgaver" },
       {
         id: "organization.settings",
@@ -207,7 +207,7 @@ export const defaultRolePermissions: Record<
       id !== "integrations.manage" &&
       id !== "apiKeys.manage" &&
       id !== "locations.manage" &&
-      id !== "ownChecks.manage" &&
+      id !== "foodSafety.manage" &&
       id !== "members.manage" &&
       id !== "roles.manage" &&
       id !== "staffFood.manage" &&
@@ -224,7 +224,7 @@ export const defaultRolePermissions: Record<
     "count.viewStock",
     "waste.register",
     "goodsReceipts.register",
-    "ownChecks.perform",
+    "foodSafety.perform",
     "staffFood.register",
     "employees.schedule",
     "employees.directory",

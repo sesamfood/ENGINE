@@ -8,7 +8,7 @@ import { recordAudit } from "./audit";
 
 const MAX_MEMBER_LOCATION_ROWS = 1_000;
 const MAX_KIOSK_MEMBERS = 100;
-const MAX_ACTIVE_OWN_CHECK_TEMPLATES = 200;
+const MAX_ACTIVE_FOOD_SAFETY_TEMPLATES = 200;
 const MAX_ACTIVE_API_KEY_POLICIES = 50;
 const MAX_WORKFEED_EMPLOYEE_MAPPINGS = 5_000;
 
@@ -18,8 +18,8 @@ type KioskMember = {
 
 export type LocationDeletionBlocker =
   | "kiosk"
-  | "ownCheckHistory"
-  | "ownCheckConfiguration"
+  | "foodSafetyHistory"
+  | "foodSafetyConfiguration"
   | "apiKeyPolicy"
   | "workfeed"
   | "openingHours"
@@ -51,23 +51,23 @@ async function hasPendingWorkfeedLocation(
   );
 }
 
-async function hasActiveOwnCheckLocation(
+async function hasActiveFoodSafetyLocation(
   ctx: LocationDeletionCtx,
   organizationId: string,
   locationId: Id<"locations">,
 ) {
   const templates = await ctx.db
-    .query("ownCheckTemplates")
+    .query("foodSafetyTemplates")
     .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
       q.eq("organizationId", organizationId).eq("status", "active"),
     )
-    .take(MAX_ACTIVE_OWN_CHECK_TEMPLATES + 1);
-  if (templates.length > MAX_ACTIVE_OWN_CHECK_TEMPLATES) return true;
+    .take(MAX_ACTIVE_FOOD_SAFETY_TEMPLATES + 1);
+  if (templates.length > MAX_ACTIVE_FOOD_SAFETY_TEMPLATES) return true;
 
   const currentVersions = await Promise.all(
     templates.map((template) =>
       ctx.db
-        .query("ownCheckTemplateVersions")
+        .query("foodSafetyTemplateVersions")
         .withIndex("by_organizationId_and_templateId_and_version", (q) =>
           q
             .eq("organizationId", organizationId)
@@ -120,8 +120,8 @@ export async function deleteLocationWithAuth(
 
   const [
     dependencies,
-    ownCheckEntry,
-    activeOwnCheckLocation,
+    foodSafetyEntry,
+    activeFoodSafetyLocation,
     activeApiKeyPolicyLocation,
     workfeedSyncStatus,
     pendingWorkfeedLocation,
@@ -406,12 +406,12 @@ export async function deleteLocationWithAuth(
         .first(),
     ]),
     ctx.db
-      .query("ownCheckEntries")
+      .query("foodSafetyEntries")
       .withIndex("by_organizationId_and_locationId_and_dueDateKey", (q) =>
         q.eq("organizationId", organizationId).eq("locationId", location._id),
       )
       .first(),
-    hasActiveOwnCheckLocation(ctx, organizationId, location._id),
+    hasActiveFoodSafetyLocation(ctx, organizationId, location._id),
     hasActiveApiKeyPolicyLocation(ctx, organizationId, location._id),
     ctx.db
       .query("workfeedSyncStatus")
@@ -433,11 +433,11 @@ export async function deleteLocationWithAuth(
   ) {
     return { kind: "blocked", reason: "kiosk" };
   }
-  if (ownCheckEntry) {
-    return { kind: "blocked", reason: "ownCheckHistory" };
+  if (foodSafetyEntry) {
+    return { kind: "blocked", reason: "foodSafetyHistory" };
   }
-  if (activeOwnCheckLocation) {
-    return { kind: "blocked", reason: "ownCheckConfiguration" };
+  if (activeFoodSafetyLocation) {
+    return { kind: "blocked", reason: "foodSafetyConfiguration" };
   }
   if (activeApiKeyPolicyLocation) {
     return { kind: "blocked", reason: "apiKeyPolicy" };
@@ -517,9 +517,9 @@ export function locationDeletionMessage(reason: LocationDeletionBlocker) {
   switch (reason) {
     case "kiosk":
       return "Lokationen er knyttet til en kioskkonto. Flyt eller slet kioskkontoen først";
-    case "ownCheckHistory":
+    case "foodSafetyHistory":
       return "Lokationen har egenkontrolhistorik og kan ikke slettes";
-    case "ownCheckConfiguration":
+    case "foodSafetyConfiguration":
       return "Lokationen er valgt i en aktiv egenkontrol og kan ikke slettes";
     case "apiKeyPolicy":
       return "Lokationen er valgt i en aktiv API-nøgle og kan ikke slettes";
