@@ -231,7 +231,7 @@ export function TodayFoodSafety({
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold">I dag</h2>
+          <h2 className="text-lg font-semibold">Opgaver</h2>
           <p className="text-sm text-muted-foreground">
             {new Intl.DateTimeFormat("da-DK", {
               dateStyle: "long",

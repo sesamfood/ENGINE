@@ -1230,7 +1230,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Food safety",
             paragraphs: [
-              "En kontrol beskriver opgaven, felterne og grænserne. Tidsplanen bestemmer, hvornår den vises under I dag. Afvigelser følges op og godkendes under Oversigt. Dokumentation samler perioden i PDF eller CSV. Vejledning linker til myndighedernes vejledning om risici og HACCP.",
+              "En kontrol beskriver opgaven, felterne og grænserne. Tidsplanen bestemmer, hvornår den vises under Opgaver. Afvigelser følges op og godkendes under Oversigt. Dokumentation samler perioden i PDF eller CSV. Vejledning linker til myndighedernes vejledning om risici og HACCP.",
             ],
           },
           {
@@ -1255,7 +1255,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "skabelon",
             title: "Opret en kontrol",
             steps: [
-              "Vælg Ny kontrol under Food safety → I dag eller Administration → Food safety. Angiv Navn, kontroltype, Beskrivelse, Instruktioner og eventuelt et billede eller en video.",
+              "Vælg Ny kontrol under Food safety → Opgaver eller Administration → Food safety. Angiv Navn, kontroltype, Beskrivelse, Instruktioner og eventuelt et billede eller en video.",
               "Ved kontroltypen Rengøring vælger du de rengøringsprodukter, der bruges. Søg på produktets navn eller kategori.",
               "Tilføj felter: Tal med enhed og grænser, Punkt, Valg, Tekst eller Fil. Markér Påkrævet efter behov.",
               "Slå produkttemperaturer til, hvis der skal måles en temperatur for hvert produkt.",
@@ -1282,16 +1282,16 @@ export const operationFeatures: HelpFeature[] = [
             id: "registrer",
             title: "Udfør en kontrol",
             steps: [
-              "Åbn Food safety → I dag, og kontrollér Lokation. Mangler, Afvigelser, Udført i dag og Manglende fra tidligere dage viser status.",
+              "Åbn Food safety → Opgaver, og kontrollér Lokation. Mangler, Afvigelser, Udført i dag og Manglende fra tidligere dage viser status.",
               "Åbn kontrollen, og læs instruktionerne.",
               "Udfyld felterne. Felter med stjerne er påkrævede. Vent på, at filer er uploadet.",
               "Ved en afvigelse beskriver du den og eventuelt den korrigerende handling. Vælg Registrér kontrol eller Registrér afvigelse.",
             ],
             screenshot: {
               src: "/help/screenshots/egenkontrol.webp",
-              alt: "Food safety I dag med en manglende kontrol under Mangler",
+              alt: "Food safety Opgaver med en manglende kontrol under Mangler",
               caption:
-                "Start fra I dag. Afvigelser og manglende kontroller fra tidligere dage vises særskilt. Eksempeldata.",
+                "Start fra Opgaver. Afvigelser og manglende kontroller fra tidligere dage vises særskilt. Eksempeldata.",
               width: 1020,
               height: 440,
             },

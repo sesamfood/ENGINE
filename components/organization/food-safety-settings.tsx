@@ -38,7 +38,7 @@ import { useAccess, usePermission } from "@/components/app-shell";
 import type { FoodSafetyPage } from "@/convex/lib/foodSafetySettings";
 
 const pages: { id: FoodSafetyPage; label: string }[] = [
-  { id: "foodSafety.today", label: "I dag" },
+  { id: "foodSafety.today", label: "Opgaver" },
   { id: "foodSafety.overview", label: "Oversigt" },
   { id: "foodSafety.documentation", label: "Dokumentation" },
   { id: "foodSafety.allergens", label: "Allergener" },

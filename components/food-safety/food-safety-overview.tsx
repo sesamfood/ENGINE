@@ -318,10 +318,12 @@ export function FoodSafetyOverview() {
         <Field>
           <div className="flex items-center gap-1">
             <FieldLabel htmlFor="own-overview-status">Status</FieldLabel>
-            <HelpTooltip
-              label="Statusfilter"
-              content="Afvigelse viser alle registreringer med en afvigelse, også når de senere er godkendt."
-            />
+            <span className="flex h-0 items-center">
+              <HelpTooltip
+                label="Statusfilter"
+                content="Afvigelse viser alle registreringer med en afvigelse, også når de senere er godkendt."
+              />
+            </span>
           </div>
           <Select
             items={[
@@ -355,10 +357,12 @@ export function FoodSafetyOverview() {
             <FieldLabel htmlFor="own-overview-performed-by">
               Ansvarlig bruger
             </FieldLabel>
-            <HelpTooltip
-              label="Ansvarlig bruger"
-              content="Filteret matcher den bruger, der udførte kontrollen. For manglende kontroller matcher det i stedet den ansvarlige rolle."
-            />
+            <span className="flex h-0 items-center">
+              <HelpTooltip
+                label="Ansvarlig bruger"
+                content="Filteret matcher den bruger, der udførte kontrollen. For manglende kontroller matcher det i stedet den ansvarlige rolle."
+              />
+            </span>
           </div>
           <Select
             items={[

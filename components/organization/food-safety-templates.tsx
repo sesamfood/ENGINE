@@ -83,8 +83,8 @@ type Draft = {
 };
 
 const controlTypes: Array<{ value: FoodSafetyControlType; label: string }> = [
-  { value: "temperature", label: "Temperatur" },
   { value: "cleaning", label: "Rengøring" },
+  { value: "temperature", label: "Temperatur" },
   { value: "receiving", label: "Modtagekontrol" },
   { value: "shelfLife", label: "Holdbarhed" },
   { value: "hygiene", label: "Personlig hygiejne" },
@@ -125,7 +125,7 @@ function newDraft(): Draft {
     instructions: "",
     imageStorageId: null,
     videoStorageId: null,
-    controlType: "temperature",
+    controlType: "cleaning",
     productTemperaturesEnabled: true,
     toolProductIds: [],
     schedule: { type: "daily" },
