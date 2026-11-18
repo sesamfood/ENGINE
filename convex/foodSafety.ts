@@ -32,6 +32,7 @@ import {
   requireLocation,
   resolveLocationId,
   versionInput,
+  versionMedia,
 } from "./lib/foodSafety";
 import {
   dateKeyInZone,
@@ -43,6 +44,7 @@ import {
   foodSafetyControlTypeValidator,
   foodSafetyFieldValidator,
   foodSafetyProductTemperatureInputValidator,
+  foodSafetyToolValidator,
   foodSafetyValueValidator,
 } from "./lib/foodSafetyValidators";
 import { recordAudit } from "./lib/audit";
@@ -71,6 +73,10 @@ const planItemValidator = v.object({
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
   imageUrl: v.union(v.string(), v.null()),
+  videoStorageId: v.union(v.id("_storage"), v.null()),
+  videoUrl: v.union(v.string(), v.null()),
+  toolProductIds: v.array(v.id("products")),
+  tools: v.array(foodSafetyToolValidator),
   fields: v.array(foodSafetyFieldValidator),
   responsibleRole: v.union(v.string(), v.null()),
   dueDateKey: v.string(),
@@ -136,7 +142,7 @@ async function mergedPlan(
       if (version) versionsById.set(version._id, version);
     }
     if (!version || version.organizationId !== organizationId || version.templateId !== entry.templateId) {
-      throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+      throw new ConvexError("Kontrolversionen blev ikke fundet");
     }
     return version;
   };
@@ -246,16 +252,20 @@ export const listToday = query({
         }
       }
     }
-    const imageIds = [...new Set([...items, ...backlog].flatMap((item) => item.imageStorageId ? [item.imageStorageId] : []))];
-    const imageUrls = new Map(await Promise.all(imageIds.map(async (id) => [id, await ctx.storage.getUrl(id)] as const)));
+    // Several days of one kontrol share a version, so its media is resolved once.
+    const media = new Map<string, Promise<Awaited<ReturnType<typeof versionMedia>>>>();
+    const withMedia = (list: typeof items) => Promise.all(list.map(async (item) => {
+      if (!media.has(item.templateVersionId)) media.set(item.templateVersionId, versionMedia(ctx, item));
+      return { ...item, ...(await media.get(item.templateVersionId)!) };
+    }));
     return {
       locationId,
       locationName: location.name,
       dateKey,
       timeZone,
       lateSubmissionDays: configuration.lateSubmissionDays,
-      items: items.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
-      backlog: backlog.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
+      items: await withMedia(items),
+      backlog: await withMedia(backlog),
       truncated,
     };
   },
@@ -273,7 +283,7 @@ async function validateValues(
   const attachmentIds: Id<"_storage">[] = [];
   for (const value of values) {
     const field = fieldsByKey.get(value.key);
-    if (!field) throw new ConvexError("Et felt findes ikke i denne egenkontrol");
+    if (!field) throw new ConvexError("Et felt findes ikke i denne kontrol");
     if (seen.has(value.key)) throw new ConvexError("Et felt er registreret flere gange");
     seen.add(value.key);
     if (field.type !== value.type) throw new ConvexError(`Feltet ${field.label} har en ugyldig type`);
@@ -303,7 +313,7 @@ async function validateValues(
       throw new ConvexError("Filen blev fjernet fra en tidligere rettelse. Upload filen igen");
     }
     if (existing.some((attachment) => attachment.organizationId !== organizationId || existingEntryId === undefined || attachment.entryId !== existingEntryId)) {
-      throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
+      throw new ConvexError("Filen er allerede knyttet til en kontrol");
     }
   }
   return metadata.map((file, index) => {
@@ -372,10 +382,10 @@ async function ensureAttachmentCanBeInserted(
     throw new ConvexError("Filen blev fjernet fra en tidligere rettelse. Upload filen igen");
   }
   if (existing.some((attachment) => attachment.organizationId !== organizationId || attachment.entryId !== entryId)) {
-    throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
+    throw new ConvexError("Filen er allerede knyttet til en kontrol");
   }
   if (existing.length > 0) {
-    throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
+    throw new ConvexError("Filen er allerede knyttet til en kontrol");
   }
 }
 
@@ -411,7 +421,7 @@ export const submitFoodSafety = mutation({
         .unique();
       if (existingRequest) {
         if (existingRequest.locationId !== args.locationId || existingRequest.templateId !== args.templateId || existingRequest.dueDateKey !== args.dueDateKey) {
-          throw new ConvexError("Klientanmodningen kan ikke genbruges til en anden egenkontrol");
+          throw new ConvexError("Klientanmodningen kan ikke genbruges til en anden kontrol");
         }
         return { entryId: existingRequest._id, status: existingRequest.status, compliant: existingRequest.compliant };
       }
@@ -421,13 +431,13 @@ export const submitFoodSafety = mutation({
     const now = Date.now();
     const today = dateKeyInZone(now, timeZone);
     const daysBack = dateKeyDifference(args.dueDateKey, today);
-    if (daysBack < 0) throw new ConvexError("Egenkontrollen kan ikke registreres for en fremtidig dato");
-    if (daysBack > configuration.lateSubmissionDays) throw new ConvexError(`Egenkontrollen kan kun registreres op til ${configuration.lateSubmissionDays} dage tilbage`);
+    if (daysBack < 0) throw new ConvexError("Kontrollen kan ikke registreres for en fremtidig dato");
+    if (daysBack > configuration.lateSubmissionDays) throw new ConvexError(`Kontrollen kan kun registreres op til ${configuration.lateSubmissionDays} dage tilbage`);
     const versions = await loadTemplateVersions(ctx, auth.organizationId, args.dueDateKey, args.dueDateKey, timeZone);
     const occurrences = expandFoodSafetyOccurrences({ versions: versions.map(versionInput), locationId: args.locationId, fromDateKey: args.dueDateKey, toDateKey: args.dueDateKey, timeZone });
     const occurrence = occurrenceForTemplate(occurrences, args.templateId);
     const version = versions.find((candidate) => candidate._id === occurrence.templateVersionId);
-    if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Kontrolversionen blev ikke fundet");
     if (args.templateVersionId !== undefined && args.templateVersionId !== version._id) {
       throw new ConvexError("Kontrollen er ændret. Luk den, og åbn den igen for at se de aktuelle instruktioner.");
     }
@@ -435,7 +445,7 @@ export const submitFoodSafety = mutation({
       .query("foodSafetyEntries")
       .withIndex("by_org_location_template_dueDateKey", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).eq("templateId", args.templateId).eq("dueDateKey", args.dueDateKey))
       .unique();
-    if (duplicate) throw new ConvexError("Egenkontrollen er allerede registreret");
+    if (duplicate) throw new ConvexError("Kontrollen er allerede registreret");
     validateControlTimes(args.startedAt, args.endedAt);
     const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version, args.productTemperatures ?? []);
     await validateValues(ctx, auth.organizationId, version.fields, args.values);
@@ -551,11 +561,11 @@ export const editFoodSafety = mutation({
     const auth = await requireFoodSafetyEditor(ctx);
     const human = requireHumanPrincipal(auth);
     const entry = await ctx.db.get("foodSafetyEntries", args.entryId);
-    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Kontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
-    if (entry.status === "approved") throw new ConvexError("En godkendt egenkontrol kan ikke rettes");
+    if (entry.status === "approved") throw new ConvexError("En godkendt kontrol kan ikke rettes");
     const version = await ctx.db.get("foodSafetyTemplateVersions", entry.templateVersionId);
-    if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Kontrolversionen blev ikke fundet");
     validateControlTimes(args.startedAt, args.endedAt);
     const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version, args.productTemperatures ?? entry.productTemperatures ?? [], entry.productTemperatures);
     await validateValues(ctx, auth.organizationId, version.fields, args.values, entry._id);
@@ -627,10 +637,10 @@ export const recordCorrectiveAction = mutation({
     const auth = await requireFoodSafetyCorrector(ctx);
     const human = requireHumanPrincipal(auth);
     const entry = await ctx.db.get("foodSafetyEntries", args.entryId);
-    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Kontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
     if (!entry.hasDeviation) throw new ConvexError("Registreringen har ingen afvigelse");
-    if (entry.status === "approved") throw new ConvexError("En godkendt egenkontrol kan ikke ændres");
+    if (entry.status === "approved") throw new ConvexError("En godkendt kontrol kan ikke ændres");
     const description = optionalText(args.description, "Den korrigerende handling");
     if (!description) throw new ConvexError("Beskriv den korrigerende handling");
     if (entry.correctiveAction && !args.reason) throw new ConvexError("Angiv en begrundelse");
@@ -657,13 +667,13 @@ export const approveFoodSafety = mutation({
     const auth = await requireFoodSafetyApprover(ctx);
     const human = requireHumanPrincipal(auth);
     const entry = await ctx.db.get("foodSafetyEntries", args.entryId);
-    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Kontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
-    if (entry.status === "approved") throw new ConvexError("Egenkontrollen er allerede godkendt");
+    if (entry.status === "approved") throw new ConvexError("Kontrollen er allerede godkendt");
     if (entry.followUp === "open") throw new ConvexError("Afvigelsen skal følges op, før kontrollen kan godkendes");
     const configuration = await getFoodSafetyConfiguration(ctx, auth.organizationId);
     if (configuration.requireSecondPersonApproval && entry.performedBy === human.userId && !hasPermission(auth.role, auth.permissions, "foodSafety.manage")) {
-      throw new ConvexError("En anden person skal godkende egenkontrollen");
+      throw new ConvexError("En anden person skal godkende kontrollen");
     }
     await appendRevision(ctx, human, entry, {
       values: entry.values,

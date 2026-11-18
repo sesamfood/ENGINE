@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "convex/react";
-import Image from "next/image";
+import { InstructionMedia } from "./instruction-media";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -178,14 +178,14 @@ export function FoodSafetyForm({
       toast.success(
         result.status === "deviation"
           ? "Afvigelsen er registreret og skal følges op"
-          : "Egenkontrollen er registreret",
+          : "Kontrollen er registreret",
       );
       onSaved();
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "Egenkontrollen kunne ikke registreres. Prøv igen.",
+          "Kontrollen kunne ikke registreres. Prøv igen.",
         ),
       );
     } finally {
@@ -225,18 +225,7 @@ export function FoodSafetyForm({
           </CardTitle>
         </CardHeader>
         <CardContent appearance="stacked" className="flex flex-col">
-          {item.imageUrl ? (
-            <div className="relative h-64 w-full">
-              <Image
-                src={item.imageUrl}
-                alt={`Billede af ${item.name}`}
-                fill
-                unoptimized
-                sizes="(max-width: 768px) 100vw, 50vw"
-                className="rounded-lg object-contain"
-              />
-            </div>
-          ) : null}
+          <InstructionMedia name={item.name} imageUrl={item.imageUrl} videoUrl={item.videoUrl} tools={item.tools} />
           <div className="whitespace-pre-wrap break-words">
             {item.instructions ? (
               <InstructionContent value={item.instructions} />
@@ -349,7 +338,7 @@ export function FoodSafetyForm({
               disabled={saving || Boolean(uploading)}
             >
               {saving ? <Spinner data-icon="inline-start" /> : null}
-              {hasDeviation ? "Registrér afvigelse" : "Registrér egenkontrol"}
+              {hasDeviation ? "Registrér afvigelse" : "Registrér kontrol"}
             </Button>
           </CardFooter>
         ) : null}

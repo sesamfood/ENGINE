@@ -100,17 +100,17 @@ async function documentationSnapshot(ctx: QueryCtx, entry: Doc<"foodSafetyEntrie
   const snapshot = await ctx.db.query("foodSafetyEntryRevisions")
     .withIndex("by_organizationId_and_entryId_and_at_and_revision", (q) => q.eq("organizationId", entry.organizationId).eq("entryId", entry._id).lte("at", generatedAt))
     .order("desc").first();
-  if (!snapshot) throw new ConvexError("Egenkontrolrevisionen blev ikke fundet");
+  if (!snapshot) throw new ConvexError("Kontrolrevisionen blev ikke fundet");
   return snapshot;
 }
 
 async function recordForDocumentation(ctx: QueryCtx, entry: Doc<"foodSafetyEntries">, organizationId: string, timeZone: string, generatedAt: number) {
   const version = await ctx.db.get("foodSafetyTemplateVersions", entry.templateVersionId);
-  if (!version || version.organizationId !== organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+  if (!version || version.organizationId !== organizationId) throw new ConvexError("Kontrolversionen blev ikke fundet");
   const snapshot = await documentationSnapshot(ctx, entry, generatedAt);
   const history = await revisionBatch(ctx, organizationId, entry._id, 0, snapshot.revision, 1);
   const first = history.revisions[0];
-  if (!first) throw new ConvexError("Egenkontrolrevisionen blev ikke fundet");
+  if (!first) throw new ConvexError("Kontrolrevisionen blev ikke fundet");
   return {
     id: entry._id, locationName: entry.locationName, dueDateKey: entry.dueDateKey,
     dueAt: entry.dueAt, performedAt: entry.performedAt, name: entry.name,
@@ -136,7 +136,7 @@ export const listDocumentationHistory = query({
     const auth = await requireFoodSafetyExporter(ctx);
     requireFiniteNow(args.generatedAt);
     const entry = await ctx.db.get("foodSafetyEntries", args.entryId);
-    if (!entry || entry.organizationId !== auth.organizationId || entry.performedAt > args.generatedAt) throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!entry || entry.organizationId !== auth.organizationId || entry.performedAt > args.generatedAt) throw new ConvexError("Kontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
     const snapshot = await documentationSnapshot(ctx, entry, args.generatedAt);
     const history = await revisionBatch(ctx, auth.organizationId, entry._id, args.afterRevision, snapshot.revision);

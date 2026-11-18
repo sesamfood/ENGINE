@@ -43,7 +43,7 @@ export function FoodSafetyDetail({ templateId, locationId, dateKey }: {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href={backHref} />}>
-          <ArrowLeftIcon data-icon="inline-start" />Tilbage til egenkontrol
+          <ArrowLeftIcon data-icon="inline-start" />Tilbage til Food safety
         </Button>
         {location ? <p className="text-sm text-muted-foreground">{location.name}</p> : null}
       </div>

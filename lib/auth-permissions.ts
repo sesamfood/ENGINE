@@ -83,13 +83,13 @@ export const permissionCatalog = [
     ],
   },
   {
-    group: "Egenkontrol",
+    group: "Food safety",
     permissions: [
-      { id: "foodSafety.perform", label: "Udføre egenkontroller" },
+      { id: "foodSafety.perform", label: "Udføre kontroller" },
       { id: "foodSafety.correct", label: "Registrere korrigerende handlinger" },
-      { id: "foodSafety.view", label: "Se tidligere egenkontroller" },
-      { id: "foodSafety.approve", label: "Godkende egenkontroller" },
-      { id: "foodSafety.edit", label: "Rette indsendte egenkontroller" },
+      { id: "foodSafety.view", label: "Se tidligere kontroller" },
+      { id: "foodSafety.approve", label: "Godkende kontroller" },
+      { id: "foodSafety.edit", label: "Rette indsendte kontroller" },
       { id: "foodSafety.export", label: "Eksportere kontroldokumentation" },
     ],
   },
@@ -167,7 +167,7 @@ export const permissionCatalog = [
       { id: "locations.manage", label: "Administrere lokationer" },
       { id: "count.settings", label: "Administrere Count-indstillinger" },
       { id: "waste.settings", label: "Administrere Waste-indstillinger" },
-      { id: "foodSafety.manage", label: "Administrere egenkontroller" },
+      { id: "foodSafety.manage", label: "Administrere kontroller" },
       { id: "kiosk.dayTasks.manage", label: "Administrere dagsopgaver" },
       {
         id: "organization.settings",
@@ -207,7 +207,6 @@ export const defaultRolePermissions: Record<
       id !== "integrations.manage" &&
       id !== "apiKeys.manage" &&
       id !== "locations.manage" &&
-      id !== "foodSafety.manage" &&
       id !== "members.manage" &&
       id !== "roles.manage" &&
       id !== "staffFood.manage" &&

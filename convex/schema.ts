@@ -2393,9 +2393,13 @@ export default defineSchema({
     name: v.string(),
     description: v.string(),
     instructions: v.optional(v.string()),
+    // A kontrol shows either a picture or a video.
     imageStorageId: v.optional(v.id("_storage")),
+    videoStorageId: v.optional(v.id("_storage")),
     controlType: foodSafetyControlTypeValidator,
     productTemperaturesEnabled: v.optional(v.boolean()),
+    // Cleaning products used by a cleaning kontrol.
+    toolProductIds: v.optional(v.array(v.id("products"))),
     schedule: foodSafetyScheduleValidator,
     startMinuteOfDay: v.optional(v.number()),
     dueMinuteOfDay: v.optional(v.number()),
@@ -2411,6 +2415,7 @@ export default defineSchema({
   })
     .index("by_legacyId", ["legacyId"])
     .index("by_imageStorageId", ["imageStorageId"])
+    .index("by_videoStorageId", ["videoStorageId"])
     .index("by_organizationId_and_templateId_and_version", [
       "organizationId", "templateId", "version",
     ])

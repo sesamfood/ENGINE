@@ -7,6 +7,7 @@ import schema from "./schema";
 import betterAuthSchema from "./betterAuth/schema";
 import type { Id } from "./_generated/dataModel";
 import { addDateKey, dateKeyInZone, zonedTimestamp } from "../lib/food-safety";
+import { defaultRolePermissions } from "../lib/auth-permissions";
 
 const modules = import.meta.glob("./**/*.ts");
 const betterAuthModules = import.meta.glob("./betterAuth/**/*.ts");
@@ -102,7 +103,7 @@ test("lokationsscope gælder for både udførte og afledte manglende kontroller"
   await expect(asUser.query(api.foodSafetyDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: south, generatedAt: Date.now() })).rejects.toThrowError("Du har ikke adgang til denne lokation");
 });
 
-test("kiosk kan bruge aktiverede egenkontroldestinationer uden den normale eksporttilladelse", async () => {
+test("kiosk kan bruge aktiverede Food safety-destinationer uden den normale eksporttilladelse", async () => {
   const t = convexTest(schema, modules);
   const { org } = await setupAuthOrg(t);
   const { north, south } = await seedLocations(t, org._id);
@@ -251,6 +252,12 @@ test("serveren håndhæver afvigelser, immutable revisioner og fire øjne", asyn
   const { north } = await seedLocations(t, org._id);
   const performer = await createUser(t, org._id, "manager", 3);
   const approver = await createUser(t, org._id, "manager", 4);
+  // Users who manage kontroller may approve their own, so the managers here do not.
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role: "manager",
+    reason: "Testændring",
+    permissions: defaultRolePermissions.manager.filter((permission) => permission !== "foodSafety.manage"),
+  });
   const deviationTemplate = await seedTemplate(t, org._id, north, { name: "Afvigende temperatur", max: 5 });
   const dateKey = today();
   await expect(performer.asUser.mutation(api.foodSafety.submitFoodSafety, { ...controlTimes(), locationId: north, templateId: deviationTemplate.templateId, dueDateKey: dateKey, values: values(6) })).rejects.toThrowError("Beskriv afvigelsen");
@@ -309,7 +316,7 @@ test("standardfristen accepterer syv dage og afviser otte dage", async () => {
   await expect(asUser.mutation(api.foodSafety.submitFoodSafety, { ...controlTimes(), locationId: north, templateId: template.templateId, dueDateKey: addDateKey(dateKey, -8), values: values(4) })).rejects.toThrowError("op til 7 dage tilbage");
 });
 
-test("den aktive egenkontrolgrænse afviser kontrol nummer 201", async () => {
+test("den aktive kontrolgrænse afviser kontrol nummer 201", async () => {
   const t = convexTest(schema, modules);
   const { org, asUser } = await setupAuthOrg(t);
   await t.run(async (ctx) => {
@@ -463,7 +470,7 @@ test("en templateændring ændrer ikke den første registrering eller dens revis
   expect(secondRecord?.fields[0]?.label).toBe("Ny temperatur");
 });
 
-test("count lock følger egenkontrolindstillingen i begge retninger", async () => {
+test("count lock følger Food safety-indstillingen i begge retninger", async () => {
   const t = convexTest(schema, modules);
   const { org, asUser } = await setupAuthOrg(t);
   const { north } = await seedLocations(t, org._id);
@@ -478,7 +485,7 @@ test("count lock følger egenkontrolindstillingen i begge retninger", async () =
     await ctx.db.insert("countSettings", { organizationId: org._id, lockOtherFeaturesDuringCount: true, requireCountBeforeOpening: true, countSchedule: { type: "monthly", day: Number(dateKey.slice(8)) } });
     await ctx.db.insert("counts", { organizationId: org._id, locationId: north, periodKey: dateKey.slice(0, 7), status: "open", createdBy: "test" });
   });
-  await asUser.mutation(api.foodSafetyTemplates.saveSettings, { lateSubmissionDays: 7, requireSecondPersonApproval: true, blockDuringCount: false, reason: "Egenkontrol skal være tilgængelig" });
+  await asUser.mutation(api.foodSafetyTemplates.saveSettings, { lateSubmissionDays: 7, requireSecondPersonApproval: true, blockDuringCount: false, reason: "Food safety skal være tilgængelig" });
   await expect(asUser.mutation(api.foodSafety.submitFoodSafety, { ...controlTimes(), locationId: north, templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "count-unlocked" })).resolves.toMatchObject({ status: "completed" });
   const secondTemplate = await seedTemplate(t, org._id, north, { name: "Optællingslås" });
   await asUser.mutation(api.foodSafetyTemplates.saveSettings, { lateSubmissionDays: 7, requireSecondPersonApproval: true, blockDuringCount: true, reason: "Test af optællingslås" });

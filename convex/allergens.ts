@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
-import { requireAllergenViewer, requireLocationAccess } from "./lib/auth";
+import { requireFoodSafetyReader, requireLocationAccess } from "./lib/auth";
 import { allergenValidator, createAllergenResolver } from "./lib/allergens";
 import { getLocationProductAccess, locationHasProduct } from "./lib/locationProducts";
 import { requireOrganizationLocation } from "./lib/locations";
@@ -23,7 +23,7 @@ export const listForLocation = query({
     truncated: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const auth = await requireAllergenViewer(ctx);
+    const auth = await requireFoodSafetyReader(ctx, "foodSafety.allergens");
     const { organizationId } = auth;
     requireLocationAccess(auth, args.locationId);
     await requireOrganizationLocation(ctx, organizationId, args.locationId);

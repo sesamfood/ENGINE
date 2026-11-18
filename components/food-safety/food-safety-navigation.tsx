@@ -54,7 +54,7 @@ export function FoodSafetyNavigation() {
     <AppBottomBar>
       <div className="mx-auto w-full max-w-(--container-page)">
         <SectionNav
-          label="Egenkontrolsektioner"
+          label="Food safety-sektioner"
           items={visible.map(({ href, label, icon }) => ({ href, label, icon, active: href === active?.href }))}
         />
       </div>

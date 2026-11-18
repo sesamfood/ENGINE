@@ -41,7 +41,7 @@ export const feedbackAreas = [
   {
     id: "foodSafety",
     englishLabel: "Food safety",
-    label: "Egenkontrol",
+    label: "Food safety",
     pathPrefix: "/food-safety",
     permissions: ["foodSafety.perform", "foodSafety.view", "foodSafety.export"],
   },

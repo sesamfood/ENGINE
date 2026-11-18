@@ -618,7 +618,7 @@ export function InspectionDocumentation() {
         })),
       });
       downloadBytes(
-        `egenkontrol-${exportName}-${fromDateKey}-${toDateKey}.pdf`,
+        `food-safety-${exportName}-${fromDateKey}-${toDateKey}.pdf`,
         pdf,
         "application/pdf",
       );
@@ -641,13 +641,13 @@ export function InspectionDocumentation() {
       return;
     }
     downloadCsv(
-      `egenkontrol-${exportName}-${fromDateKey}-${toDateKey}.csv`,
+      `food-safety-${exportName}-${fromDateKey}-${toDateKey}.csv`,
       [
         "Dato",
         "Tidspunkt",
         "Starttidspunkt",
         "Sluttidspunkt",
-        "Egenkontrol",
+        "Kontrol",
         "Kontroltype",
         "Lokation",
         "Udført af",

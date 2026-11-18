@@ -6,6 +6,7 @@ import {
 import { ConvexError, v } from "convex/values";
 import { systemRoleKeys, systemRoleNames } from "../lib/auth-permissions";
 import { instructionText, MAX_INSTRUCTION_LENGTH } from "../lib/food-safety-instructions";
+import { MAX_FOOD_SAFETY_VIDEO_BYTES } from "../lib/food-safety-video";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
@@ -40,8 +41,10 @@ const versionFieldsValidator = v.object({
   description: v.string(),
   instructions: v.optional(v.string()),
   imageStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+  videoStorageId: v.optional(v.union(v.id("_storage"), v.null())),
   controlType: foodSafetyControlTypeValidator,
   productTemperaturesEnabled: v.optional(v.boolean()),
+  toolProductIds: v.optional(v.array(v.id("products"))),
   schedule: foodSafetyScheduleValidator,
   startMinuteOfDay: v.optional(v.number()),
   dueMinuteOfDay: v.optional(v.number()),
@@ -63,8 +66,11 @@ const templateSummaryValidator = v.object({
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
   imageUrl: v.union(v.string(), v.null()),
+  videoStorageId: v.union(v.id("_storage"), v.null()),
+  videoUrl: v.union(v.string(), v.null()),
   controlType: foodSafetyControlTypeValidator,
   productTemperaturesEnabled: v.boolean(),
+  toolProductIds: v.array(v.id("products")),
   schedule: foodSafetyScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
   dueMinuteOfDay: v.union(v.number(), v.null()),
@@ -84,8 +90,10 @@ const versionOutputValidator = v.object({
   description: v.string(),
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
+  videoStorageId: v.union(v.id("_storage"), v.null()),
   controlType: foodSafetyControlTypeValidator,
   productTemperaturesEnabled: v.boolean(),
+  toolProductIds: v.array(v.id("products")),
   schedule: foodSafetyScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
   dueMinuteOfDay: v.union(v.number(), v.null()),
@@ -195,8 +203,10 @@ type VersionFields = {
   description: string;
   instructions?: string;
   imageStorageId?: Id<"_storage"> | null;
+  videoStorageId?: Id<"_storage"> | null;
   controlType: Doc<"foodSafetyTemplateVersions">["controlType"];
   productTemperaturesEnabled?: boolean;
+  toolProductIds?: Id<"products">[];
   schedule: Doc<"foodSafetyTemplateVersions">["schedule"];
   startMinuteOfDay?: number;
   dueMinuteOfDay?: number;
@@ -218,6 +228,32 @@ async function validateImage(
   }
   await claimStorageForOrganization(ctx, organizationId, imageStorageId);
   return imageStorageId;
+}
+
+async function validateVideo(
+  ctx: MutationCtx,
+  organizationId: string,
+  videoStorageId: Id<"_storage"> | null | undefined,
+) {
+  if (!videoStorageId) return undefined;
+  const file = await ctx.db.system.get("_storage", videoStorageId);
+  if (!file?.contentType?.startsWith("video/") || file.size > MAX_FOOD_SAFETY_VIDEO_BYTES) {
+    throw new ConvexError("Brug en video på højst 200 MB");
+  }
+  await claimStorageForOrganization(ctx, organizationId, videoStorageId);
+  return videoStorageId;
+}
+
+// Only cleaning kontroller list cleaning products.
+async function validateTools(ctx: MutationCtx, organizationId: string, input: VersionFields) {
+  if (input.controlType !== "cleaning") return [];
+  const toolProductIds = [...new Set(input.toolProductIds ?? [])];
+  if (toolProductIds.length > 30) throw new ConvexError("Vælg højst 30 rengøringsprodukter");
+  const products = await Promise.all(toolProductIds.map((id) => ctx.db.get("products", id)));
+  if (products.some((product) => !product || product.organizationId !== organizationId)) {
+    throw new ConvexError("Et produkt tilhører ikke organisationen");
+  }
+  return toolProductIds;
 }
 
 async function validateVersionFields(
@@ -253,8 +289,11 @@ async function validateVersionFields(
       .unique();
     if (!role) throw new ConvexError("Den ansvarlige rolle findes ikke");
   }
+  if (input.imageStorageId && input.videoStorageId) throw new ConvexError("Vælg enten et billede eller en video");
   const imageStorageId = await validateImage(ctx, organizationId, input.imageStorageId);
-  return { name, normalizedName, description, instructions, imageStorageId, responsibleRole, productTemperaturesEnabled: allowsProductTemperatures(input) };
+  const videoStorageId = await validateVideo(ctx, organizationId, input.videoStorageId);
+  const toolProductIds = await validateTools(ctx, organizationId, input);
+  return { name, normalizedName, description, instructions, imageStorageId, videoStorageId, toolProductIds, responsibleRole, productTemperaturesEnabled: allowsProductTemperatures(input) };
 }
 
 async function currentVersion(
@@ -267,7 +306,7 @@ async function currentVersion(
     .query("foodSafetyTemplateVersions")
     .withIndex("by_organizationId_and_templateId_and_version", (q) => q.eq("organizationId", organizationId).eq("templateId", templateId).eq("version", version))
     .unique();
-  if (!row) throw new ConvexError("Egenkontrollen blev ikke fundet");
+  if (!row) throw new ConvexError("Kontrollen blev ikke fundet");
   return row;
 }
 
@@ -279,8 +318,10 @@ function versionOutput(row: Doc<"foodSafetyTemplateVersions">) {
     description: row.description,
     instructions: row.instructions ?? "",
     imageStorageId: row.imageStorageId ?? null,
+    videoStorageId: row.videoStorageId ?? null,
     controlType: row.controlType,
     productTemperaturesEnabled: allowsProductTemperatures(row),
+    toolProductIds: row.toolProductIds ?? [],
     schedule: row.schedule,
     startMinuteOfDay: row.startMinuteOfDay ?? null,
     dueMinuteOfDay: row.dueMinuteOfDay ?? null,
@@ -313,8 +354,11 @@ async function summaryOutput(
     instructions: version.instructions ?? "",
     imageStorageId: version.imageStorageId ?? null,
     imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
+    videoStorageId: version.videoStorageId ?? null,
+    videoUrl: version.videoStorageId ? await ctx.storage.getUrl(version.videoStorageId) : null,
     controlType: version.controlType,
     productTemperaturesEnabled: allowsProductTemperatures(version),
+    toolProductIds: version.toolProductIds ?? [],
     schedule: version.schedule,
     startMinuteOfDay: version.startMinuteOfDay ?? null,
     dueMinuteOfDay: version.dueMinuteOfDay ?? null,
@@ -392,9 +436,9 @@ export const getTemplate = query({
       .query("foodSafetyTemplateVersions")
       .withIndex("by_organizationId_and_templateId_and_version", (q) => q.eq("organizationId", auth.organizationId).eq("templateId", template._id))
       .take(MAX_TEMPLATE_VERSIONS + 1);
-    if (versions.length > MAX_TEMPLATE_VERSIONS) throw new ConvexError("Der er for mange egenkontrolversioner");
+    if (versions.length > MAX_TEMPLATE_VERSIONS) throw new ConvexError("Der er for mange kontrolversioner");
     const current = versions.find((version) => version.version === template.currentVersion);
-    if (!current) throw new ConvexError("Egenkontrollen mangler sin aktuelle version");
+    if (!current) throw new ConvexError("Kontrollen mangler sin aktuelle version");
     return {
       template: await summaryOutput(ctx, template, current),
       versions: versions.sort((a, b) => b.version - a.version).map(versionOutput),
@@ -421,7 +465,7 @@ export const createTemplate = mutation({
       .query("foodSafetyTemplates")
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId).eq("status", "active"))
       .take(MAX_ACTIVE_TEMPLATES + 1);
-    if (activeCount.length >= MAX_ACTIVE_TEMPLATES) throw new ConvexError("Organisationen må højst have 200 aktive egenkontroller");
+    if (activeCount.length >= MAX_ACTIVE_TEMPLATES) throw new ConvexError("Organisationen må højst have 200 aktive kontroller");
     const validated = await validateVersionFields(ctx, auth.organizationId, args);
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName);
     const now = Date.now();
@@ -442,8 +486,10 @@ export const createTemplate = mutation({
       description: validated.description,
       instructions: validated.instructions,
       ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
+      ...(validated.videoStorageId ? { videoStorageId: validated.videoStorageId } : {}),
       controlType: args.controlType,
       productTemperaturesEnabled: validated.productTemperaturesEnabled,
+      ...(validated.toolProductIds.length ? { toolProductIds: validated.toolProductIds } : {}),
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
       ...(args.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: args.dueMinuteOfDay }),
@@ -460,7 +506,7 @@ export const createTemplate = mutation({
       action: "foodSafety.templateCreated",
       entityTable: "foodSafetyTemplates",
       entityId: templateId,
-      summary: `Egenkontrollen ${validated.name} blev oprettet`,
+      summary: `Kontrollen ${validated.name} blev oprettet`,
     });
     return templateId;
   },
@@ -473,13 +519,15 @@ export const updateTemplate = mutation({
     const auth = await requireFoodSafetyManager(ctx);
     const human = requireHumanPrincipal(auth);
     const template = await ctx.db.get("foodSafetyTemplates", args.templateId);
-    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Kontrollen blev ikke fundet");
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const validated = await validateVersionFields(ctx, auth.organizationId, {
       ...args,
       productTemperaturesEnabled: args.productTemperaturesEnabled ?? current.productTemperaturesEnabled,
       instructions: args.instructions ?? current.instructions,
       imageStorageId: args.imageStorageId === undefined ? current.imageStorageId : args.imageStorageId,
+      videoStorageId: args.videoStorageId === undefined ? current.videoStorageId : args.videoStorageId,
+      toolProductIds: args.toolProductIds ?? current.toolProductIds,
     });
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName, template._id);
     const currentKeys = new Set(current.fields.map((field) => field.key));
@@ -507,8 +555,10 @@ export const updateTemplate = mutation({
       description: validated.description,
       instructions: validated.instructions,
       ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
+      ...(validated.videoStorageId ? { videoStorageId: validated.videoStorageId } : {}),
       controlType: args.controlType,
       productTemperaturesEnabled: validated.productTemperaturesEnabled,
+      ...(validated.toolProductIds.length ? { toolProductIds: validated.toolProductIds } : {}),
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
       ...(args.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: args.dueMinuteOfDay }),
@@ -531,7 +581,7 @@ export const updateTemplate = mutation({
       action: "foodSafety.templateUpdated",
       entityTable: "foodSafetyTemplates",
       entityId: template._id,
-      summary: `Egenkontrollen ${validated.name} blev opdateret`,
+      summary: `Kontrollen ${validated.name} blev opdateret`,
       reason,
     });
     return null;
@@ -544,7 +594,7 @@ export const archiveTemplate = mutation({
   handler: async (ctx, args) => {
     const auth = await requireFoodSafetyManager(ctx);
     const template = await ctx.db.get("foodSafetyTemplates", args.templateId);
-    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Kontrollen blev ikke fundet");
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const reason = requireAuditReason(args.reason);
     const now = Math.max(Date.now(), current.validFrom + 1);
@@ -554,7 +604,7 @@ export const archiveTemplate = mutation({
       action: "foodSafety.templateArchived",
       entityTable: "foodSafetyTemplates",
       entityId: template._id,
-      summary: `Egenkontrollen ${template.name} blev arkiveret`,
+      summary: `Kontrollen ${template.name} blev arkiveret`,
       reason,
     });
     return null;
@@ -568,10 +618,11 @@ export const restoreTemplate = mutation({
     const auth = await requireFoodSafetyManager(ctx);
     const human = requireHumanPrincipal(auth);
     const template = await ctx.db.get("foodSafetyTemplates", args.templateId);
-    if (!template || template.organizationId !== auth.organizationId || template.status !== "archived") throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!template || template.organizationId !== auth.organizationId || template.status !== "archived") throw new ConvexError("Kontrollen blev ikke fundet");
     await ensureUniqueName(ctx, auth.organizationId, template.normalizedName, template._id);
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const imageStorageId = await validateImage(ctx, auth.organizationId, current.imageStorageId);
+    const videoStorageId = await validateVideo(ctx, auth.organizationId, current.videoStorageId);
     const reason = requireAuditReason(args.reason);
     const now = Math.max(Date.now(), current.validTo ?? current.validFrom + 1);
     await ctx.db.insert("foodSafetyTemplateVersions", {
@@ -582,8 +633,10 @@ export const restoreTemplate = mutation({
       description: current.description,
       instructions: current.instructions ?? "",
       ...(imageStorageId ? { imageStorageId } : {}),
+      ...(videoStorageId ? { videoStorageId } : {}),
       controlType: current.controlType,
       productTemperaturesEnabled: allowsProductTemperatures(current),
+      ...(current.toolProductIds ? { toolProductIds: current.toolProductIds } : {}),
       schedule: current.schedule,
       ...(current.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: current.startMinuteOfDay }),
       ...(current.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: current.dueMinuteOfDay }),
@@ -601,7 +654,7 @@ export const restoreTemplate = mutation({
       action: "foodSafety.templateRestored",
       entityTable: "foodSafetyTemplates",
       entityId: template._id,
-      summary: `Egenkontrollen ${template.name} blev gendannet`,
+      summary: `Kontrollen ${template.name} blev gendannet`,
       reason,
     });
     return null;
@@ -660,7 +713,7 @@ export const saveSettings = mutation({
       throw new ConvexError("Fristen skal være mellem 0 og 30 dage");
     }
     const hiddenPages = args.hiddenPages && [...new Set(args.hiddenPages)];
-    if (hiddenPages && hiddenPages.length >= 5) {
+    if (hiddenPages && hiddenPages.length >= foodSafetyPageValidator.members.length) {
       throw new ConvexError("Mindst én side skal være slået til");
     }
     const existing = await ctx.db
@@ -692,7 +745,7 @@ export const saveSettings = mutation({
       action: "foodSafety.settingsChanged",
       entityTable: "foodSafetySettings",
       entityId: settingsId,
-      summary: "Egenkontrolindstillingerne blev ændret",
+      summary: "Food safety-indstillingerne blev ændret",
     });
     return null;
   },

@@ -180,7 +180,7 @@ export function expandOccurrences(input: {
       }
     }
     if (occurrences.length > MAX_OCCURRENCES) {
-      throw new Error("Der er for mange egenkontroller i perioden");
+      throw new Error("Der er for mange kontroller i perioden");
     }
   }
 

@@ -9,7 +9,7 @@ export const sidebarItems = [
   { id: "expenses", label: "Udgift" },
   { id: "goodsReceipts", label: "Varemodtagelse" },
   { id: "waste", label: "Waste" },
-  { id: "foodSafety", label: "Egenkontrol" },
+  { id: "foodSafety", label: "Food safety" },
   { id: "staffFood", label: "Staff food" },
   { id: "count", label: "Count" },
   { id: "employees", label: "Medarbejdere" },

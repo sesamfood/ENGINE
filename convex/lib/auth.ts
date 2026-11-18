@@ -848,10 +848,14 @@ export async function requireFoodSafetyAttachmentUploader(ctx: AuthContext) {
   return auth;
 }
 
-export async function requireAllergenViewer(ctx: AuthContext) {
+// Reference pages anyone working with food safety may read.
+export async function requireFoodSafetyReader(
+  ctx: AuthContext,
+  page: "foodSafety.allergens",
+) {
   const auth = await requireOrganization(ctx);
   requireFeatureEnabled(auth, "foodSafety");
-  if (await requireKioskDestination(ctx, auth, "foodSafety.allergens")) return auth;
+  if (await requireKioskDestination(ctx, auth, page)) return auth;
   if (
     !(["foodSafety.perform", "foodSafety.view", "foodSafety.export"] as const).some(
       (permission) => hasPermission(auth.role, auth.permissions, permission),

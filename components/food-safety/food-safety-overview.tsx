@@ -407,7 +407,7 @@ export function FoodSafetyOverview() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Dato</TableHead>
-                    <TableHead>Egenkontrol</TableHead>
+                    <TableHead>Kontrol</TableHead>
                     <TableHead>Lokation</TableHead>
                     <TableHead>Kontroltype</TableHead>
                     <TableHead>Planlagt</TableHead>
@@ -475,7 +475,7 @@ export function FoodSafetyOverview() {
               <EmptyMedia variant="icon">
                 <ClipboardCheckIcon />
               </EmptyMedia>
-              <EmptyTitle>Ingen egenkontroller matcher filtrene</EmptyTitle>
+              <EmptyTitle>Ingen kontroller matcher filtrene</EmptyTitle>
               <EmptyDescription>
                 Prøv en anden periode eller andre filtre.
               </EmptyDescription>
@@ -504,7 +504,7 @@ export function FoodSafetyOverview() {
       >
         <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle className="sr-only">Egenkontroldetaljer</DialogTitle>
+            <DialogTitle className="sr-only">Kontroldetaljer</DialogTitle>
             <DialogDescription className="sr-only">
               Værdier, dokumentation og ændringshistorik.
             </DialogDescription>

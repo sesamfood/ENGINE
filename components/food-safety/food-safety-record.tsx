@@ -2,7 +2,7 @@
 
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import Image from "next/image";
+import { InstructionMedia } from "./instruction-media";
 import {
   PencilIcon,
   SaveIcon,
@@ -137,7 +137,7 @@ export function FoodSafetyRecord({
   if (record === null)
     return (
       <div className="p-6 text-center text-muted-foreground">
-        Egenkontrollen blev ikke fundet.
+        Kontrollen blev ikke fundet.
       </div>
     );
   const currentRecord = record;
@@ -275,12 +275,12 @@ export function FoodSafetyRecord({
     setSaving(true);
     try {
       await approve({ entryId });
-      toast.success("Egenkontrollen er godkendt");
+      toast.success("Kontrollen er godkendt");
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "Egenkontrollen kunne ikke godkendes. Prøv igen.",
+          "Kontrollen kunne ikke godkendes. Prøv igen.",
         ),
       );
     } finally {
@@ -408,7 +408,7 @@ export function FoodSafetyRecord({
                     label="Godkendelse"
                     content={
                       approvalSettings?.requireSecondPersonApproval
-                        ? "En anden person skal godkende kontrollen. Brugere med rettigheden til at administrere egenkontroller kan dog godkende egne registreringer."
+                        ? "En anden person skal godkende kontrollen. Brugere med rettigheden til at administrere kontroller kan dog godkende egne registreringer."
                         : "Denne organisation tillader selv-godkendelse."
                     }
                   />
@@ -425,7 +425,7 @@ export function FoodSafetyRecord({
                     onClick={() => void approveRecord()}
                   >
                     <ShieldCheckIcon data-icon="inline-start" />
-                    Godkend egenkontrol
+                    Godkend kontrol
                   </Button>
                 )}
               </div>
@@ -470,24 +470,13 @@ export function FoodSafetyRecord({
 
       {record.entry.followUp === "open" ? followUpContent : null}
 
-      {record.instructions || record.imageUrl ? (
+      {record.instructions || record.imageUrl || record.videoUrl || record.tools.length ? (
         <Card>
           <CardHeader>
             <CardTitle>Instruktioner</CardTitle>
           </CardHeader>
           <CardContent appearance="stacked" className="flex flex-col">
-            {record.imageUrl ? (
-              <div className="relative h-64 w-full">
-                <Image
-                  src={record.imageUrl}
-                  alt={`Billede af ${record.entry.name}`}
-                  fill
-                  unoptimized
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  className="rounded-lg object-contain"
-                />
-              </div>
-            ) : null}
+            <InstructionMedia name={record.entry.name} imageUrl={record.imageUrl} videoUrl={record.videoUrl} tools={record.tools} />
             {record.instructions ? (
               <div className="whitespace-pre-wrap break-words text-sm">
                 <InstructionContent value={record.instructions} />
@@ -591,7 +580,7 @@ export function FoodSafetyRecord({
       >
         <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Ret egenkontrol</DialogTitle>
+            <DialogTitle>Ret kontrol</DialogTitle>
             <DialogDescription>
               Alle rettelser gemmes som en ny revision. Begrundelsen bliver en
               del af dokumentationen.

@@ -71,7 +71,7 @@ export function FoodSafetySettings() {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
-        <AlertDescription>Du har ikke adgang til at administrere egenkontroller.</AlertDescription>
+        <AlertDescription>Du har ikke adgang til at administrere kontroller.</AlertDescription>
       </Alert>
     );
   }
@@ -92,9 +92,9 @@ export function FoodSafetySettings() {
         blockDuringCount: blockCount,
         hiddenPages,
       });
-      toast.success("Egenkontrolindstillingerne er gemt");
+      toast.success("Food safety-indstillingerne er gemt");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Egenkontrolindstillingerne kunne ikke gemmes. Prøv igen."));
+      toast.error(getUserErrorMessage(error, "Food safety-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -104,7 +104,7 @@ export function FoodSafetySettings() {
     <>
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>Indstillinger for egenkontrol</CardTitle>
+          <CardTitle>Indstillinger for Food safety</CardTitle>
           <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og Count og hvilke sider der vises.</CardDescription>
         </CardHeader>
         <CardContent appearance="spacious" className="flex flex-col">
@@ -112,7 +112,7 @@ export function FoodSafetySettings() {
             <Field>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="food-safety-late-days">Frist for efterregistrering</FieldLabel>
-                <HelpTooltip label="Frist for efterregistrering" content="Hvor mange dage tilbage en egenkontrol må registreres. 0 betyder kun samme dag." />
+                <HelpTooltip label="Frist for efterregistrering" content="Hvor mange dage tilbage en kontrol må registreres. 0 betyder kun samme dag." />
               </div>
               <Input id="food-safety-late-days" type="number" min={0} max={30} value={days} onChange={(event) => setLateSubmissionDays(Number(event.target.value))} className="h-11 max-w-xs" />
             </Field>
@@ -124,11 +124,11 @@ export function FoodSafetySettings() {
               help={{
                 label: "Godkendelse kræver en anden person",
                 content:
-                  "Personen, der udførte kontrollen, kan ikke godkende den. Brugere med rettigheden til at administrere egenkontroller er undtaget.",
+                  "Personen, der udførte kontrollen, kan ikke godkende den. Brugere med rettigheden til at administrere kontroller er undtaget.",
               }}
             />
             <SettingsSwitchField
-              label="Blokér egenkontrol under Count"
+              label="Blokér Food safety under Count"
               id="food-safety-count-lock"
               checked={blockCount}
               onCheckedChange={(checked) => {
@@ -139,14 +139,14 @@ export function FoodSafetySettings() {
                 <FieldDescription
                   appearance={blockCount ? "destructive" : undefined}
                 >
-                  Advarsel: Egenkontroller kan ikke udføres, mens en Count låser
+                  Advarsel: Kontroller kan ikke udføres, mens en Count låser
                   lokationen.
                 </FieldDescription>
               }
               invalid={blockCount}
             />
             <FieldSet>
-              <FieldLegend variant="label">Sider i egenkontrol</FieldLegend>
+              <FieldLegend variant="label">Sider i Food safety</FieldLegend>
               <FieldDescription>Mindst én side skal være slået til.</FieldDescription>
               {pages.map((page) => {
                 const shown = !hiddenPages.includes(page.id);
@@ -176,9 +176,9 @@ export function FoodSafetySettings() {
       <AlertDialog open={confirmBlock} onOpenChange={setConfirmBlock}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Blokér egenkontroller under Count?</AlertDialogTitle>
+            <AlertDialogTitle>Blokér kontroller under Count?</AlertDialogTitle>
             <AlertDialogDescription>
-              Advarsel: Egenkontroller kan ikke udføres, mens en Count låser lokationen.
+              Advarsel: Kontroller kan ikke udføres, mens en Count låser lokationen.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

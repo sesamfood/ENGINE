@@ -90,7 +90,7 @@ export async function loadTemplateVersionsUntil(
     )
     .take(MAX_TEMPLATE_VERSIONS + 1);
   if (rangeVersions.length > MAX_TEMPLATE_VERSIONS) {
-    throw new ConvexError("Der er for mange egenkontrolversioner i perioden");
+    throw new ConvexError("Der er for mange kontrolversioner i perioden");
   }
 
   const templateIds = new Set<Id<"foodSafetyTemplates">>(
@@ -103,7 +103,7 @@ export async function loadTemplateVersionsUntil(
     )
     .take(MAX_ACTIVE_TEMPLATES + 1);
   if (activeTemplates.length > MAX_ACTIVE_TEMPLATES) {
-    throw new ConvexError("Der er for mange aktive egenkontroller");
+    throw new ConvexError("Der er for mange aktive kontroller");
   }
   for (const template of activeTemplates) templateIds.add(template._id);
 
@@ -117,7 +117,7 @@ export async function loadTemplateVersionsUntil(
     )
     .take(MAX_ARCHIVED_TEMPLATES + 1);
   if (archivedTemplates.length > MAX_ARCHIVED_TEMPLATES) {
-    throw new ConvexError("Der er for mange arkiverede egenkontroller");
+    throw new ConvexError("Der er for mange arkiverede kontroller");
   }
   for (const template of archivedTemplates) templateIds.add(template._id);
 
@@ -142,7 +142,7 @@ export async function loadTemplateVersionsUntil(
     if (predecessor) versionsById.set(predecessor._id, predecessor);
   }
   if (versionsById.size > MAX_TEMPLATE_VERSIONS) {
-    throw new ConvexError("Der er for mange egenkontrolversioner i perioden");
+    throw new ConvexError("Der er for mange kontrolversioner i perioden");
   }
   return [...versionsById.values()];
 }
@@ -156,7 +156,7 @@ export function expandFoodSafetyOccurrences(input: Parameters<typeof expandOccur
       new Set([
         "Datointervallet er ugyldigt",
         "Datointervallet er for langt",
-        "Der er for mange egenkontroller i perioden",
+        "Der er for mange kontroller i perioden",
       ]).has(error.message)
     ) {
       throw new ConvexError(error.message);
@@ -202,7 +202,7 @@ export function occurrenceForTemplate(
   templateId: Id<"foodSafetyTemplates">,
 ) {
   const occurrence = occurrences.find((item) => item.templateId === templateId);
-  if (!occurrence) throw new ConvexError("Egenkontrollen er ikke planlagt på denne dato");
+  if (!occurrence) throw new ConvexError("Kontrollen er ikke planlagt på denne dato");
   return occurrence;
 }
 
@@ -269,6 +269,23 @@ export function occurrenceForEntry(
   };
 }
 
+// The picture, video and cleaning products a kontrol shows with its instructions.
+export async function versionMedia(
+  ctx: QueryCtx,
+  version: { imageStorageId: Id<"_storage"> | null; videoStorageId: Id<"_storage"> | null; toolProductIds: Id<"products">[] },
+) {
+  const products = await Promise.all(version.toolProductIds.map((id) => ctx.db.get("products", id)));
+  return {
+    imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
+    videoUrl: version.videoStorageId ? await ctx.storage.getUrl(version.videoStorageId) : null,
+    tools: await Promise.all(products.filter((product) => product !== null).map(async (product) => ({
+      id: product._id,
+      name: product.name,
+      imageUrl: product.imageStorageId ? await ctx.storage.getUrl(product.imageStorageId) : null,
+    }))),
+  };
+}
+
 export function planItem(
   occurrence: FoodSafetyOccurrence,
   version: Doc<"foodSafetyTemplateVersions">,
@@ -284,6 +301,8 @@ export function planItem(
     description: version.description,
     instructions: version.instructions ?? "",
     imageStorageId: version.imageStorageId ?? null,
+    videoStorageId: version.videoStorageId ?? null,
+    toolProductIds: version.toolProductIds ?? [],
     fields: version.fields,
     responsibleRole: version.responsibleRole ?? null,
     dueDateKey: occurrence.dueDateKey,
@@ -346,7 +365,7 @@ export async function appendRevision(
       : requireAuditReason(reason);
   const version = await ctx.db.get("foodSafetyTemplateVersions", entry.templateVersionId);
   if (!version || version.organizationId !== actor.organizationId) {
-    throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    throw new ConvexError("Kontrolversionen blev ikke fundet");
   }
   const oldValues = new Map(entry.values.map((value) => [value.key, value]));
   const newValues = new Map(next.values.map((value) => [value.key, value]));
