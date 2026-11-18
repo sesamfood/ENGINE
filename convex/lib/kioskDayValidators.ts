@@ -11,6 +11,16 @@ export const kioskDayTaskValidator = v.object({
   kind: v.optional(v.literal("cashReport")),
 });
 
+// Links saved before the food safety rename use ownChecks.* until migrations.runFoodSafetyRename runs.
+const legacyFoodSafetyLinks = ["today", "overview", "documentation", "allergens", "guidance"].map(
+  (page) => v.literal(`ownChecks.${page}`),
+);
+
+export const storedKioskDayTaskValidator = v.object({
+  ...kioskDayTaskValidator.fields,
+  link: v.optional(v.union(...kioskDestinations.map((page) => v.literal(page.id)), ...legacyFoodSafetyLinks)),
+});
+
 const amount = v.union(v.number(), v.null());
 
 export const cashReportValuesValidator = v.object({

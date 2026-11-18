@@ -5,6 +5,7 @@ import type { DataModel, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { storedFeatures, type FeatureId } from "./lib/features";
 import type { FoodSafetyPage } from "./lib/foodSafetySettings";
+import { normalizeKioskDayTasks } from "./lib/kioskDay";
 import { unitPriceFromLineTotal } from "./integrations/onlinepos/lib/api";
 import { backfillDailyPaymentTypes } from "./lib/salesRollup";
 import { gramsPerUnit } from "../lib/containers";
@@ -372,6 +373,26 @@ export const renameFoodSafetySidebarSettings = migrations.define({
   },
 });
 
+export const renameFoodSafetyKioskDayTasks = migrations.define({
+  table: "kioskDayTasks",
+  migrateOne: (_ctx, row) => {
+    const hasLegacyLink = (tasks: typeof row.endOfDay) =>
+      tasks.some((task) => typeof task !== "string" && task.link?.startsWith("ownChecks."));
+    if (!hasLegacyLink(row.endOfDay) && !hasLegacyLink(row.startOfDay)) return;
+    return {
+      endOfDay: normalizeKioskDayTasks(row.endOfDay),
+      startOfDay: normalizeKioskDayTasks(row.startOfDay),
+    };
+  },
+});
+
+export const renameFoodSafetyFeedback = migrations.define({
+  table: "feedbackSubmissions",
+  migrateOne: (_ctx, row) => {
+    if (row.area === "ownChecks") return { area: "foodSafety" };
+  },
+});
+
 // Ids first so access survives the deploy; then tables in dependency order; audit last.
 export const runFoodSafetyRename = migrations.runner([
   internal.migrations.renameFoodSafetyRolePermissions,
@@ -383,6 +404,8 @@ export const runFoodSafetyRename = migrations.runner([
   internal.migrations.renameFoodSafetyFeatureSettings,
   internal.migrations.renameFoodSafetyKioskSettings,
   internal.migrations.renameFoodSafetySidebarSettings,
+  internal.migrations.renameFoodSafetyKioskDayTasks,
+  internal.migrations.renameFoodSafetyFeedback,
   internal.migrations.copyFoodSafetyTemplates,
   internal.migrations.copyFoodSafetyTemplateVersions,
   internal.migrations.copyFoodSafetyEntries,

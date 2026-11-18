@@ -2,7 +2,7 @@ import type { Infer } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { closedPeriodAround } from "../../lib/count-window";
-import { kioskDayTaskValidator } from "./kioskDayValidators";
+import { kioskDayTaskValidator, storedKioskDayTaskValidator } from "./kioskDayValidators";
 import { getLocationOpeningHours } from "./countWindow";
 import { requireOrganizationLocation } from "./locations";
 
@@ -12,8 +12,14 @@ export type KioskDayPhase = "endOfDay" | "startOfDay";
 type KioskDayTask = Infer<typeof kioskDayTaskValidator>;
 type ClosedPeriod = ReturnType<typeof closedPeriodAround>;
 
-function normalize(tasks: (string | KioskDayTask)[] | undefined): KioskDayTask[] {
-  return (tasks ?? []).map((task) => (typeof task === "string" ? { title: task } : task));
+// Plain strings are tasks saved before descriptions and icons existed.
+export function normalizeKioskDayTasks(tasks: (string | Infer<typeof storedKioskDayTaskValidator>)[] | undefined): KioskDayTask[] {
+  return (tasks ?? []).map((task) => {
+    if (typeof task === "string") return { title: task };
+    if (!task.link) return task as KioskDayTask;
+    // Links saved before the food safety rename point at ownChecks.* pages.
+    return { ...task, link: task.link.replace(/^ownChecks\./, "foodSafety.") as KioskDayTask["link"] };
+  });
 }
 
 export async function getKioskDayTasks(
@@ -27,7 +33,7 @@ export async function getKioskDayTasks(
       q.eq("organizationId", organizationId).eq("locationId", locationId),
     )
     .unique();
-  return { endOfDay: normalize(tasks?.endOfDay), startOfDay: normalize(tasks?.startOfDay) };
+  return { endOfDay: normalizeKioskDayTasks(tasks?.endOfDay), startOfDay: normalizeKioskDayTasks(tasks?.startOfDay) };
 }
 
 export async function latestRun(

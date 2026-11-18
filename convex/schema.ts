@@ -24,7 +24,7 @@ import {
 import {
   cashReportSalesValidator,
   cashReportValuesValidator,
-  kioskDayTaskValidator,
+  storedKioskDayTaskValidator,
 } from "./lib/kioskDayValidators";
 import { countScheduleValidator } from "./lib/countSettings";
 
@@ -2160,8 +2160,8 @@ export default defineSchema({
     organizationId: v.string(),
     locationId: v.id("locations"),
     // Plain strings are tasks saved before descriptions and icons existed.
-    endOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
-    startOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
+    endOfDay: v.array(v.union(v.string(), storedKioskDayTaskValidator)),
+    startOfDay: v.array(v.union(v.string(), storedKioskDayTaskValidator)),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 
