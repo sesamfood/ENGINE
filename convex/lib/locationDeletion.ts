@@ -518,9 +518,9 @@ export function locationDeletionMessage(reason: LocationDeletionBlocker) {
     case "kiosk":
       return "Lokationen er knyttet til en kioskkonto. Flyt eller slet kioskkontoen først";
     case "foodSafetyHistory":
-      return "Lokationen har egenkontrolhistorik og kan ikke slettes";
+      return "Lokationen har kontrolhistorik og kan ikke slettes";
     case "foodSafetyConfiguration":
-      return "Lokationen er valgt i en aktiv egenkontrol og kan ikke slettes";
+      return "Lokationen er valgt i en aktiv kontrol og kan ikke slettes";
     case "apiKeyPolicy":
       return "Lokationen er valgt i en aktiv API-nøgle og kan ikke slettes";
     case "workfeed":

@@ -22,7 +22,7 @@ const baseVersion = {
   validFrom: 0,
 };
 
-describe("egenkontrolplaner", () => {
+describe("kontrolplaner", () => {
   it("holder lokal dato over sommertidsskift", () => {
     const before = zonedTimestamp("2026-03-29", 23 * 60 + 59, "Europe/Copenhagen");
     const after = zonedTimestamp("2026-10-25", 23 * 60 + 59, "Europe/Copenhagen");

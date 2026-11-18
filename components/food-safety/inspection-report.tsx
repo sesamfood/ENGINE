@@ -240,7 +240,7 @@ export function InspectionReport({
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <h2 className="font-heading text-lg font-semibold">
-              Manglende egenkontroller
+              Manglende kontroller
             </h2>
             <Separator className="flex-1" />
           </div>
@@ -250,7 +250,7 @@ export function InspectionReport({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Dato</TableHead>
-                    <TableHead>Egenkontrol</TableHead>
+                    <TableHead>Kontrol</TableHead>
                     <TableHead>Planlagt</TableHead>
                     <TableHead>Ansvarlig rolle</TableHead>
                   </TableRow>

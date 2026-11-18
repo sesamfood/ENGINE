@@ -90,7 +90,7 @@ export async function loadTemplateVersionsUntil(
     )
     .take(MAX_TEMPLATE_VERSIONS + 1);
   if (rangeVersions.length > MAX_TEMPLATE_VERSIONS) {
-    throw new ConvexError("Der er for mange egenkontrolversioner i perioden");
+    throw new ConvexError("Der er for mange kontrolversioner i perioden");
   }
 
   const templateIds = new Set<Id<"foodSafetyTemplates">>(
@@ -103,7 +103,7 @@ export async function loadTemplateVersionsUntil(
     )
     .take(MAX_ACTIVE_TEMPLATES + 1);
   if (activeTemplates.length > MAX_ACTIVE_TEMPLATES) {
-    throw new ConvexError("Der er for mange aktive egenkontroller");
+    throw new ConvexError("Der er for mange aktive kontroller");
   }
   for (const template of activeTemplates) templateIds.add(template._id);
 
@@ -117,7 +117,7 @@ export async function loadTemplateVersionsUntil(
     )
     .take(MAX_ARCHIVED_TEMPLATES + 1);
   if (archivedTemplates.length > MAX_ARCHIVED_TEMPLATES) {
-    throw new ConvexError("Der er for mange arkiverede egenkontroller");
+    throw new ConvexError("Der er for mange arkiverede kontroller");
   }
   for (const template of archivedTemplates) templateIds.add(template._id);
 
@@ -142,7 +142,7 @@ export async function loadTemplateVersionsUntil(
     if (predecessor) versionsById.set(predecessor._id, predecessor);
   }
   if (versionsById.size > MAX_TEMPLATE_VERSIONS) {
-    throw new ConvexError("Der er for mange egenkontrolversioner i perioden");
+    throw new ConvexError("Der er for mange kontrolversioner i perioden");
   }
   return [...versionsById.values()];
 }
@@ -156,7 +156,7 @@ export function expandFoodSafetyOccurrences(input: Parameters<typeof expandOccur
       new Set([
         "Datointervallet er ugyldigt",
         "Datointervallet er for langt",
-        "Der er for mange egenkontroller i perioden",
+        "Der er for mange kontroller i perioden",
       ]).has(error.message)
     ) {
       throw new ConvexError(error.message);
@@ -202,7 +202,7 @@ export function occurrenceForTemplate(
   templateId: Id<"foodSafetyTemplates">,
 ) {
   const occurrence = occurrences.find((item) => item.templateId === templateId);
-  if (!occurrence) throw new ConvexError("Egenkontrollen er ikke planlagt på denne dato");
+  if (!occurrence) throw new ConvexError("Kontrollen er ikke planlagt på denne dato");
   return occurrence;
 }
 
@@ -346,7 +346,7 @@ export async function appendRevision(
       : requireAuditReason(reason);
   const version = await ctx.db.get("foodSafetyTemplateVersions", entry.templateVersionId);
   if (!version || version.organizationId !== actor.organizationId) {
-    throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    throw new ConvexError("Kontrolversionen blev ikke fundet");
   }
   const oldValues = new Map(entry.values.map((value) => [value.key, value]));
   const newValues = new Map(next.values.map((value) => [value.key, value]));

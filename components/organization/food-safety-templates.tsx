@@ -383,12 +383,12 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
         locationIds: draft.locationIds,
         ...(draft.responsibleRole.trim() ? { responsibleRole: draft.responsibleRole.trim() } : {}),
       };
-      if (mode && mode !== "new") await updateTemplate({ ...payload, templateId: mode.id, reason: "Opdatering af egenkontrol", removedFieldKeys: draft.originalFieldKeys.filter((key) => !draft.fields.some((field) => field.key === key)) });
+      if (mode && mode !== "new") await updateTemplate({ ...payload, templateId: mode.id, reason: "Opdatering af kontrol", removedFieldKeys: draft.originalFieldKeys.filter((key) => !draft.fields.some((field) => field.key === key)) });
       else await createTemplate(payload);
-      toast.success(mode && mode !== "new" ? "Egenkontrollen er opdateret" : "Egenkontrollen er oprettet");
+      toast.success(mode && mode !== "new" ? "Kontrollen er opdateret" : "Kontrollen er oprettet");
       onSaved();
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Egenkontrollen kunne ikke opdateres. Prøv igen."));
+      toast.error(getUserErrorMessage(error, "Kontrollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -414,7 +414,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
     <Dialog open={Boolean(mode)} onOpenChange={(open) => !open && !saving && onClose()}>
       <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>{mode === "new" ? "Ny egenkontrol" : "Redigér egenkontrol"}</DialogTitle>
+          <DialogTitle>{mode === "new" ? "Ny kontrol" : "Redigér kontrol"}</DialogTitle>
           <DialogDescription>Definér felter, frekvens og hvilke lokationer kontrollen gælder for.</DialogDescription>
         </DialogHeader>
         <form onSubmit={save} inert={saving} aria-busy={saving} className="flex flex-col gap-6">
@@ -524,7 +524,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
           <FieldEditor draft={draft} setDraft={setDraft} disabled={saving} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Annullér</Button>
-            <Button type="submit" size="lg" disabled={saving}>{saving ? <Spinner data-icon="inline-start" /> : null}Gem egenkontrol</Button>
+            <Button type="submit" size="lg" disabled={saving}>{saving ? <Spinner data-icon="inline-start" /> : null}Gem kontrol</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -552,7 +552,7 @@ export function FoodSafetyTemplates() {
 
   if (!access || (canManage && activeTemplates.status === "LoadingFirstPage")) return <CardGridSkeleton />;
   if (!canManage) {
-    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at administrere egenkontroller.</AlertDescription></Alert>;
+    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at administrere kontroller.</AlertDescription></Alert>;
   }
 
   async function completeAction() {
@@ -564,11 +564,11 @@ export function FoodSafetyTemplates() {
     try {
       if (action.type === "archive") await archiveTemplate({ templateId: action.template.id, reason: actionReason });
       else await restoreTemplate({ templateId: action.template.id, reason: actionReason });
-      toast.success(action.type === "archive" ? "Egenkontrollen er arkiveret" : "Egenkontrollen er gendannet");
+      toast.success(action.type === "archive" ? "Kontrollen er arkiveret" : "Kontrollen er gendannet");
       setAction(null);
       setActionReason("");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Egenkontrollen kunne ikke opdateres. Prøv igen."));
+      toast.error(getUserErrorMessage(error, "Kontrollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setActionPending(false);
     }
@@ -579,22 +579,22 @@ export function FoodSafetyTemplates() {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div><CardTitle>Egenkontroller</CardTitle><CardDescription>Versioner gemmes, så historiske kontroller altid bruger de rigtige felter og grænser.</CardDescription></div>
-            <div className="flex flex-wrap gap-2"><Button type="button" size="lg" onClick={() => setEditor("new")}><PlusIcon data-icon="inline-start" />Ny egenkontrol</Button><Button type="button" variant="outline" onClick={() => setIncludeArchived((current) => !current)}>{includeArchived ? "Skjul arkiverede" : "Vis arkiverede"}</Button></div>
+            <div><CardTitle>Kontroller</CardTitle><CardDescription>Versioner gemmes, så historiske kontroller altid bruger de rigtige felter og grænser.</CardDescription></div>
+            <div className="flex flex-wrap gap-2"><Button type="button" size="lg" onClick={() => setEditor("new")}><PlusIcon data-icon="inline-start" />Ny kontrol</Button><Button type="button" variant="outline" onClick={() => setIncludeArchived((current) => !current)}>{includeArchived ? "Skjul arkiverede" : "Vis arkiverede"}</Button></div>
           </div>
         </CardHeader>
         <CardContent appearance="spacious" className="flex flex-col">
           <section className="flex flex-col gap-3">
-            <h3 className="font-medium">Aktive egenkontroller</h3>
-            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen aktive egenkontroller endnu.</Empty>}
+            <h3 className="font-medium">Aktive kontroller</h3>
+            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen aktive kontroller endnu.</Empty>}
             {activeTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => activeTemplates.loadMore(50)}>Vis flere aktive</Button> : null}
-            {activeTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere aktive egenkontroller…</div> : null}
+            {activeTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere aktive kontroller…</div> : null}
           </section>
           {includeArchived ? <section className="flex flex-col gap-3">
-            <h3 className="font-medium">Arkiverede egenkontroller</h3>
-            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen arkiverede egenkontroller endnu.</Empty>}
+            <h3 className="font-medium">Arkiverede kontroller</h3>
+            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede kontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen arkiverede kontroller endnu.</Empty>}
             {archivedTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => archivedTemplates.loadMore(50)}>Vis flere arkiverede</Button> : null}
-            {archivedTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere arkiverede egenkontroller…</div> : null}
+            {archivedTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere arkiverede kontroller…</div> : null}
           </section> : null}
         </CardContent>
       </Card>
@@ -609,7 +609,7 @@ export function FoodSafetyTemplates() {
       ) : null}
       <AlertDialog open={Boolean(action)} onOpenChange={(open) => !open && setAction(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>{action?.type === "archive" ? "Arkivér egenkontrollen?" : "Gendan egenkontrollen?"}</AlertDialogTitle><AlertDialogDescription>{action?.type === "archive" ? "Nye datoer får ikke længere planlagt denne kontrol. Historikken bevares." : "Kontrollen bliver planlagt igen fra den nye versions gyldighed."}</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>{action?.type === "archive" ? "Arkivér kontrollen?" : "Gendan kontrollen?"}</AlertDialogTitle><AlertDialogDescription>{action?.type === "archive" ? "Nye datoer får ikke længere planlagt denne kontrol. Historikken bevares." : "Kontrollen bliver planlagt igen fra den nye versions gyldighed."}</AlertDialogDescription></AlertDialogHeader>
           <Field><FieldLabel htmlFor="own-template-action-reason">Begrundelse</FieldLabel><Input id="own-template-action-reason" value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder="Angiv en begrundelse" /></Field>
           <AlertDialogFooter><AlertDialogCancel>Annullér</AlertDialogCancel><AlertDialogAction variant={action?.type === "archive" ? "destructive" : "default"} disabled={actionPending} onClick={() => void completeAction()}>{actionPending ? <Spinner data-icon="inline-start" /> : null}{action?.type === "archive" ? "Arkivér" : "Gendan"}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>

@@ -137,7 +137,7 @@ export function FoodSafetyRecord({
   if (record === null)
     return (
       <div className="p-6 text-center text-muted-foreground">
-        Egenkontrollen blev ikke fundet.
+        Kontrollen blev ikke fundet.
       </div>
     );
   const currentRecord = record;
@@ -275,12 +275,12 @@ export function FoodSafetyRecord({
     setSaving(true);
     try {
       await approve({ entryId });
-      toast.success("Egenkontrollen er godkendt");
+      toast.success("Kontrollen er godkendt");
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "Egenkontrollen kunne ikke godkendes. Prøv igen.",
+          "Kontrollen kunne ikke godkendes. Prøv igen.",
         ),
       );
     } finally {
@@ -408,7 +408,7 @@ export function FoodSafetyRecord({
                     label="Godkendelse"
                     content={
                       approvalSettings?.requireSecondPersonApproval
-                        ? "En anden person skal godkende kontrollen. Brugere med rettigheden til at administrere egenkontroller kan dog godkende egne registreringer."
+                        ? "En anden person skal godkende kontrollen. Brugere med rettigheden til at administrere kontroller kan dog godkende egne registreringer."
                         : "Denne organisation tillader selv-godkendelse."
                     }
                   />
@@ -425,7 +425,7 @@ export function FoodSafetyRecord({
                     onClick={() => void approveRecord()}
                   >
                     <ShieldCheckIcon data-icon="inline-start" />
-                    Godkend egenkontrol
+                    Godkend kontrol
                   </Button>
                 )}
               </div>
@@ -591,7 +591,7 @@ export function FoodSafetyRecord({
       >
         <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Ret egenkontrol</DialogTitle>
+            <DialogTitle>Ret kontrol</DialogTitle>
             <DialogDescription>
               Alle rettelser gemmes som en ny revision. Begrundelsen bliver en
               del af dokumentationen.

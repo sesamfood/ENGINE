@@ -6,7 +6,7 @@ export function FoodSafetyHeader() {
   const title = (
     <div className="flex min-w-0 flex-col gap-2">
       <PageTitle>
-        Egenkontrol
+        Foodsafety
       </PageTitle>
     </div>
   );

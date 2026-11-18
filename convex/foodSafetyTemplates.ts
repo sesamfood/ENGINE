@@ -267,7 +267,7 @@ async function currentVersion(
     .query("foodSafetyTemplateVersions")
     .withIndex("by_organizationId_and_templateId_and_version", (q) => q.eq("organizationId", organizationId).eq("templateId", templateId).eq("version", version))
     .unique();
-  if (!row) throw new ConvexError("Egenkontrollen blev ikke fundet");
+  if (!row) throw new ConvexError("Kontrollen blev ikke fundet");
   return row;
 }
 
@@ -392,9 +392,9 @@ export const getTemplate = query({
       .query("foodSafetyTemplateVersions")
       .withIndex("by_organizationId_and_templateId_and_version", (q) => q.eq("organizationId", auth.organizationId).eq("templateId", template._id))
       .take(MAX_TEMPLATE_VERSIONS + 1);
-    if (versions.length > MAX_TEMPLATE_VERSIONS) throw new ConvexError("Der er for mange egenkontrolversioner");
+    if (versions.length > MAX_TEMPLATE_VERSIONS) throw new ConvexError("Der er for mange kontrolversioner");
     const current = versions.find((version) => version.version === template.currentVersion);
-    if (!current) throw new ConvexError("Egenkontrollen mangler sin aktuelle version");
+    if (!current) throw new ConvexError("Kontrollen mangler sin aktuelle version");
     return {
       template: await summaryOutput(ctx, template, current),
       versions: versions.sort((a, b) => b.version - a.version).map(versionOutput),
@@ -421,7 +421,7 @@ export const createTemplate = mutation({
       .query("foodSafetyTemplates")
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId).eq("status", "active"))
       .take(MAX_ACTIVE_TEMPLATES + 1);
-    if (activeCount.length >= MAX_ACTIVE_TEMPLATES) throw new ConvexError("Organisationen må højst have 200 aktive egenkontroller");
+    if (activeCount.length >= MAX_ACTIVE_TEMPLATES) throw new ConvexError("Organisationen må højst have 200 aktive kontroller");
     const validated = await validateVersionFields(ctx, auth.organizationId, args);
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName);
     const now = Date.now();
@@ -460,7 +460,7 @@ export const createTemplate = mutation({
       action: "foodSafety.templateCreated",
       entityTable: "foodSafetyTemplates",
       entityId: templateId,
-      summary: `Egenkontrollen ${validated.name} blev oprettet`,
+      summary: `Kontrollen ${validated.name} blev oprettet`,
     });
     return templateId;
   },
@@ -473,7 +473,7 @@ export const updateTemplate = mutation({
     const auth = await requireFoodSafetyManager(ctx);
     const human = requireHumanPrincipal(auth);
     const template = await ctx.db.get("foodSafetyTemplates", args.templateId);
-    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Kontrollen blev ikke fundet");
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const validated = await validateVersionFields(ctx, auth.organizationId, {
       ...args,
@@ -531,7 +531,7 @@ export const updateTemplate = mutation({
       action: "foodSafety.templateUpdated",
       entityTable: "foodSafetyTemplates",
       entityId: template._id,
-      summary: `Egenkontrollen ${validated.name} blev opdateret`,
+      summary: `Kontrollen ${validated.name} blev opdateret`,
       reason,
     });
     return null;
@@ -544,7 +544,7 @@ export const archiveTemplate = mutation({
   handler: async (ctx, args) => {
     const auth = await requireFoodSafetyManager(ctx);
     const template = await ctx.db.get("foodSafetyTemplates", args.templateId);
-    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Kontrollen blev ikke fundet");
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const reason = requireAuditReason(args.reason);
     const now = Math.max(Date.now(), current.validFrom + 1);
@@ -554,7 +554,7 @@ export const archiveTemplate = mutation({
       action: "foodSafety.templateArchived",
       entityTable: "foodSafetyTemplates",
       entityId: template._id,
-      summary: `Egenkontrollen ${template.name} blev arkiveret`,
+      summary: `Kontrollen ${template.name} blev arkiveret`,
       reason,
     });
     return null;
@@ -568,7 +568,7 @@ export const restoreTemplate = mutation({
     const auth = await requireFoodSafetyManager(ctx);
     const human = requireHumanPrincipal(auth);
     const template = await ctx.db.get("foodSafetyTemplates", args.templateId);
-    if (!template || template.organizationId !== auth.organizationId || template.status !== "archived") throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!template || template.organizationId !== auth.organizationId || template.status !== "archived") throw new ConvexError("Kontrollen blev ikke fundet");
     await ensureUniqueName(ctx, auth.organizationId, template.normalizedName, template._id);
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const imageStorageId = await validateImage(ctx, auth.organizationId, current.imageStorageId);
@@ -601,7 +601,7 @@ export const restoreTemplate = mutation({
       action: "foodSafety.templateRestored",
       entityTable: "foodSafetyTemplates",
       entityId: template._id,
-      summary: `Egenkontrollen ${template.name} blev gendannet`,
+      summary: `Kontrollen ${template.name} blev gendannet`,
       reason,
     });
     return null;
@@ -692,7 +692,7 @@ export const saveSettings = mutation({
       action: "foodSafety.settingsChanged",
       entityTable: "foodSafetySettings",
       entityId: settingsId,
-      summary: "Egenkontrolindstillingerne blev ændret",
+      summary: "Foodsafety-indstillingerne blev ændret",
     });
     return null;
   },

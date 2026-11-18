@@ -35,6 +35,9 @@ export async function getStorageReferences(
     ctx.db.query("foodSafetyTemplateVersions")
       .withIndex("by_imageStorageId", (q) => q.eq("imageStorageId", storageId))
       .take(1),
+    ctx.db.query("foodSafetyCleaningTasks")
+      .withIndex("by_videoStorageId", (q) => q.eq("videoStorageId", storageId))
+      .take(2),
     // Legacy rows keep their files alive until the foodSafety copy migration is verified.
     ctx.db.query("ownCheckAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", storageId))

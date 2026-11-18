@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon, WheatIcon } from "lucide-react";
+import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon, SprayCanIcon, WheatIcon } from "lucide-react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -24,6 +24,7 @@ export function FoodSafetyNavigation() {
     { id: "foodSafety.overview", href: "/food-safety/overview", label: "Oversigt", icon: ListChecksIcon, allowed: canOverview },
     { id: "foodSafety.documentation", href: "/food-safety/documentation", label: "Dokumentation", icon: FileCheck2Icon, allowed: canDocumentation },
     { id: "foodSafety.allergens", href: "/food-safety/allergens", label: "Allergener", icon: WheatIcon, allowed: canAny },
+    { id: "foodSafety.cleaning", href: "/food-safety/cleaning", label: "Cleaning", icon: SprayCanIcon, allowed: canAny },
     { id: "foodSafety.guidance", href: "/food-safety/guidance", label: "Vejledning", icon: BookOpenIcon, allowed: canAny },
   ] as const;
   const visible = sections.filter(
@@ -54,7 +55,7 @@ export function FoodSafetyNavigation() {
     <AppBottomBar>
       <div className="mx-auto w-full max-w-(--container-page)">
         <SectionNav
-          label="Egenkontrolsektioner"
+          label="Foodsafety-sektioner"
           items={visible.map(({ href, label, icon }) => ({ href, label, icon, active: href === active?.href }))}
         />
       </div>

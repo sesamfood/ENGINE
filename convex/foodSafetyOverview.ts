@@ -190,7 +190,7 @@ async function resolveOverviewVersion(
     if (version) versionsById.set(version._id, version);
   }
   if (!version || version.organizationId !== organizationId || version.templateId !== templateId) {
-    throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    throw new ConvexError("Kontrolversionen blev ikke fundet");
   }
   return version;
 }
@@ -419,7 +419,7 @@ export const getFoodSafetyRecord = query({
     if (!entry || entry.organizationId !== auth.organizationId) return null;
     requireLocationAccess(auth, entry.locationId);
     const version = await ctx.db.get("foodSafetyTemplateVersions", entry.templateVersionId);
-    if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Kontrolversionen blev ikke fundet");
     const timeZone = await resolveTimeZone(ctx, auth.organizationId, entry.locationId);
     const history = await revisionBatch(ctx, auth.organizationId, entry._id, 0, entry.revision);
     const attachments = await attachmentsForValues(ctx, auth.organizationId, entry._id, [entry.values, ...history.revisions.map((revision) => revision.values)], entry.revision);
@@ -457,7 +457,7 @@ export const listFoodSafetyHistory = query({
   handler: async (ctx, args) => {
     const auth = await requireFoodSafetyViewer(ctx);
     const entry = await ctx.db.get("foodSafetyEntries", args.entryId);
-    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
+    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Kontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
     const history = await revisionBatch(ctx, auth.organizationId, entry._id, args.afterRevision, entry.revision);
     return {

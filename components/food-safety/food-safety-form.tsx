@@ -178,14 +178,14 @@ export function FoodSafetyForm({
       toast.success(
         result.status === "deviation"
           ? "Afvigelsen er registreret og skal følges op"
-          : "Egenkontrollen er registreret",
+          : "Kontrollen er registreret",
       );
       onSaved();
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "Egenkontrollen kunne ikke registreres. Prøv igen.",
+          "Kontrollen kunne ikke registreres. Prøv igen.",
         ),
       );
     } finally {
@@ -349,7 +349,7 @@ export function FoodSafetyForm({
               disabled={saving || Boolean(uploading)}
             >
               {saving ? <Spinner data-icon="inline-start" /> : null}
-              {hasDeviation ? "Registrér afvigelse" : "Registrér egenkontrol"}
+              {hasDeviation ? "Registrér afvigelse" : "Registrér kontrol"}
             </Button>
           </CardFooter>
         ) : null}

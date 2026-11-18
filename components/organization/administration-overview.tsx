@@ -204,7 +204,7 @@ const categories: AdministrationCategory[] = [
         permissions: ["waste.settings", "organization.settings"],
       },
       {
-        title: "Egenkontrol",
+        title: "Foodsafety",
         description: "Opret kontroller, tidsplaner og regler for dokumentation.",
         href: "/administration/food-safety",
         feature: "foodSafety",

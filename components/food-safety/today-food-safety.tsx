@@ -210,7 +210,7 @@ export function TodayFoodSafety({
           </EmptyMedia>
           <EmptyTitle>Ingen lokationer</EmptyTitle>
           <EmptyDescription>
-            Opret en lokation, før egenkontroller kan registreres.
+            Opret en lokation, før kontroller kan registreres.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -297,7 +297,7 @@ export function TodayFoodSafety({
               <EmptyMedia variant="icon">
                 <ClipboardCheckIcon />
               </EmptyMedia>
-              <EmptyTitle>Ingen egenkontroller planlagt i dag</EmptyTitle>
+              <EmptyTitle>Ingen kontroller planlagt i dag</EmptyTitle>
               <EmptyDescription>
                 Der er ingen aktive kontroller for denne lokation.
                 {canManage ? (
@@ -307,7 +307,7 @@ export function TodayFoodSafety({
                       href="/administration/food-safety"
                       className="font-medium underline underline-offset-4"
                     >
-                      Administrér egenkontroller
+                      Administrér kontroller
                     </Link>
                   </>
                 ) : null}

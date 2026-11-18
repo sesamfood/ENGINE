@@ -2549,6 +2549,19 @@ export default defineSchema({
     .index("by_organizationId_and_entryId", ["organizationId", "entryId"])
     .index("by_storageId", ["storageId"]),
 
+  foodSafetyCleaningTasks: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    description: v.string(),
+    toolProductIds: v.array(v.id("products")),
+    videoStorageId: v.optional(v.id("_storage")),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_normalizedName", ["organizationId", "normalizedName"])
+    .index("by_videoStorageId", ["videoStorageId"]),
+
   // Legacy ownCheck* tables. Sources for the foodSafety* copy migration; dropped after it has run.
   ownCheckTemplates: defineTable({
     organizationId: v.string(),
