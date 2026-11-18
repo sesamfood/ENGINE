@@ -660,7 +660,7 @@ export const saveSettings = mutation({
       throw new ConvexError("Fristen skal være mellem 0 og 30 dage");
     }
     const hiddenPages = args.hiddenPages && [...new Set(args.hiddenPages)];
-    if (hiddenPages && hiddenPages.length >= 5) {
+    if (hiddenPages && hiddenPages.length >= foodSafetyPageValidator.members.length) {
       throw new ConvexError("Mindst én side skal være slået til");
     }
     const existing = await ctx.db
