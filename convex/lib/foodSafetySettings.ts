@@ -8,7 +8,6 @@ export const foodSafetyPageValidator = v.union(
   v.literal("foodSafety.documentation"),
   v.literal("foodSafety.allergens"),
   v.literal("foodSafety.guidance"),
-  v.literal("foodSafety.cleaning"),
 );
 
 export type FoodSafetyPage = Infer<typeof foodSafetyPageValidator>;

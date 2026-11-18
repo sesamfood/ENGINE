@@ -182,7 +182,7 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
   const generatedDate = new Date(input.header.generatedAt);
   pdf.setCreationDate(generatedDate);
   pdf.setModificationDate(generatedDate);
-  pdf.setTitle(sanitizePdfText(`Foodsafety ${input.header.locationName}`));
+  pdf.setTitle(sanitizePdfText(`Food safety ${input.header.locationName}`));
   pdf.setAuthor(sanitizePdfText(input.header.generatedBy));
 
   const pages: PDFPage[] = [];
@@ -244,7 +244,7 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
       // A broken logo should not prevent the inspection document from opening.
     }
   }
-  text("Foodsafety-dokumentation", MARGIN, cursor, 24, bold);
+  text("Food safety-dokumentation", MARGIN, cursor, 24, bold);
   cursor -= 36;
   paragraph(input.header.organizationName, 14, rgb(0.2, 0.2, 0.22), 19);
   cursor -= 8;

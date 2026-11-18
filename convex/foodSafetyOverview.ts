@@ -1,5 +1,5 @@
 import { entrySummaryObjectValidator, attachmentValidator, revisionValidator, historyPageValidator, revisionBatch, detailRevisionDto, attachmentsForValues } from "./lib/foodSafetyRecords";
-import { allowsProductTemperatures, entrySummary } from "./lib/foodSafety";
+import { allowsProductTemperatures, entrySummary, versionMedia } from "./lib/foodSafety";
 import {
   type FilterBuilder,
   type GenericTableInfo,
@@ -31,7 +31,7 @@ import {
   versionInput,
 } from "./lib/foodSafety";
 import { resolveLocationTimeZones, resolveTimeZone } from "./lib/timeZone";
-import { foodSafetyControlTypeValidator, foodSafetyFieldValidator } from "./lib/foodSafetyValidators";
+import { foodSafetyControlTypeValidator, foodSafetyFieldValidator, foodSafetyToolValidator } from "./lib/foodSafetyValidators";
 import { addDateKey, foodSafetyStatus, zonedTimestamp } from "../lib/food-safety";
 
 const MAX_OVERVIEW_PAGE_SIZE = 100;
@@ -412,7 +412,7 @@ export const getOverviewDateContext = query({
 
 export const getFoodSafetyRecord = query({
   args: { entryId: v.id("foodSafetyEntries") },
-  returns: v.union(v.object({ entry: recordEntryValidator, productTemperaturesEnabled: v.boolean(), fields: v.array(foodSafetyFieldValidator), description: v.string(), instructions: v.string(), imageUrl: v.union(v.string(), v.null()), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), historyNextRevision: v.union(v.number(), v.null()), timeZone: v.string() }), v.null()),
+  returns: v.union(v.object({ entry: recordEntryValidator, productTemperaturesEnabled: v.boolean(), fields: v.array(foodSafetyFieldValidator), description: v.string(), instructions: v.string(), imageUrl: v.union(v.string(), v.null()), videoUrl: v.union(v.string(), v.null()), tools: v.array(foodSafetyToolValidator), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), historyNextRevision: v.union(v.number(), v.null()), timeZone: v.string() }), v.null()),
   handler: async (ctx, args) => {
     const auth = await requireFoodSafetyViewer(ctx);
     const entry = await ctx.db.get("foodSafetyEntries", args.entryId);
@@ -442,7 +442,11 @@ export const getFoodSafetyRecord = query({
       productTemperaturesEnabled: allowsProductTemperatures(version),
       description: version.description,
       instructions: version.instructions ?? "",
-      imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
+      ...(await versionMedia(ctx, {
+        imageStorageId: version.imageStorageId ?? null,
+        videoStorageId: version.videoStorageId ?? null,
+        toolProductIds: version.toolProductIds ?? [],
+      })),
       attachments,
       revisions: history.revisions.map(detailRevisionDto),
       historyNextRevision: history.nextRevision,

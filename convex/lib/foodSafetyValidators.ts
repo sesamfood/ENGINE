@@ -80,3 +80,9 @@ export const foodSafetyProductTemperatureInputValidator = v.object({
 
 export const foodSafetyProductTemperatureValidator =
   foodSafetyProductTemperatureInputValidator.extend({ productName: v.string() });
+
+export const foodSafetyToolValidator = v.object({
+  id: v.id("products"),
+  name: v.string(),
+  imageUrl: v.union(v.string(), v.null()),
+});

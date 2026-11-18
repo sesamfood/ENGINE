@@ -83,7 +83,7 @@ export const permissionCatalog = [
     ],
   },
   {
-    group: "Foodsafety",
+    group: "Food safety",
     permissions: [
       { id: "foodSafety.perform", label: "Udføre kontroller" },
       { id: "foodSafety.correct", label: "Registrere korrigerende handlinger" },
@@ -207,7 +207,6 @@ export const defaultRolePermissions: Record<
       id !== "integrations.manage" &&
       id !== "apiKeys.manage" &&
       id !== "locations.manage" &&
-      id !== "foodSafety.manage" &&
       id !== "members.manage" &&
       id !== "roles.manage" &&
       id !== "staffFood.manage" &&

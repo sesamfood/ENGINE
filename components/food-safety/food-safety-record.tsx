@@ -2,7 +2,7 @@
 
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
-import Image from "next/image";
+import { InstructionMedia } from "./instruction-media";
 import {
   PencilIcon,
   SaveIcon,
@@ -470,24 +470,13 @@ export function FoodSafetyRecord({
 
       {record.entry.followUp === "open" ? followUpContent : null}
 
-      {record.instructions || record.imageUrl ? (
+      {record.instructions || record.imageUrl || record.videoUrl || record.tools.length ? (
         <Card>
           <CardHeader>
             <CardTitle>Instruktioner</CardTitle>
           </CardHeader>
           <CardContent appearance="stacked" className="flex flex-col">
-            {record.imageUrl ? (
-              <div className="relative h-64 w-full">
-                <Image
-                  src={record.imageUrl}
-                  alt={`Billede af ${record.entry.name}`}
-                  fill
-                  unoptimized
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  className="rounded-lg object-contain"
-                />
-              </div>
-            ) : null}
+            <InstructionMedia name={record.entry.name} imageUrl={record.imageUrl} videoUrl={record.videoUrl} tools={record.tools} />
             {record.instructions ? (
               <div className="whitespace-pre-wrap break-words text-sm">
                 <InstructionContent value={record.instructions} />

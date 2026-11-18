@@ -269,6 +269,23 @@ export function occurrenceForEntry(
   };
 }
 
+// The picture, video and cleaning products a kontrol shows with its instructions.
+export async function versionMedia(
+  ctx: QueryCtx,
+  version: { imageStorageId: Id<"_storage"> | null; videoStorageId: Id<"_storage"> | null; toolProductIds: Id<"products">[] },
+) {
+  const products = await Promise.all(version.toolProductIds.map((id) => ctx.db.get("products", id)));
+  return {
+    imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
+    videoUrl: version.videoStorageId ? await ctx.storage.getUrl(version.videoStorageId) : null,
+    tools: await Promise.all(products.filter((product) => product !== null).map(async (product) => ({
+      id: product._id,
+      name: product.name,
+      imageUrl: product.imageStorageId ? await ctx.storage.getUrl(product.imageStorageId) : null,
+    }))),
+  };
+}
+
 export function planItem(
   occurrence: FoodSafetyOccurrence,
   version: Doc<"foodSafetyTemplateVersions">,
@@ -284,6 +301,8 @@ export function planItem(
     description: version.description,
     instructions: version.instructions ?? "",
     imageStorageId: version.imageStorageId ?? null,
+    videoStorageId: version.videoStorageId ?? null,
+    toolProductIds: version.toolProductIds ?? [],
     fields: version.fields,
     responsibleRole: version.responsibleRole ?? null,
     dueDateKey: occurrence.dueDateKey,

@@ -1,4 +1,4 @@
-export const MAX_CLEANING_VIDEO_BYTES = 200 * 1024 * 1024;
+export const MAX_FOOD_SAFETY_VIDEO_BYTES = 200 * 1024 * 1024;
 
 // 720p H.264 in MP4 plays in every current browser. Short videos of a few minutes stay small.
 const MAX_SHORT_EDGE = 720;
@@ -6,7 +6,7 @@ const VIDEO_BITRATE = 2_500_000;
 const AUDIO_BITRATE = 128_000;
 
 // Compresses in the browser with its own encoder. Falls back to the original file where that is not possible.
-export async function compressCleaningVideo(file: File, onProgress: (progress: number) => void): Promise<Blob> {
+export async function compressFoodSafetyVideo(file: File, onProgress: (progress: number) => void): Promise<Blob> {
   try {
     const {
       ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output, Quality, canEncodeVideo,

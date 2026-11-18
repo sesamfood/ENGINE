@@ -6,6 +6,7 @@ import {
   AlertTriangleIcon,
   ClipboardCheckIcon,
   Clock3Icon,
+  PlayCircleIcon,
 } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
@@ -34,6 +35,7 @@ import { CardSkeleton, FieldSkeleton, RowsSkeleton } from "@/components/page-ske
 import { Skeleton } from "@/components/ui/skeleton";
 import { foodSafetyControlTypeLabels } from "@/lib/food-safety";
 import { useFoodSafetyNow } from "./use-food-safety-now";
+import { NewFoodSafetyTemplateButton } from "@/components/organization/food-safety-templates";
 
 type TodayResult = NonNullable<
   ReturnType<typeof useQuery<typeof api.foodSafety.listToday>>
@@ -82,7 +84,7 @@ function CheckRow({
           <AvatarImage src={item.imageUrl} alt="" appearance="rounded" />
         ) : null}
         <AvatarFallback appearance="rounded">
-          <ClipboardCheckIcon />
+          {item.videoUrl ? <PlayCircleIcon /> : <ClipboardCheckIcon />}
         </AvatarFallback>
       </Avatar>
       <span className="min-w-0 flex-1">
@@ -159,7 +161,7 @@ export function TodayFoodSafety({
 }) {
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const kiosk = useKiosk();
-  const canManage = usePermission("foodSafety.manage");
+  const canManage = usePermission("foodSafety.manage") && !kiosk?.kioskModeEnabled;
   const [selectedLocation, setSelectedLocation] = useState<string | null>(
     initialLocationId ?? null,
   );
@@ -238,6 +240,8 @@ export function TodayFoodSafety({
             · {result.items.length} planlagte kontroller
           </p>
         </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        {canManage ? <NewFoodSafetyTemplateButton /> : null}
         {!kiosk?.kioskModeEnabled ? (
           <Field className="sm:max-w-xs">
             <FieldLabel htmlFor="food-safety-location">Lokation</FieldLabel>
@@ -251,6 +255,7 @@ export function TodayFoodSafety({
             />
           </Field>
         ) : null}
+        </div>
       </div>
       <div className="flex flex-col gap-4">
         <CheckSection

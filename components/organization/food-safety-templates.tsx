@@ -15,7 +15,7 @@ import {
   RotateCcwIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -53,6 +53,11 @@ import type { FoodSafetyControlType, FoodSafetyField, FoodSafetySchedule } from 
 import { useFoodSafetyNow } from "@/components/food-safety/use-food-safety-now";
 import { InstructionEditor } from "@/components/food-safety/instruction-editor";
 import { compressImage } from "@/lib/compress-image";
+import { compressFoodSafetyVideo, MAX_FOOD_SAFETY_VIDEO_BYTES } from "@/lib/food-safety-video";
+import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
+import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 type TemplatePage = NonNullable<ReturnType<typeof usePaginatedQuery<typeof api.foodSafetyTemplates.listTemplates>>>;
 type Template = TemplatePage["results"][number];
@@ -63,8 +68,10 @@ type Draft = {
   description: string;
   instructions: string;
   imageStorageId: Id<"_storage"> | null;
+  videoStorageId: Id<"_storage"> | null;
   controlType: FoodSafetyControlType;
   productTemperaturesEnabled: boolean;
+  toolProductIds: Id<"products">[];
   schedule: FoodSafetySchedule;
   startMinuteOfDay: number | undefined;
   dueMinuteOfDay: number | undefined;
@@ -117,8 +124,10 @@ function newDraft(): Draft {
     description: "",
     instructions: "",
     imageStorageId: null,
+    videoStorageId: null,
     controlType: "temperature",
     productTemperaturesEnabled: true,
+    toolProductIds: [],
     schedule: { type: "daily" },
     startMinuteOfDay: undefined,
     dueMinuteOfDay: undefined,
@@ -136,8 +145,10 @@ function draftFromTemplate(template: Template): Draft {
     description: template.description,
     instructions: template.instructions ?? "",
     imageStorageId: template.imageStorageId ?? null,
+    videoStorageId: template.videoStorageId ?? null,
     controlType: template.controlType,
     productTemperaturesEnabled: template.productTemperaturesEnabled,
+    toolProductIds: template.toolProductIds,
     schedule: template.schedule,
     startMinuteOfDay: template.startMinuteOfDay ?? undefined,
     dueMinuteOfDay: template.dueMinuteOfDay ?? undefined,
@@ -333,13 +344,28 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
   const generateImageUploadUrl = useMutation(api.foodSafetyTemplates.generateImageUploadUrl);
   const [draft, setDraft] = useState<Draft>(() => mode && mode !== "new" ? draftFromTemplate(mode) : newDraft());
   const [saving, setSaving] = useState(false);
-  const [imageSelection, setImageSelection] = useState<{ file: File; previewUrl: string; storageId?: Id<"_storage"> } | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const localImageUrl = imageSelection?.previewUrl;
-  const imageUrl = localImageUrl ?? (draft.imageStorageId && mode && mode !== "new" ? mode.imageUrl : null);
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
+  const [mediaSelection, setMediaSelection] = useState<{ file: File; kind: "image" | "video"; previewUrl: string; storageId?: Id<"_storage"> } | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const localMediaUrl = mediaSelection?.previewUrl;
+  const existing = mode && mode !== "new" ? mode : null;
+  const media = mediaSelection
+    ? { kind: mediaSelection.kind, url: mediaSelection.previewUrl }
+    : draft.imageStorageId && existing?.imageUrl
+      ? { kind: "image" as const, url: existing.imageUrl }
+      : draft.videoStorageId && existing?.videoUrl
+        ? { kind: "video" as const, url: existing.videoUrl }
+        : null;
   useEffect(() => () => {
-    if (localImageUrl) URL.revokeObjectURL(localImageUrl);
-  }, [localImageUrl]);
+    if (localMediaUrl) URL.revokeObjectURL(localMediaUrl);
+  }, [localMediaUrl]);
+  const isCleaning = draft.controlType === "cleaning";
+  const categories = useQuery(api.catalog.listCategoryOptions, isCleaning ? {} : "skip");
+  const products = useCompleteCatalog(api.catalog.listActiveProductSearchOptionsPage, isCleaning ? {} : "skip");
+  const productOptions = useMemo(
+    () => products?.map((product) => ({ value: product.id, label: product.name, categoryIds: product.categoryIds })),
+    [products],
+  );
   const dateContextLocationId = draft.allLocations ? locations[0]?.id : draft.locationIds[0] ?? locations[0]?.id;
   const now = useFoodSafetyNow(`${mode && mode !== "new" ? mode.id : "new"}:${dateContextLocationId ?? ""}`);
   const dateContext = useQuery(api.foodSafetyTemplates.getTemplateDateContext, dateContextLocationId ? { locationId: dateContextLocationId, now } : "skip");
@@ -354,24 +380,35 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
     event.preventDefault();
     setSaving(true);
     try {
-      let imageStorageId = draft.imageStorageId;
-      if (imageSelection) {
-        imageStorageId = imageSelection.storageId ?? null;
-        if (!imageStorageId) {
-          const image = await compressImage(imageSelection.file, { maxWidth: 1600, maxHeight: 1600, type: "image/webp", alwaysReencode: true });
-          imageStorageId = await uploadToStorage({
-            uploadUrl: await generateImageUploadUrl({}),
-            file: image,
-          });
-          const uploadedStorageId = imageStorageId;
-          setImageSelection((current) => current?.file === imageSelection.file ? { ...current, storageId: uploadedStorageId } : current);
+      let { imageStorageId, videoStorageId } = draft;
+      if (mediaSelection) {
+        let storageId = mediaSelection.storageId;
+        if (!storageId) {
+          let file: Blob;
+          if (mediaSelection.kind === "image") {
+            file = await compressImage(mediaSelection.file, { maxWidth: 1600, maxHeight: 1600, type: "image/webp", alwaysReencode: true });
+          } else {
+            setVideoProgress(0);
+            file = await compressFoodSafetyVideo(mediaSelection.file, setVideoProgress);
+            setVideoProgress(null);
+            if (file.size > MAX_FOOD_SAFETY_VIDEO_BYTES) {
+              throw new Error("Videoen fylder over 200 MB og kunne ikke komprimeres i denne browser. Vælg en kortere video.");
+            }
+          }
+          storageId = await uploadToStorage({ uploadUrl: await generateImageUploadUrl({}), file });
+          const uploadedStorageId = storageId;
+          setMediaSelection((current) => current?.file === mediaSelection.file ? { ...current, storageId: uploadedStorageId } : current);
         }
+        imageStorageId = mediaSelection.kind === "image" ? storageId : null;
+        videoStorageId = mediaSelection.kind === "video" ? storageId : null;
       }
       const payload = {
         name: draft.name,
         description: draft.description,
         instructions: draft.instructions,
         imageStorageId,
+        videoStorageId,
+        toolProductIds: isCleaning ? draft.toolProductIds : [],
         controlType: draft.controlType,
         productTemperaturesEnabled:
           draft.controlType === "temperature" && draft.productTemperaturesEnabled,
@@ -391,6 +428,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
       toast.error(getUserErrorMessage(error, "Kontrollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSaving(false);
+      setVideoProgress(null);
     }
   }
 
@@ -424,48 +462,77 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
           </FieldGroup>
           <Field data-disabled={saving}>
             <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="own-template-image">Billede</FieldLabel>
-              <HelpTooltip label="Billede" content="Valgfrit billede, som vises i listen og på kontrollen. Brug JPEG, PNG eller WebP på højst 10 MB." />
+              <FieldLabel htmlFor="own-template-media">Billede eller video</FieldLabel>
+              <HelpTooltip label="Billede eller video" content="Valgfrit billede eller video, som vises på kontrollen. Billeder skal være JPEG, PNG eller WebP på højst 10 MB. Videoer komprimeres til 720p, før de uploades. Kan browseren ikke komprimere en video, må den højst fylde 200 MB." />
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 type="button"
                 variant="outline"
-                aria-label={imageUrl ? "Skift billede" : "Vælg billede"}
+                aria-label={media ? "Skift billede eller video" : "Vælg billede eller video"}
                 disabled={saving}
-                onClick={() => imageInputRef.current?.click()}
+                onClick={() => mediaInputRef.current?.click()}
                 appearance="thumbnail"
                 className="relative size-24 overflow-hidden"
               >
-                {imageUrl ? <Image src={imageUrl} alt="Billede af kontrollen" fill unoptimized sizes="96px" className="object-cover" /> : <ImageIcon className="size-8" />}
+                {media?.kind === "image" ? <Image src={media.url} alt="Billede af kontrollen" fill unoptimized sizes="96px" className="object-cover" /> : null}
+                {media?.kind === "video" ? <video src={media.url} muted playsInline preload="metadata" className="size-full object-cover" aria-label="Video af kontrollen" /> : null}
+                {!media ? <ImageIcon className="size-8" /> : null}
               </Button>
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <Input
-                  ref={imageInputRef}
-                  id="own-template-image"
+                  ref={mediaInputRef}
+                  id="own-template-media"
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,video/*"
                   disabled={saving}
                   className="h-auto min-h-11"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (!file) return;
-                    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
-                      toast.error("Vælg et JPEG-, PNG- eller WebP-billede på højst 10 MB.");
+                    const kind = file.type.startsWith("video/") ? "video" : "image";
+                    if (kind === "image" && (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024)) {
+                      toast.error("Vælg et JPEG-, PNG- eller WebP-billede på højst 10 MB eller en video.");
                       event.target.value = "";
                       return;
                     }
-                    setImageSelection({ file, previewUrl: URL.createObjectURL(file) });
+                    setMediaSelection({ file, kind, previewUrl: URL.createObjectURL(file) });
                   }}
                 />
-                {imageUrl || draft.imageStorageId ? <Button type="button" variant="outline" className="min-h-11 self-start" disabled={saving} onClick={() => {
-                  setImageSelection(null);
-                  setDraft((current) => ({ ...current, imageStorageId: null }));
-                  if (imageInputRef.current) imageInputRef.current.value = "";
-                }}><Trash2Icon data-icon="inline-start" />Fjern billede</Button> : null}
+                {media ? <Button type="button" variant="outline" className="min-h-11 self-start" disabled={saving} onClick={() => {
+                  setMediaSelection(null);
+                  setDraft((current) => ({ ...current, imageStorageId: null, videoStorageId: null }));
+                  if (mediaInputRef.current) mediaInputRef.current.value = "";
+                }}><Trash2Icon data-icon="inline-start" />{media.kind === "video" ? "Fjern video" : "Fjern billede"}</Button> : null}
               </div>
             </div>
+            {videoProgress !== null ? (
+              <Progress value={Math.round(videoProgress * 100)}>
+                <ProgressLabel>Komprimerer video</ProgressLabel>
+                <ProgressValue />
+              </Progress>
+            ) : null}
           </Field>
+          {isCleaning ? (
+            <Field data-disabled={saving}>
+              <div className="flex items-center gap-1">
+                <FieldLabel>Rengøringsprodukter</FieldLabel>
+                <HelpTooltip label="Rengøringsprodukter" content="Vælg de produkter, der bruges til rengøringen. Søg på produktets navn eller kategori." />
+              </div>
+              {productOptions === undefined || categories === undefined ? (
+                <Skeleton className="h-11 w-full" />
+              ) : (
+                <ProductCategoryCombobox
+                  categories={categories}
+                  products={productOptions}
+                  values={draft.toolProductIds}
+                  onValuesChange={(values) => setDraft((current) => ({ ...current, toolProductIds: values as Id<"products">[] }))}
+                  disabled={saving}
+                  ariaLabel="Rengøringsprodukter"
+                />
+              )}
+            </Field>
+          ) : null}
           <Field><FieldLabel htmlFor="own-template-description">Beskrivelse</FieldLabel><Textarea id="own-template-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={1000} /></Field>
           <Field>
             <div className="flex items-center gap-1">
@@ -534,6 +601,18 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
 
 function TemplateTable({ templates, onEdit, onAction }: { templates: Template[]; onEdit: (template: Template) => void; onAction: (template: Template, type: "archive" | "restore") => void }) {
   return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Navn</TableHead><TableHead>Kontroltype</TableHead><TableHead>Frekvens</TableHead><TableHead>Lokationer</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Handlinger</TableHead></TableRow></TableHeader><TableBody>{templates.map((template) => <TableRow key={template.id}><TableCell appearance="label">{template.name}<div className="text-xs text-muted-foreground">Version {template.version}</div></TableCell><TableCell>{controlTypes.find((item) => item.value === template.controlType)?.label}</TableCell><TableCell>{scheduleLabel(template.schedule)}{template.dueMinuteOfDay !== null ? <div className="text-xs text-muted-foreground">Kl. {minutesLabel(template.dueMinuteOfDay)}</div> : null}</TableCell><TableCell>{template.allLocations ? "Alle" : `${template.locationIds.length} valgt`}</TableCell><TableCell><Badge variant={template.status === "active" ? "secondary" : "outline"}>{template.status === "active" ? "Aktiv" : "Arkiveret"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1"><Button type="button" variant="ghost" size="icon" aria-label={`Redigér ${template.name}`} onClick={() => onEdit(template)} disabled={template.status !== "active"}><PencilIcon /><span className="sr-only">Redigér</span></Button>{template.status === "active" ? <Button type="button" variant="ghost" size="icon" aria-label={`Arkivér ${template.name}`} onClick={() => onAction(template, "archive")}><ArchiveIcon /></Button> : <Button type="button" variant="ghost" size="icon" aria-label={`Gendan ${template.name}`} onClick={() => onAction(template, "restore")}><RotateCcwIcon /></Button>}</div></TableCell></TableRow>)}</TableBody></Table></div>;
+}
+
+// Lets users who manage kontroller create one without leaving the page.
+export function NewFoodSafetyTemplateButton() {
+  const { locations } = useLocationAccess();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button type="button" size="lg" onClick={() => setOpen(true)}><PlusIcon data-icon="inline-start" />Ny kontrol</Button>
+      {open ? <TemplateEditor mode="new" locations={locations ?? []} onClose={() => setOpen(false)} onSaved={() => setOpen(false)} /> : null}
+    </>
+  );
 }
 
 export function FoodSafetyTemplates() {

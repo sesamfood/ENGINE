@@ -6,6 +6,7 @@ import {
 import { ConvexError, v } from "convex/values";
 import { systemRoleKeys, systemRoleNames } from "../lib/auth-permissions";
 import { instructionText, MAX_INSTRUCTION_LENGTH } from "../lib/food-safety-instructions";
+import { MAX_FOOD_SAFETY_VIDEO_BYTES } from "../lib/food-safety-video";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
@@ -40,8 +41,10 @@ const versionFieldsValidator = v.object({
   description: v.string(),
   instructions: v.optional(v.string()),
   imageStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+  videoStorageId: v.optional(v.union(v.id("_storage"), v.null())),
   controlType: foodSafetyControlTypeValidator,
   productTemperaturesEnabled: v.optional(v.boolean()),
+  toolProductIds: v.optional(v.array(v.id("products"))),
   schedule: foodSafetyScheduleValidator,
   startMinuteOfDay: v.optional(v.number()),
   dueMinuteOfDay: v.optional(v.number()),
@@ -63,8 +66,11 @@ const templateSummaryValidator = v.object({
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
   imageUrl: v.union(v.string(), v.null()),
+  videoStorageId: v.union(v.id("_storage"), v.null()),
+  videoUrl: v.union(v.string(), v.null()),
   controlType: foodSafetyControlTypeValidator,
   productTemperaturesEnabled: v.boolean(),
+  toolProductIds: v.array(v.id("products")),
   schedule: foodSafetyScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
   dueMinuteOfDay: v.union(v.number(), v.null()),
@@ -84,8 +90,10 @@ const versionOutputValidator = v.object({
   description: v.string(),
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
+  videoStorageId: v.union(v.id("_storage"), v.null()),
   controlType: foodSafetyControlTypeValidator,
   productTemperaturesEnabled: v.boolean(),
+  toolProductIds: v.array(v.id("products")),
   schedule: foodSafetyScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
   dueMinuteOfDay: v.union(v.number(), v.null()),
@@ -195,8 +203,10 @@ type VersionFields = {
   description: string;
   instructions?: string;
   imageStorageId?: Id<"_storage"> | null;
+  videoStorageId?: Id<"_storage"> | null;
   controlType: Doc<"foodSafetyTemplateVersions">["controlType"];
   productTemperaturesEnabled?: boolean;
+  toolProductIds?: Id<"products">[];
   schedule: Doc<"foodSafetyTemplateVersions">["schedule"];
   startMinuteOfDay?: number;
   dueMinuteOfDay?: number;
@@ -218,6 +228,32 @@ async function validateImage(
   }
   await claimStorageForOrganization(ctx, organizationId, imageStorageId);
   return imageStorageId;
+}
+
+async function validateVideo(
+  ctx: MutationCtx,
+  organizationId: string,
+  videoStorageId: Id<"_storage"> | null | undefined,
+) {
+  if (!videoStorageId) return undefined;
+  const file = await ctx.db.system.get("_storage", videoStorageId);
+  if (!file?.contentType?.startsWith("video/") || file.size > MAX_FOOD_SAFETY_VIDEO_BYTES) {
+    throw new ConvexError("Brug en video på højst 200 MB");
+  }
+  await claimStorageForOrganization(ctx, organizationId, videoStorageId);
+  return videoStorageId;
+}
+
+// Only cleaning kontroller list cleaning products.
+async function validateTools(ctx: MutationCtx, organizationId: string, input: VersionFields) {
+  if (input.controlType !== "cleaning") return [];
+  const toolProductIds = [...new Set(input.toolProductIds ?? [])];
+  if (toolProductIds.length > 30) throw new ConvexError("Vælg højst 30 rengøringsprodukter");
+  const products = await Promise.all(toolProductIds.map((id) => ctx.db.get("products", id)));
+  if (products.some((product) => !product || product.organizationId !== organizationId)) {
+    throw new ConvexError("Et produkt tilhører ikke organisationen");
+  }
+  return toolProductIds;
 }
 
 async function validateVersionFields(
@@ -253,8 +289,11 @@ async function validateVersionFields(
       .unique();
     if (!role) throw new ConvexError("Den ansvarlige rolle findes ikke");
   }
+  if (input.imageStorageId && input.videoStorageId) throw new ConvexError("Vælg enten et billede eller en video");
   const imageStorageId = await validateImage(ctx, organizationId, input.imageStorageId);
-  return { name, normalizedName, description, instructions, imageStorageId, responsibleRole, productTemperaturesEnabled: allowsProductTemperatures(input) };
+  const videoStorageId = await validateVideo(ctx, organizationId, input.videoStorageId);
+  const toolProductIds = await validateTools(ctx, organizationId, input);
+  return { name, normalizedName, description, instructions, imageStorageId, videoStorageId, toolProductIds, responsibleRole, productTemperaturesEnabled: allowsProductTemperatures(input) };
 }
 
 async function currentVersion(
@@ -279,8 +318,10 @@ function versionOutput(row: Doc<"foodSafetyTemplateVersions">) {
     description: row.description,
     instructions: row.instructions ?? "",
     imageStorageId: row.imageStorageId ?? null,
+    videoStorageId: row.videoStorageId ?? null,
     controlType: row.controlType,
     productTemperaturesEnabled: allowsProductTemperatures(row),
+    toolProductIds: row.toolProductIds ?? [],
     schedule: row.schedule,
     startMinuteOfDay: row.startMinuteOfDay ?? null,
     dueMinuteOfDay: row.dueMinuteOfDay ?? null,
@@ -313,8 +354,11 @@ async function summaryOutput(
     instructions: version.instructions ?? "",
     imageStorageId: version.imageStorageId ?? null,
     imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
+    videoStorageId: version.videoStorageId ?? null,
+    videoUrl: version.videoStorageId ? await ctx.storage.getUrl(version.videoStorageId) : null,
     controlType: version.controlType,
     productTemperaturesEnabled: allowsProductTemperatures(version),
+    toolProductIds: version.toolProductIds ?? [],
     schedule: version.schedule,
     startMinuteOfDay: version.startMinuteOfDay ?? null,
     dueMinuteOfDay: version.dueMinuteOfDay ?? null,
@@ -442,8 +486,10 @@ export const createTemplate = mutation({
       description: validated.description,
       instructions: validated.instructions,
       ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
+      ...(validated.videoStorageId ? { videoStorageId: validated.videoStorageId } : {}),
       controlType: args.controlType,
       productTemperaturesEnabled: validated.productTemperaturesEnabled,
+      ...(validated.toolProductIds.length ? { toolProductIds: validated.toolProductIds } : {}),
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
       ...(args.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: args.dueMinuteOfDay }),
@@ -480,6 +526,8 @@ export const updateTemplate = mutation({
       productTemperaturesEnabled: args.productTemperaturesEnabled ?? current.productTemperaturesEnabled,
       instructions: args.instructions ?? current.instructions,
       imageStorageId: args.imageStorageId === undefined ? current.imageStorageId : args.imageStorageId,
+      videoStorageId: args.videoStorageId === undefined ? current.videoStorageId : args.videoStorageId,
+      toolProductIds: args.toolProductIds ?? current.toolProductIds,
     });
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName, template._id);
     const currentKeys = new Set(current.fields.map((field) => field.key));
@@ -507,8 +555,10 @@ export const updateTemplate = mutation({
       description: validated.description,
       instructions: validated.instructions,
       ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
+      ...(validated.videoStorageId ? { videoStorageId: validated.videoStorageId } : {}),
       controlType: args.controlType,
       productTemperaturesEnabled: validated.productTemperaturesEnabled,
+      ...(validated.toolProductIds.length ? { toolProductIds: validated.toolProductIds } : {}),
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
       ...(args.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: args.dueMinuteOfDay }),
@@ -572,6 +622,7 @@ export const restoreTemplate = mutation({
     await ensureUniqueName(ctx, auth.organizationId, template.normalizedName, template._id);
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const imageStorageId = await validateImage(ctx, auth.organizationId, current.imageStorageId);
+    const videoStorageId = await validateVideo(ctx, auth.organizationId, current.videoStorageId);
     const reason = requireAuditReason(args.reason);
     const now = Math.max(Date.now(), current.validTo ?? current.validFrom + 1);
     await ctx.db.insert("foodSafetyTemplateVersions", {
@@ -582,8 +633,10 @@ export const restoreTemplate = mutation({
       description: current.description,
       instructions: current.instructions ?? "",
       ...(imageStorageId ? { imageStorageId } : {}),
+      ...(videoStorageId ? { videoStorageId } : {}),
       controlType: current.controlType,
       productTemperaturesEnabled: allowsProductTemperatures(current),
+      ...(current.toolProductIds ? { toolProductIds: current.toolProductIds } : {}),
       schedule: current.schedule,
       ...(current.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: current.startMinuteOfDay }),
       ...(current.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: current.dueMinuteOfDay }),
@@ -692,7 +745,7 @@ export const saveSettings = mutation({
       action: "foodSafety.settingsChanged",
       entityTable: "foodSafetySettings",
       entityId: settingsId,
-      summary: "Foodsafety-indstillingerne blev ændret",
+      summary: "Food safety-indstillingerne blev ændret",
     });
     return null;
   },

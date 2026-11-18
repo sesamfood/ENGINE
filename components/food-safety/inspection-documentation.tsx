@@ -618,7 +618,7 @@ export function InspectionDocumentation() {
         })),
       });
       downloadBytes(
-        `foodsafety-${exportName}-${fromDateKey}-${toDateKey}.pdf`,
+        `food-safety-${exportName}-${fromDateKey}-${toDateKey}.pdf`,
         pdf,
         "application/pdf",
       );
@@ -641,7 +641,7 @@ export function InspectionDocumentation() {
       return;
     }
     downloadCsv(
-      `foodsafety-${exportName}-${fromDateKey}-${toDateKey}.csv`,
+      `food-safety-${exportName}-${fromDateKey}-${toDateKey}.csv`,
       [
         "Dato",
         "Tidspunkt",

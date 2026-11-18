@@ -42,7 +42,6 @@ const pages: { id: FoodSafetyPage; label: string }[] = [
   { id: "foodSafety.overview", label: "Oversigt" },
   { id: "foodSafety.documentation", label: "Dokumentation" },
   { id: "foodSafety.allergens", label: "Allergener" },
-  { id: "foodSafety.cleaning", label: "Cleaning" },
   { id: "foodSafety.guidance", label: "Vejledning" },
 ];
 
@@ -93,9 +92,9 @@ export function FoodSafetySettings() {
         blockDuringCount: blockCount,
         hiddenPages,
       });
-      toast.success("Foodsafety-indstillingerne er gemt");
+      toast.success("Food safety-indstillingerne er gemt");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Foodsafety-indstillingerne kunne ikke gemmes. Prøv igen."));
+      toast.error(getUserErrorMessage(error, "Food safety-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -105,7 +104,7 @@ export function FoodSafetySettings() {
     <>
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>Indstillinger for Foodsafety</CardTitle>
+          <CardTitle>Indstillinger for Food safety</CardTitle>
           <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og Count og hvilke sider der vises.</CardDescription>
         </CardHeader>
         <CardContent appearance="spacious" className="flex flex-col">
@@ -129,7 +128,7 @@ export function FoodSafetySettings() {
               }}
             />
             <SettingsSwitchField
-              label="Blokér Foodsafety under Count"
+              label="Blokér Food safety under Count"
               id="food-safety-count-lock"
               checked={blockCount}
               onCheckedChange={(checked) => {
@@ -147,7 +146,7 @@ export function FoodSafetySettings() {
               invalid={blockCount}
             />
             <FieldSet>
-              <FieldLegend variant="label">Sider i Foodsafety</FieldLegend>
+              <FieldLegend variant="label">Sider i Food safety</FieldLegend>
               <FieldDescription>Mindst én side skal være slået til.</FieldDescription>
               {pages.map((page) => {
                 const shown = !hiddenPages.includes(page.id);

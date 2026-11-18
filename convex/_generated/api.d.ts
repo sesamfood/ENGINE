@@ -40,7 +40,6 @@ import type * as features from "../features.js";
 import type * as feedback from "../feedback.js";
 import type * as feedbackDelivery from "../feedbackDelivery.js";
 import type * as foodSafety from "../foodSafety.js";
-import type * as foodSafetyCleaning from "../foodSafetyCleaning.js";
 import type * as foodSafetyDocumentation from "../foodSafetyDocumentation.js";
 import type * as foodSafetyOverview from "../foodSafetyOverview.js";
 import type * as foodSafetyTemplates from "../foodSafetyTemplates.js";
@@ -266,7 +265,6 @@ declare const fullApi: ApiFromModules<{
   feedback: typeof feedback;
   feedbackDelivery: typeof feedbackDelivery;
   foodSafety: typeof foodSafety;
-  foodSafetyCleaning: typeof foodSafetyCleaning;
   foodSafetyDocumentation: typeof foodSafetyDocumentation;
   foodSafetyOverview: typeof foodSafetyOverview;
   foodSafetyTemplates: typeof foodSafetyTemplates;

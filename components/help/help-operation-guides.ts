@@ -1213,7 +1213,7 @@ export const operationFeatures: HelpFeature[] = [
   },
   {
     slug: "egenkontrol",
-    label: "Foodsafety",
+    label: "Food safety",
     summary:
       "Planlæg kontroller, registrér målinger, følg op på afvigelser, og hent dokumentation.",
     icon: ClipboardCheckIcon,
@@ -1222,13 +1222,13 @@ export const operationFeatures: HelpFeature[] = [
         slug: "overblik",
         label: "Overblik",
         summary:
-          "Foodsafety samler de kontroller, lokationerne skal udføre, og dokumentationen for dem.",
+          "Food safety samler de kontroller, lokationerne skal udføre, og dokumentationen for dem.",
         appHref: "/food-safety",
         appLinkLabel: "Åbn dagens kontroller",
         sections: [
           {
             id: "om",
-            title: "Sådan fungerer Foodsafety",
+            title: "Sådan fungerer Food safety",
             paragraphs: [
               "En kontrol beskriver opgaven, felterne og grænserne. Tidsplanen bestemmer, hvornår den vises under I dag. Afvigelser følges op og godkendes under Oversigt. Dokumentation samler perioden i PDF eller CSV. Vejledning linker til myndighedernes vejledning om risici og HACCP.",
             ],
@@ -1255,13 +1255,16 @@ export const operationFeatures: HelpFeature[] = [
             id: "skabelon",
             title: "Opret en kontrol",
             steps: [
-              "Åbn Administration → Foodsafety, og opret en kontrol. Angiv Navn, kontroltype, Beskrivelse, Instruktioner og eventuelt et billede.",
+              "Vælg Ny kontrol under Food safety → I dag eller Administration → Food safety. Angiv Navn, kontroltype, Beskrivelse, Instruktioner og eventuelt et billede eller en video.",
+              "Ved kontroltypen Rengøring vælger du de rengøringsprodukter, der bruges. Søg på produktets navn eller kategori.",
               "Tilføj felter: Tal med enhed og grænser, Punkt, Valg, Tekst eller Fil. Markér Påkrævet efter behov.",
               "Slå produkttemperaturer til, hvis der skal måles en temperatur for hvert produkt.",
               "Vælg Frekvens: Dagligt, Ugentligt, Månedligt eller Fast interval. Angiv Starter kl. og Forfalder kl. samt lokationer.",
               "Vælg eventuelt Ansvarlig rolle. Den bruges til visning og filtrering. Gem.",
             ],
             bullets: [
+              "Kun brugere, der må administrere kontroller, kan oprette og ændre dem. Som standard er det Administrator og Manager.",
+              "En video komprimeres til 720p i browseren, før den uploades. Kan browseren ikke komprimere den, må den højst fylde 200 MB.",
               "Ændringer gemmes som nye versioner. Historiske kontroller bevarer deres felter.",
               "Arkivér stopper nye datoer. En arkiveret kontrol kan gendannes.",
             ],
@@ -1272,21 +1275,21 @@ export const operationFeatures: HelpFeature[] = [
             bullets: [
               "Frist for efterregistrering angiver, hvor mange dage en kontrol kan registreres bagefter. 0 betyder kun samme dag.",
               "Godkendelse kræver en anden person forhindrer, at man godkender sin egen kontrol. Brugere, der administrerer kontroller, er undtaget.",
-              "Blokér Foodsafety under Count stopper registrering, mens Count låser lokationen.",
+              "Blokér Food safety under Count stopper registrering, mens Count låser lokationen.",
             ],
           },
           {
             id: "registrer",
             title: "Udfør en kontrol",
             steps: [
-              "Åbn Foodsafety → I dag, og kontrollér Lokation. Mangler, Afvigelser, Udført i dag og Manglende fra tidligere dage viser status.",
+              "Åbn Food safety → I dag, og kontrollér Lokation. Mangler, Afvigelser, Udført i dag og Manglende fra tidligere dage viser status.",
               "Åbn kontrollen, og læs instruktionerne.",
               "Udfyld felterne. Felter med stjerne er påkrævede. Vent på, at filer er uploadet.",
               "Ved en afvigelse beskriver du den og eventuelt den korrigerende handling. Vælg Registrér kontrol eller Registrér afvigelse.",
             ],
             screenshot: {
               src: "/help/screenshots/egenkontrol.webp",
-              alt: "Foodsafety I dag med en manglende kontrol under Mangler",
+              alt: "Food safety I dag med en manglende kontrol under Mangler",
               caption:
                 "Start fra I dag. Afvigelser og manglende kontroller fra tidligere dage vises særskilt. Eksempeldata.",
               width: 1020,
@@ -1298,12 +1301,12 @@ export const operationFeatures: HelpFeature[] = [
           {
             question: "Der er ingen kontroller i dag",
             answer:
-              "Kontrollér Lokation og kontrollens lokationer, startdato og frekvens under Administration → Foodsafety.",
+              "Kontrollér Lokation og kontrollens lokationer, startdato og frekvens under Administration → Food safety.",
           },
           {
             question: "Kontrollen kan ikke registreres",
             answer:
-              "Den ligger i fremtiden, efter fristen for efterregistrering, eller Count blokerer Foodsafety.",
+              "Den ligger i fremtiden, efter fristen for efterregistrering, eller Count blokerer Food safety.",
           },
         ],
       },
@@ -1319,7 +1322,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "find",
             title: "Find kontrollen",
             steps: [
-              "Åbn Foodsafety → Oversigt. Vælg Lokation og en periode på højst 92 dage.",
+              "Åbn Food safety → Oversigt. Vælg Lokation og en periode på højst 92 dage.",
               "Afgræns med Kontroltype, Status eller Ansvarlig bruger, og åbn kontrollen.",
             ],
           },
@@ -1352,45 +1355,13 @@ export const operationFeatures: HelpFeature[] = [
             id: "rapport",
             title: "Hent dokumentationen",
             steps: [
-              "Åbn Foodsafety → Dokumentation. Vælg Lokation og en periode på højst 366 dage.",
+              "Åbn Food safety → Dokumentation. Vælg Lokation og en periode på højst 366 dage.",
               "Vælg Vis dokumentation, og vent, til alt er hentet.",
               "Gennemgå kontroller, afvigelser, godkendelser og manglende kontroller. Vælg Hent PDF eller Eksportér CSV.",
             ],
             bullets: [
               "Opdatér dokumentation henter ændringer siden sidst.",
               "Er rapporten for stor, så vælg en kortere periode.",
-            ],
-          },
-        ],
-      },
-      {
-        slug: "cleaning",
-        label: "Cleaning",
-        summary:
-          "Saml rengøringsopgaver med beskrivelse, rengøringsprodukter og en instruktionsvideo.",
-        appHref: "/food-safety/cleaning",
-        appLinkLabel: "Åbn Cleaning",
-        sections: [
-          {
-            id: "opret",
-            title: "Opret en rengøringsopgave",
-            steps: [
-              "Åbn Foodsafety → Cleaning, og vælg Tilføj rengøringsopgave.",
-              "Angiv Navn og Beskrivelse.",
-              "Vælg Rengøringsprodukter. Søg på produktets navn eller kategori. Produkterne oprettes under Administration → Produkter.",
-              "Vælg eventuelt en video, og vælg Gem rengøringsopgave.",
-            ],
-            bullets: [
-              "Videoen komprimeres til 720p i browseren, før den uploades. Kan browseren ikke komprimere den, må den højst fylde 200 MB.",
-              "Kun brugere, der må administrere kontroller, kan oprette, redigere og slette rengøringsopgaver.",
-            ],
-          },
-          {
-            id: "se",
-            title: "Se en rengøringsopgave",
-            steps: [
-              "Åbn Foodsafety → Cleaning, og vælg opgaven.",
-              "Læs beskrivelsen, se rengøringsprodukterne, og afspil videoen.",
             ],
           },
         ],

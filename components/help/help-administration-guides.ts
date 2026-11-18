@@ -440,7 +440,7 @@ export const administrationFeatures: HelpFeature[] = [
             ],
             bullets: [
               "Nulstilling sender kiosken til startsiden og rydder igangværende arbejde.",
-              "Foodsafety-oversigt tillader korrigerende handlinger, og Kontroldokumentation tillader eksport, uanset kontoens rolle.",
+              "Food safety-oversigt tillader korrigerende handlinger, og Kontroldokumentation tillader eksport, uanset kontoens rolle.",
               "Bestilling, Udgift, Varemodtagelse, Wolt-ordrer, Månedsrapport og Staff food-rapport kræver også, at kontoens rolle har adgang.",
             ],
           },

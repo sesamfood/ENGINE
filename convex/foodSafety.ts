@@ -32,6 +32,7 @@ import {
   requireLocation,
   resolveLocationId,
   versionInput,
+  versionMedia,
 } from "./lib/foodSafety";
 import {
   dateKeyInZone,
@@ -43,6 +44,7 @@ import {
   foodSafetyControlTypeValidator,
   foodSafetyFieldValidator,
   foodSafetyProductTemperatureInputValidator,
+  foodSafetyToolValidator,
   foodSafetyValueValidator,
 } from "./lib/foodSafetyValidators";
 import { recordAudit } from "./lib/audit";
@@ -71,6 +73,10 @@ const planItemValidator = v.object({
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
   imageUrl: v.union(v.string(), v.null()),
+  videoStorageId: v.union(v.id("_storage"), v.null()),
+  videoUrl: v.union(v.string(), v.null()),
+  toolProductIds: v.array(v.id("products")),
+  tools: v.array(foodSafetyToolValidator),
   fields: v.array(foodSafetyFieldValidator),
   responsibleRole: v.union(v.string(), v.null()),
   dueDateKey: v.string(),
@@ -246,16 +252,20 @@ export const listToday = query({
         }
       }
     }
-    const imageIds = [...new Set([...items, ...backlog].flatMap((item) => item.imageStorageId ? [item.imageStorageId] : []))];
-    const imageUrls = new Map(await Promise.all(imageIds.map(async (id) => [id, await ctx.storage.getUrl(id)] as const)));
+    // Several days of one kontrol share a version, so its media is resolved once.
+    const media = new Map<string, Promise<Awaited<ReturnType<typeof versionMedia>>>>();
+    const withMedia = (list: typeof items) => Promise.all(list.map(async (item) => {
+      if (!media.has(item.templateVersionId)) media.set(item.templateVersionId, versionMedia(ctx, item));
+      return { ...item, ...(await media.get(item.templateVersionId)!) };
+    }));
     return {
       locationId,
       locationName: location.name,
       dateKey,
       timeZone,
       lateSubmissionDays: configuration.lateSubmissionDays,
-      items: items.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
-      backlog: backlog.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
+      items: await withMedia(items),
+      backlog: await withMedia(backlog),
       truncated,
     };
   },

@@ -851,7 +851,7 @@ export async function requireFoodSafetyAttachmentUploader(ctx: AuthContext) {
 // Reference pages anyone working with food safety may read.
 export async function requireFoodSafetyReader(
   ctx: AuthContext,
-  page: "foodSafety.allergens" | "foodSafety.cleaning",
+  page: "foodSafety.allergens",
 ) {
   const auth = await requireOrganization(ctx);
   requireFeatureEnabled(auth, "foodSafety");

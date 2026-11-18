@@ -13,7 +13,7 @@ export const featureLabels = {
   expenses: "Udgift",
   goodsReceipts: "Varemodtagelse",
   waste: "Waste",
-  foodSafety: "Foodsafety",
+  foodSafety: "Food safety",
   staffFood: "Staff food",
   count: "Count",
   employees: "Medarbejdere",
