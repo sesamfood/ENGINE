@@ -20,7 +20,7 @@ export function FoodSafetyNavigation() {
   const canDocumentation = usePermission("foodSafety.export");
   const canAny = canToday || canOverview || canDocumentation;
   const sections = [
-    { id: "foodSafety.today", href: "/food-safety", label: "I dag", icon: ClipboardCheckIcon, allowed: canToday },
+    { id: "foodSafety.today", href: "/food-safety", label: "Opgaver", icon: ClipboardCheckIcon, allowed: canToday },
     { id: "foodSafety.overview", href: "/food-safety/overview", label: "Oversigt", icon: ListChecksIcon, allowed: canOverview },
     { id: "foodSafety.documentation", href: "/food-safety/documentation", label: "Dokumentation", icon: FileCheck2Icon, allowed: canDocumentation },
     { id: "foodSafety.allergens", href: "/food-safety/allergens", label: "Allergener", icon: WheatIcon, allowed: canAny },
