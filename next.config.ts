@@ -25,6 +25,16 @@ const nextConfig: NextConfig = {
         destination: "/administration/:path*",
         permanent: false,
       },
+      {
+        source: "/own-checks/:path*",
+        destination: "/food-safety/:path*",
+        permanent: true,
+      },
+      {
+        source: "/administration/own-checks",
+        destination: "/administration/food-safety",
+        permanent: true,
+      },
     ];
   },
   async headers() {

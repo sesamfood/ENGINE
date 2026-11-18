@@ -1,7 +1,11 @@
 import { Migrations } from "@convex-dev/migrations";
 import { ConvexError } from "convex/values";
-import { components } from "./_generated/api";
-import type { DataModel } from "./_generated/dataModel";
+import { components, internal } from "./_generated/api";
+import type { DataModel, Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+import { storedFeatures, type FeatureId } from "./lib/features";
+import type { FoodSafetyPage } from "./lib/foodSafetySettings";
+import { normalizeKioskDayTasks } from "./lib/kioskDay";
 import { unitPriceFromLineTotal } from "./integrations/onlinepos/lib/api";
 import { backfillDailyPaymentTypes } from "./lib/salesRollup";
 import { gramsPerUnit } from "../lib/containers";
@@ -150,3 +154,263 @@ export const createLocationTargetDashboards = migrations.define({
     await syncTargetDashboard(ctx, target.organizationId, target.locationId, target.updatedBy);
   },
 });
+
+// Food safety rename: copies the ownCheck* tables into foodSafety* and renames stored ids.
+// Run once with `npx convex run migrations:runFoodSafetyRename`; every step is idempotent.
+
+type FoodSafetyTable =
+  | "foodSafetyTemplates"
+  | "foodSafetyTemplateVersions"
+  | "foodSafetyEntries"
+  | "foodSafetyEntryRevisions"
+  | "foodSafetyAttachments"
+  | "foodSafetySettings";
+
+// Every foodSafety* table has the same by_legacyId index.
+async function findCopy(ctx: MutationCtx, table: FoodSafetyTable, legacyId: string) {
+  return await ctx.db.query(table as "foodSafetyTemplates")
+    .withIndex("by_legacyId", (q) => q.eq("legacyId", legacyId))
+    .unique();
+}
+
+async function isCopied(ctx: MutationCtx, table: FoodSafetyTable, legacyId: string) {
+  return (await findCopy(ctx, table, legacyId)) !== null;
+}
+
+function copyOf<T extends { _id: string; _creationTime: number }>(row: T) {
+  const copy: Partial<T> = { ...row };
+  delete copy._id;
+  delete copy._creationTime;
+  return { ...copy, legacyId: row._id } as Omit<T, "_id" | "_creationTime"> & { legacyId: string };
+}
+
+async function copiedId<T extends FoodSafetyTable>(ctx: MutationCtx, table: T, legacyId: string) {
+  const row = await findCopy(ctx, table, legacyId);
+  if (!row) throw new ConvexError(`Mangler kopi af ${legacyId} i ${table}`);
+  return row._id as Id<T>;
+}
+
+export const copyFoodSafetyTemplates = migrations.define({
+  table: "ownCheckTemplates",
+  migrateOne: async (ctx, row) => {
+    if (await isCopied(ctx, "foodSafetyTemplates", row._id)) return;
+    await ctx.db.insert("foodSafetyTemplates", copyOf(row));
+  },
+});
+
+export const copyFoodSafetyTemplateVersions = migrations.define({
+  table: "ownCheckTemplateVersions",
+  migrateOne: async (ctx, row) => {
+    if (await isCopied(ctx, "foodSafetyTemplateVersions", row._id)) return;
+    await ctx.db.insert("foodSafetyTemplateVersions", {
+      ...copyOf(row),
+      templateId: await copiedId(ctx, "foodSafetyTemplates", row.templateId),
+    });
+  },
+});
+
+export const copyFoodSafetyEntries = migrations.define({
+  table: "ownCheckEntries",
+  migrateOne: async (ctx, row) => {
+    if (await isCopied(ctx, "foodSafetyEntries", row._id)) return;
+    await ctx.db.insert("foodSafetyEntries", {
+      ...copyOf(row),
+      templateId: await copiedId(ctx, "foodSafetyTemplates", row.templateId),
+      templateVersionId: await copiedId(ctx, "foodSafetyTemplateVersions", row.templateVersionId),
+    });
+  },
+});
+
+export const copyFoodSafetyEntryRevisions = migrations.define({
+  table: "ownCheckEntryRevisions",
+  migrateOne: async (ctx, row) => {
+    if (await isCopied(ctx, "foodSafetyEntryRevisions", row._id)) return;
+    await ctx.db.insert("foodSafetyEntryRevisions", {
+      ...copyOf(row),
+      entryId: await copiedId(ctx, "foodSafetyEntries", row.entryId),
+    });
+  },
+});
+
+export const copyFoodSafetyAttachments = migrations.define({
+  table: "ownCheckAttachments",
+  migrateOne: async (ctx, row) => {
+    if (await isCopied(ctx, "foodSafetyAttachments", row._id)) return;
+    await ctx.db.insert("foodSafetyAttachments", {
+      ...copyOf(row),
+      entryId: await copiedId(ctx, "foodSafetyEntries", row.entryId),
+    });
+  },
+});
+
+export const copyFoodSafetySettings = migrations.define({
+  table: "ownCheckSettings",
+  migrateOne: async (ctx, row) => {
+    if (await isCopied(ctx, "foodSafetySettings", row._id)) return;
+    // Settings saved after the deploy win over the legacy row.
+    const current = await ctx.db.query("foodSafetySettings")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", row.organizationId))
+      .first();
+    if (current) return;
+    await ctx.db.insert("foodSafetySettings", {
+      ...copyOf(row),
+      hiddenPages: row.hiddenPages?.map(renameFoodSafetyId).filter(isFoodSafetyPage),
+    });
+  },
+});
+
+const auditTables: Record<string, FoodSafetyTable> = {
+  ownCheckTemplates: "foodSafetyTemplates",
+  ownCheckEntries: "foodSafetyEntries",
+  ownCheckSettings: "foodSafetySettings",
+};
+
+export const renameFoodSafetyAuditLog = migrations.define({
+  table: "auditLog",
+  migrateOne: async (ctx, row) => {
+    const action = renameFoodSafetyId(row.action);
+    const table = auditTables[row.entityTable];
+    if (!table) return action === row.action ? undefined : { action };
+    const copy = await findCopy(ctx, table, row.entityId);
+    return { action, entityTable: table, entityId: copy?._id ?? row.entityId };
+  },
+});
+
+function renameFoodSafetyId(id: string) {
+  if (id === "ownChecks") return "foodSafety";
+  return id.startsWith("ownChecks.") ? `foodSafety.${id.slice("ownChecks.".length)}` : id;
+}
+
+function renameIds<T extends string>(ids: readonly T[]) {
+  const renamed = ids.map(renameFoodSafetyId);
+  return renamed.some((id, index) => id !== ids[index]) ? [...new Set(renamed)] : null;
+}
+
+function isFoodSafetyPage(id: string): id is FoodSafetyPage {
+  return id.startsWith("foodSafety.");
+}
+
+function renamedFeatures(features: readonly string[]) {
+  return renameIds(features) ? storedFeatures(features as FeatureId[]) : null;
+}
+
+export const renameFoodSafetyRolePermissions = migrations.define({
+  table: "rolePermissions",
+  migrateOne: (_ctx, row) => {
+    const permissions = renameIds(row.permissions);
+    if (permissions) return { permissions };
+  },
+});
+
+export const renameFoodSafetyApiKeyPermissions = migrations.define({
+  table: "apiKeyPolicies",
+  migrateOne: (_ctx, row) => {
+    const permissions = renameIds(row.permissions);
+    if (permissions) return { permissions };
+  },
+});
+
+export const renameFoodSafetySupportPermissions = migrations.define({
+  table: "supportGrants",
+  migrateOne: (_ctx, row) => {
+    const permissions = renameIds(row.permissions);
+    if (permissions) return { permissions };
+  },
+});
+
+export const renameFoodSafetyEntitlements = migrations.define({
+  table: "organizationEntitlements",
+  migrateOne: (_ctx, row) => {
+    const features = renamedFeatures(row.features);
+    if (features) return { features };
+  },
+});
+
+export const renameFoodSafetyPlans = migrations.define({
+  table: "plans",
+  migrateOne: (_ctx, row) => {
+    const features = renamedFeatures(row.features);
+    if (features) return { features };
+  },
+});
+
+export const renameFoodSafetyAddOns = migrations.define({
+  table: "addOns",
+  migrateOne: (_ctx, row) => {
+    const features = renamedFeatures(row.features);
+    if (features) return { features };
+  },
+});
+
+export const renameFoodSafetyFeatureSettings = migrations.define({
+  table: "featureSettings",
+  migrateOne: (_ctx, row) => {
+    const disabledFeatures = renamedFeatures(row.disabledFeatures);
+    if (disabledFeatures) return { disabledFeatures };
+  },
+});
+
+export const renameFoodSafetyKioskSettings = migrations.define({
+  table: "kioskSettings",
+  migrateOne: (_ctx, row) => {
+    const homePage = renameFoodSafetyId(row.homePage);
+    const enabledPages = renameIds(row.enabledPages);
+    const pinFeatures = row.pinFeatures && renameIds(row.pinFeatures);
+    if (homePage === row.homePage && !enabledPages && !pinFeatures) return;
+    return {
+      homePage,
+      ...(enabledPages && { enabledPages }),
+      ...(pinFeatures && { pinFeatures }),
+    };
+  },
+});
+
+export const renameFoodSafetySidebarSettings = migrations.define({
+  table: "sidebarSettings",
+  migrateOne: (_ctx, row) => {
+    const itemOrder = renameIds(row.itemOrder);
+    if (itemOrder) return { itemOrder };
+  },
+});
+
+export const renameFoodSafetyKioskDayTasks = migrations.define({
+  table: "kioskDayTasks",
+  migrateOne: (_ctx, row) => {
+    const hasLegacyLink = (tasks: typeof row.endOfDay) =>
+      tasks.some((task) => typeof task !== "string" && task.link?.startsWith("ownChecks."));
+    if (!hasLegacyLink(row.endOfDay) && !hasLegacyLink(row.startOfDay)) return;
+    return {
+      endOfDay: normalizeKioskDayTasks(row.endOfDay),
+      startOfDay: normalizeKioskDayTasks(row.startOfDay),
+    };
+  },
+});
+
+export const renameFoodSafetyFeedback = migrations.define({
+  table: "feedbackSubmissions",
+  migrateOne: (_ctx, row) => {
+    if (row.area === "ownChecks") return { area: "foodSafety" };
+  },
+});
+
+// Ids first so access survives the deploy; then tables in dependency order; audit last.
+export const runFoodSafetyRename = migrations.runner([
+  internal.migrations.renameFoodSafetyRolePermissions,
+  internal.migrations.renameFoodSafetyApiKeyPermissions,
+  internal.migrations.renameFoodSafetySupportPermissions,
+  internal.migrations.renameFoodSafetyEntitlements,
+  internal.migrations.renameFoodSafetyPlans,
+  internal.migrations.renameFoodSafetyAddOns,
+  internal.migrations.renameFoodSafetyFeatureSettings,
+  internal.migrations.renameFoodSafetyKioskSettings,
+  internal.migrations.renameFoodSafetySidebarSettings,
+  internal.migrations.renameFoodSafetyKioskDayTasks,
+  internal.migrations.renameFoodSafetyFeedback,
+  internal.migrations.copyFoodSafetyTemplates,
+  internal.migrations.copyFoodSafetyTemplateVersions,
+  internal.migrations.copyFoodSafetyEntries,
+  internal.migrations.copyFoodSafetyEntryRevisions,
+  internal.migrations.copyFoodSafetyAttachments,
+  internal.migrations.copyFoodSafetySettings,
+  internal.migrations.renameFoodSafetyAuditLog,
+]);

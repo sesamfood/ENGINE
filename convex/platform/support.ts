@@ -17,7 +17,7 @@ import { requirePlatformOrganization } from "./organizations";
 const MAX_GRANT_HOURS = 8;
 
 const viewPermissions: readonly PermissionId[] = [
-  "ownChecks.view",
+  "foodSafety.view",
   "transfers.view",
   "invoices.view",
   "expenses.view",

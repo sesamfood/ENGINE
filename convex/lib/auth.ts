@@ -805,43 +805,43 @@ export async function requireWasteExporter(
   return await requirePermission(ctx, "waste.export", page);
 }
 
-export async function requireOwnCheckPerformer(
+export async function requireFoodSafetyPerformer(
   ctx: AuthContext,
-  page: KioskDestinationId | readonly KioskDestinationId[] = "ownChecks.today",
+  page: KioskDestinationId | readonly KioskDestinationId[] = "foodSafety.today",
 ) {
-  return await requirePermission(ctx, "ownChecks.perform", page);
+  return await requirePermission(ctx, "foodSafety.perform", page);
 }
 
-export async function requireOwnCheckViewer(
+export async function requireFoodSafetyViewer(
   ctx: AuthContext,
-  page: KioskDestinationId | readonly KioskDestinationId[] = "ownChecks.overview",
+  page: KioskDestinationId | readonly KioskDestinationId[] = "foodSafety.overview",
 ) {
-  return await requirePermission(ctx, "ownChecks.view", page);
+  return await requirePermission(ctx, "foodSafety.view", page);
 }
 
-export async function requireOwnCheckCorrector(ctx: AuthContext) {
-  return await requirePermission(ctx, "ownChecks.correct", "ownChecks.overview");
+export async function requireFoodSafetyCorrector(ctx: AuthContext) {
+  return await requirePermission(ctx, "foodSafety.correct", "foodSafety.overview");
 }
 
-export async function requireOwnCheckApprover(ctx: AuthContext) {
+export async function requireFoodSafetyApprover(ctx: AuthContext) {
   return await requirePermission(
     ctx,
-    "ownChecks.approve",
-    "ownChecks.overview",
+    "foodSafety.approve",
+    "foodSafety.overview",
   );
 }
 
-export async function requireOwnCheckEditor(ctx: AuthContext) {
-  return await requirePermission(ctx, "ownChecks.edit", "ownChecks.overview");
+export async function requireFoodSafetyEditor(ctx: AuthContext) {
+  return await requirePermission(ctx, "foodSafety.edit", "foodSafety.overview");
 }
 
-export async function requireOwnCheckAttachmentUploader(ctx: AuthContext) {
+export async function requireFoodSafetyAttachmentUploader(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
-  requireFeatureEnabled(auth, "ownChecks");
-  if (auth.kioskModeEnabled) return await requireOwnCheckPerformer(ctx);
+  requireFeatureEnabled(auth, "foodSafety");
+  if (auth.kioskModeEnabled) return await requireFoodSafetyPerformer(ctx);
   if (
-    !hasPermission(auth.role, auth.permissions, "ownChecks.perform") &&
-    !hasPermission(auth.role, auth.permissions, "ownChecks.edit")
+    !hasPermission(auth.role, auth.permissions, "foodSafety.perform") &&
+    !hasPermission(auth.role, auth.permissions, "foodSafety.edit")
   ) {
     throw new ConvexError("Du har ikke adgang");
   }
@@ -850,10 +850,10 @@ export async function requireOwnCheckAttachmentUploader(ctx: AuthContext) {
 
 export async function requireAllergenViewer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
-  requireFeatureEnabled(auth, "ownChecks");
-  if (await requireKioskDestination(ctx, auth, "ownChecks.allergens")) return auth;
+  requireFeatureEnabled(auth, "foodSafety");
+  if (await requireKioskDestination(ctx, auth, "foodSafety.allergens")) return auth;
   if (
-    !(["ownChecks.perform", "ownChecks.view", "ownChecks.export"] as const).some(
+    !(["foodSafety.perform", "foodSafety.view", "foodSafety.export"] as const).some(
       (permission) => hasPermission(auth.role, auth.permissions, permission),
     )
   ) {
@@ -862,15 +862,15 @@ export async function requireAllergenViewer(ctx: AuthContext) {
   return auth;
 }
 
-export async function requireOwnCheckExporter(
+export async function requireFoodSafetyExporter(
   ctx: AuthContext,
-  page: KioskDestinationId | readonly KioskDestinationId[] = "ownChecks.documentation",
+  page: KioskDestinationId | readonly KioskDestinationId[] = "foodSafety.documentation",
 ) {
-  return await requirePermission(ctx, "ownChecks.export", page);
+  return await requirePermission(ctx, "foodSafety.export", page);
 }
 
-export async function requireOwnCheckManager(ctx: AuthContext) {
-  const auth = await requirePermission(ctx, "ownChecks.manage");
+export async function requireFoodSafetyManager(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "foodSafety.manage");
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
   return auth;
 }

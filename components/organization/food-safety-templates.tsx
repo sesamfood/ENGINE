@@ -1,0 +1,619 @@
+"use client";
+
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
+import { getUserErrorMessage } from "@/lib/user-errors";
+import { useMutation } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
+import {
+  ArchiveIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ImageIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  Trash2Icon,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { toast } from "sonner";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { DatePicker } from "@/components/date-picker";
+import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Empty } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CardGridSkeleton } from "@/components/page-skeletons";
+import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import type { FoodSafetyControlType, FoodSafetyField, FoodSafetySchedule } from "@/lib/food-safety";
+import { useFoodSafetyNow } from "@/components/food-safety/use-food-safety-now";
+import { InstructionEditor } from "@/components/food-safety/instruction-editor";
+import { compressImage } from "@/lib/compress-image";
+
+type TemplatePage = NonNullable<ReturnType<typeof usePaginatedQuery<typeof api.foodSafetyTemplates.listTemplates>>>;
+type Template = TemplatePage["results"][number];
+type EditorMode = Template | "new" | null;
+
+type Draft = {
+  name: string;
+  description: string;
+  instructions: string;
+  imageStorageId: Id<"_storage"> | null;
+  controlType: FoodSafetyControlType;
+  productTemperaturesEnabled: boolean;
+  schedule: FoodSafetySchedule;
+  startMinuteOfDay: number | undefined;
+  dueMinuteOfDay: number | undefined;
+  fields: FoodSafetyField[];
+  originalFieldKeys: string[];
+  allLocations: boolean;
+  locationIds: Id<"locations">[];
+  responsibleRole: string;
+};
+
+const controlTypes: Array<{ value: FoodSafetyControlType; label: string }> = [
+  { value: "temperature", label: "Temperatur" },
+  { value: "cleaning", label: "Rengøring" },
+  { value: "receiving", label: "Modtagekontrol" },
+  { value: "shelfLife", label: "Holdbarhed" },
+  { value: "hygiene", label: "Personlig hygiejne" },
+  { value: "pest", label: "Skadedyr" },
+  { value: "other", label: "Andet" },
+];
+
+const fieldTypes = [
+  { value: "number", label: "Tal" },
+  { value: "checkbox", label: "Punkt" },
+  { value: "choice", label: "Valg" },
+  { value: "text", label: "Tekst" },
+  { value: "attachment", label: "Fil" },
+] as const;
+
+const weekdays = [
+  { day: 1, label: "Man" },
+  { day: 2, label: "Tir" },
+  { day: 3, label: "Ons" },
+  { day: 4, label: "Tor" },
+  { day: 5, label: "Fre" },
+  { day: 6, label: "Lør" },
+  { day: 0, label: "Søn" },
+];
+
+function newFieldKey() {
+  return `field-${crypto.randomUUID()}`;
+}
+
+function defaultField(key = "field-initial"): FoodSafetyField {
+  return { key, label: "Felt", type: "number", required: true, unit: "", min: undefined, max: undefined, decimals: 1 };
+}
+
+function newDraft(): Draft {
+  return {
+    name: "",
+    description: "",
+    instructions: "",
+    imageStorageId: null,
+    controlType: "temperature",
+    productTemperaturesEnabled: true,
+    schedule: { type: "daily" },
+    startMinuteOfDay: undefined,
+    dueMinuteOfDay: undefined,
+    fields: [defaultField()],
+    originalFieldKeys: [],
+    allLocations: true,
+    locationIds: [],
+    responsibleRole: "",
+  };
+}
+
+function draftFromTemplate(template: Template): Draft {
+  return {
+    name: template.name,
+    description: template.description,
+    instructions: template.instructions ?? "",
+    imageStorageId: template.imageStorageId ?? null,
+    controlType: template.controlType,
+    productTemperaturesEnabled: template.productTemperaturesEnabled,
+    schedule: template.schedule,
+    startMinuteOfDay: template.startMinuteOfDay ?? undefined,
+    dueMinuteOfDay: template.dueMinuteOfDay ?? undefined,
+    fields: template.fields,
+    originalFieldKeys: template.fields.map((field) => field.key),
+    allLocations: template.allLocations,
+    locationIds: template.locationIds,
+    responsibleRole: template.responsibleRole ?? "",
+  };
+}
+
+function scheduleLabel(schedule: FoodSafetySchedule) {
+  if (schedule.type === "daily") return "Dagligt";
+  if (schedule.type === "weekly") return `Ugentligt (${schedule.weekdays.length} dage)`;
+  if (schedule.type === "monthly") return `Månedligt (${schedule.days.join(", ")})`;
+  return `Hver ${schedule.intervalDays}. dag`;
+}
+
+function minutesLabel(value: number | null | undefined) {
+  if (value === null || value === undefined) return "";
+  return `${String(Math.floor(value / 60)).padStart(2, "0")}.${String(value % 60).padStart(2, "0")}`;
+}
+
+function parseMinute(value: string) {
+  if (!value) return undefined;
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isInteger(hours) && Number.isInteger(minutes) ? hours * 60 + minutes : undefined;
+}
+
+function updateFieldType(field: FoodSafetyField, type: FoodSafetyField["type"]): FoodSafetyField {
+  if (type === field.type) return field;
+  if (type === "number") return { key: field.key, label: field.label, type, required: field.required, unit: "", decimals: 1 };
+  if (type === "checkbox") return { key: field.key, label: field.label, type, required: field.required, mustBeChecked: true };
+  if (type === "choice") return { key: field.key, label: field.label, type, required: field.required, options: [{ value: "ok", label: "I orden", compliant: true }, { value: "bad", label: "Ikke i orden", compliant: false }] };
+  if (type === "text") return { key: field.key, label: field.label, type, required: field.required, maxLength: 2000 };
+  return { key: field.key, label: field.label, type, required: field.required, maxFiles: 1 };
+}
+
+function FieldEditor({ draft, setDraft, disabled }: { draft: Draft; setDraft: React.Dispatch<React.SetStateAction<Draft>>; disabled: boolean }) {
+  function patchField(index: number, patch: Partial<FoodSafetyField>) {
+    setDraft((current) => ({ ...current, fields: current.fields.map((field, itemIndex) => itemIndex === index ? { ...field, ...patch } as FoodSafetyField : field) }));
+  }
+
+  function moveField(index: number, direction: -1 | 1) {
+    setDraft((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.fields.length) return current;
+      const fields = [...current.fields];
+      [fields[index], fields[nextIndex]] = [fields[nextIndex], fields[index]];
+      return { ...current, fields };
+    });
+  }
+
+  return (
+    <FieldSet>
+      <div className="flex items-center gap-1">
+        <FieldTitle>Felter</FieldTitle>
+        <HelpTooltip label="Felter" content="Systemet opretter en fast nøgle til hvert felt. Nøglen gør det muligt at sammenligne registreringer over tid." />
+      </div>
+      {draft.controlType === "temperature" ? (
+        <Field
+          data-disabled={disabled}
+          className="min-h-11"
+        >
+          <FieldContent>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-product-temperatures">
+                Produkttemperaturer
+              </FieldLabel>
+              <HelpTooltip
+                label="Produkttemperaturer"
+                content="Gør det muligt at tilføje produkter og registrere en temperatur for hvert produkt, når kontrollen udføres. Kontrollens øvrige felter udfyldes stadig."
+              />
+            </div>
+          </FieldContent>
+          <div className="flex">
+            <Switch
+              id="own-template-product-temperatures"
+              checked={draft.productTemperaturesEnabled}
+              onCheckedChange={(checked) =>
+                setDraft((current) => ({
+                  ...current,
+                  productTemperaturesEnabled: checked,
+                }))
+              }
+              disabled={disabled}
+            />
+          </div>
+        </Field>
+      ) : null}
+      <div className="flex flex-col gap-3">
+        {draft.fields.map((field, index) => (
+          <div key={`${field.key}-${index}`} className="rounded-xl border p-3">
+            <div className="grid gap-3 md:grid-cols-(--grid-cols-sidebar-item)">
+              <Field>
+                <FieldLabel htmlFor={`own-field-label-${index}`}>Feltnavn</FieldLabel>
+                <Input id={`own-field-label-${index}`} value={field.label} onChange={(event) => patchField(index, { label: event.target.value })} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`own-field-type-${index}`}>Type</FieldLabel>
+                <Select items={fieldTypes} value={field.type} onValueChange={(value) => value && setDraft((current) => ({ ...current, fields: current.fields.map((item, itemIndex) => itemIndex === index ? updateFieldType(item, value as FoodSafetyField["type"]) : item) }))}>
+                  <SelectTrigger id={`own-field-type-${index}`} className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectGroup>{fieldTypes.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </Field>
+              <div className="flex items-end gap-1">
+                <Button type="button" variant="outline" size="icon" aria-label="Flyt felt op" disabled={index === 0} onClick={() => moveField(index, -1)}><ArrowUpIcon /></Button>
+                <Button type="button" variant="outline" size="icon" aria-label="Flyt felt ned" disabled={index === draft.fields.length - 1} onClick={() => moveField(index, 1)}><ArrowDownIcon /></Button>
+                <Button type="button" variant="ghost" size="icon" aria-label="Slet felt" disabled={draft.fields.length === 1} onClick={() => setDraft((current) => ({ ...current, fields: current.fields.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2Icon /></Button>
+              </div>
+            </div>
+            <FieldGroup className="mt-3">
+              <Field orientation="horizontal">
+                <FieldContent><FieldLabel htmlFor={`own-field-required-${index}`}>Påkrævet</FieldLabel></FieldContent>
+                <Switch id={`own-field-required-${index}`} checked={field.required} onCheckedChange={(checked) => patchField(index, { required: checked })} />
+              </Field>
+              {field.type === "number" ? (
+                <>
+                  <Field><FieldLabel htmlFor={`own-field-unit-${index}`}>Enhed</FieldLabel><Input id={`own-field-unit-${index}`} value={field.unit ?? ""} onChange={(event) => patchField(index, { unit: event.target.value })} placeholder="°C" /></Field>
+                  <Field><FieldLabel htmlFor={`own-field-min-${index}`}>Minimum</FieldLabel><Input id={`own-field-min-${index}`} type="number" value={field.min ?? ""} onChange={(event) => patchField(index, { min: event.target.value === "" ? undefined : Number(event.target.value) })} /></Field>
+                  <Field><FieldLabel htmlFor={`own-field-max-${index}`}>Maksimum</FieldLabel><Input id={`own-field-max-${index}`} type="number" value={field.max ?? ""} onChange={(event) => patchField(index, { max: event.target.value === "" ? undefined : Number(event.target.value) })} /></Field>
+                  <Field><FieldLabel htmlFor={`own-field-decimals-${index}`}>Decimaler</FieldLabel><Input id={`own-field-decimals-${index}`} type="number" min={0} max={3} value={field.decimals ?? ""} onChange={(event) => patchField(index, { decimals: event.target.value === "" ? undefined : Number(event.target.value) })} /></Field>
+                </>
+              ) : null}
+              {field.type === "checkbox" ? <Field orientation="horizontal"><FieldContent><FieldLabel htmlFor={`own-field-checked-${index}`}>Skal være bekræftet</FieldLabel></FieldContent><Switch id={`own-field-checked-${index}`} checked={field.mustBeChecked} onCheckedChange={(checked) => patchField(index, { mustBeChecked: checked })} /></Field> : null}
+              {field.type === "text" ? <Field><FieldLabel htmlFor={`own-field-max-length-${index}`}>Maks. tegn</FieldLabel><Input id={`own-field-max-length-${index}`} type="number" min={1} max={2000} value={field.maxLength ?? ""} onChange={(event) => patchField(index, { maxLength: event.target.value === "" ? undefined : Number(event.target.value) })} /></Field> : null}
+              {field.type === "attachment" ? <Field><FieldLabel htmlFor={`own-field-max-files-${index}`}>Maks. filer</FieldLabel><Input id={`own-field-max-files-${index}`} type="number" min={1} max={5} value={field.maxFiles} onChange={(event) => patchField(index, { maxFiles: Number(event.target.value) })} /></Field> : null}
+            </FieldGroup>
+            {field.type === "choice" ? (
+              <FieldSet className="mt-3">
+                <FieldLegend variant="label" appearance="inline" className="flex items-center">
+                  Valgmuligheder
+                  <HelpTooltip label="Valgmuligheder" content="Tilføj mellem 2 og 20 svar. Aktivér I orden for de svar, der betyder, at kontrollen er i orden. Mindst ét svar skal være i orden." />
+                </FieldLegend>
+                <FieldGroup appearance="compact">
+                  {field.options.map((option, optionIndex) => (
+                    <FieldGroup key={option.value} appearance="panel" className="sm:grid sm:grid-cols-(--grid-cols-content-actions) sm:items-end">
+                      <Field>
+                        <FieldLabel htmlFor={`own-field-option-label-${index}-${optionIndex}`}>Valgmulighed {optionIndex + 1}</FieldLabel>
+                        <Input
+                          id={`own-field-option-label-${index}-${optionIndex}`}
+                          value={option.label}
+                          required
+                          placeholder="Skriv svaret"
+                          className="min-h-11"
+                          onChange={(event) => patchField(index, { options: field.options.map((item) => item.value === option.value ? { ...item, label: event.target.value } : item) })}
+                        />
+                      </Field>
+                      <Field orientation="horizontal" className="min-h-11 sm:w-auto">
+                        <Switch
+                          id={`own-field-option-compliant-${index}-${optionIndex}`}
+                          checked={option.compliant}
+                          onCheckedChange={(checked) => patchField(index, { options: field.options.map((item) => item.value === option.value ? { ...item, compliant: checked } : item) })}
+                        />
+                        <FieldLabel htmlFor={`own-field-option-compliant-${index}-${optionIndex}`}>I orden</FieldLabel>
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="min-h-11 min-w-11 self-end"
+                        aria-label={`Slet valgmulighed ${optionIndex + 1}`}
+                        disabled={field.options.length <= 2}
+                        onClick={() => patchField(index, { options: field.options.filter((item) => item.value !== option.value) })}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </FieldGroup>
+                  ))}
+                </FieldGroup>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 self-start"
+                  disabled={field.options.length >= 20}
+                  onClick={() => patchField(index, { options: [...field.options, { value: `option-${crypto.randomUUID()}`, label: "", compliant: false }] })}
+                >
+                  <PlusIcon data-icon="inline-start" />Tilføj valgmulighed
+                </Button>
+              </FieldSet>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => setDraft((current) => ({ ...current, fields: [...current.fields, defaultField(newFieldKey())] }))}><PlusIcon data-icon="inline-start" />Tilføj felt</Button>
+    </FieldSet>
+  );
+}
+
+function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMode; locations: Array<{ id: Id<"locations">; name: string }>; onClose: () => void; onSaved: () => void }) {
+  const createTemplate = useMutation(api.foodSafetyTemplates.createTemplate);
+  const updateTemplate = useMutation(api.foodSafetyTemplates.updateTemplate);
+  const generateImageUploadUrl = useMutation(api.foodSafetyTemplates.generateImageUploadUrl);
+  const [draft, setDraft] = useState<Draft>(() => mode && mode !== "new" ? draftFromTemplate(mode) : newDraft());
+  const [saving, setSaving] = useState(false);
+  const [imageSelection, setImageSelection] = useState<{ file: File; previewUrl: string; storageId?: Id<"_storage"> } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const localImageUrl = imageSelection?.previewUrl;
+  const imageUrl = localImageUrl ?? (draft.imageStorageId && mode && mode !== "new" ? mode.imageUrl : null);
+  useEffect(() => () => {
+    if (localImageUrl) URL.revokeObjectURL(localImageUrl);
+  }, [localImageUrl]);
+  const dateContextLocationId = draft.allLocations ? locations[0]?.id : draft.locationIds[0] ?? locations[0]?.id;
+  const now = useFoodSafetyNow(`${mode && mode !== "new" ? mode.id : "new"}:${dateContextLocationId ?? ""}`);
+  const dateContext = useQuery(api.foodSafetyTemplates.getTemplateDateContext, dateContextLocationId ? { locationId: dateContextLocationId, now } : "skip");
+  const responsibleRoles = useQuery(api.foodSafetyTemplates.listResponsibleRoles, {});
+
+  function responsibleRoleLabel(key: string) {
+    if (!key) return "Ingen ansvarlig rolle";
+    return responsibleRoles?.find((role) => role.key === key)?.name ?? key;
+  }
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      let imageStorageId = draft.imageStorageId;
+      if (imageSelection) {
+        imageStorageId = imageSelection.storageId ?? null;
+        if (!imageStorageId) {
+          const image = await compressImage(imageSelection.file, { maxWidth: 1600, maxHeight: 1600, type: "image/webp", alwaysReencode: true });
+          imageStorageId = await uploadToStorage({
+            uploadUrl: await generateImageUploadUrl({}),
+            file: image,
+          });
+          const uploadedStorageId = imageStorageId;
+          setImageSelection((current) => current?.file === imageSelection.file ? { ...current, storageId: uploadedStorageId } : current);
+        }
+      }
+      const payload = {
+        name: draft.name,
+        description: draft.description,
+        instructions: draft.instructions,
+        imageStorageId,
+        controlType: draft.controlType,
+        productTemperaturesEnabled:
+          draft.controlType === "temperature" && draft.productTemperaturesEnabled,
+        schedule: draft.schedule,
+        ...(draft.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: draft.startMinuteOfDay }),
+        ...(draft.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: draft.dueMinuteOfDay }),
+        fields: draft.fields,
+        allLocations: draft.allLocations,
+        locationIds: draft.locationIds,
+        ...(draft.responsibleRole.trim() ? { responsibleRole: draft.responsibleRole.trim() } : {}),
+      };
+      if (mode && mode !== "new") await updateTemplate({ ...payload, templateId: mode.id, reason: "Opdatering af egenkontrol", removedFieldKeys: draft.originalFieldKeys.filter((key) => !draft.fields.some((field) => field.key === key)) });
+      else await createTemplate(payload);
+      toast.success(mode && mode !== "new" ? "Egenkontrollen er opdateret" : "Egenkontrollen er oprettet");
+      onSaved();
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Egenkontrollen kunne ikke opdateres. Prøv igen."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function changeSchedule(value: string | null) {
+    if (!value) return;
+    setDraft((current) => {
+      if (value === "interval") {
+        if (!dateContext?.todayDateKey) {
+          toast.error("Lokationens dato er ikke klar endnu. Prøv igen om et øjeblik.");
+          return current;
+        }
+        return { ...current, schedule: { type: "interval", intervalDays: 7, anchorDate: dateContext.todayDateKey } };
+      }
+      if (value === "weekly") return { ...current, schedule: { type: "weekly", weekdays: [1] } };
+      if (value === "monthly") return { ...current, schedule: { type: "monthly", days: [0] } };
+      return { ...current, schedule: { type: "daily" } };
+    });
+  }
+
+  return (
+    <Dialog open={Boolean(mode)} onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{mode === "new" ? "Ny egenkontrol" : "Redigér egenkontrol"}</DialogTitle>
+          <DialogDescription>Definér felter, frekvens og hvilke lokationer kontrollen gælder for.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={save} inert={saving} aria-busy={saving} className="flex flex-col gap-6">
+          <FieldGroup className="grid md:grid-cols-2">
+            <Field><FieldLabel htmlFor="own-template-name">Navn</FieldLabel><Input id="own-template-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required maxLength={100} /></Field>
+            <Field><FieldLabel htmlFor="own-template-type">Kontroltype</FieldLabel><Select items={controlTypes} value={draft.controlType} onValueChange={(value) => value && setDraft((current) => ({ ...current, controlType: value as FoodSafetyControlType }))}><SelectTrigger id="own-template-type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{controlTypes.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+          </FieldGroup>
+          <Field data-disabled={saving}>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-image">Billede</FieldLabel>
+              <HelpTooltip label="Billede" content="Valgfrit billede, som vises i listen og på kontrollen. Brug JPEG, PNG eller WebP på højst 10 MB." />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={imageUrl ? "Skift billede" : "Vælg billede"}
+                disabled={saving}
+                onClick={() => imageInputRef.current?.click()}
+                appearance="thumbnail"
+                className="relative size-24 overflow-hidden"
+              >
+                {imageUrl ? <Image src={imageUrl} alt="Billede af kontrollen" fill unoptimized sizes="96px" className="object-cover" /> : <ImageIcon className="size-8" />}
+              </Button>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Input
+                  ref={imageInputRef}
+                  id="own-template-image"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={saving}
+                  className="h-auto min-h-11"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+                      toast.error("Vælg et JPEG-, PNG- eller WebP-billede på højst 10 MB.");
+                      event.target.value = "";
+                      return;
+                    }
+                    setImageSelection({ file, previewUrl: URL.createObjectURL(file) });
+                  }}
+                />
+                {imageUrl || draft.imageStorageId ? <Button type="button" variant="outline" className="min-h-11 self-start" disabled={saving} onClick={() => {
+                  setImageSelection(null);
+                  setDraft((current) => ({ ...current, imageStorageId: null }));
+                  if (imageInputRef.current) imageInputRef.current.value = "";
+                }}><Trash2Icon data-icon="inline-start" />Fjern billede</Button> : null}
+              </div>
+            </div>
+          </Field>
+          <Field><FieldLabel htmlFor="own-template-description">Beskrivelse</FieldLabel><Textarea id="own-template-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={1000} /></Field>
+          <Field>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-instructions">Instruktioner</FieldLabel>
+              <HelpTooltip label="Instruktioner" content="Beskriv, hvordan kontrollen skal udføres. Instruktionerne vises, når brugeren åbner kontrollen." />
+            </div>
+            <InstructionEditor
+              id="own-template-instructions"
+              defaultValue={draft.instructions}
+              onChange={(instructions) => setDraft((current) => ({ ...current, instructions }))}
+            />
+          </Field>
+          <FieldSet>
+            <FieldTitle>Frekvens og tidsrum</FieldTitle>
+            <FieldGroup className="grid md:grid-cols-2">
+              <Field><FieldLabel htmlFor="own-template-schedule">Frekvens</FieldLabel><Select items={[{ value: "daily", label: "Dagligt" }, { value: "weekly", label: "Ugentligt" }, { value: "monthly", label: "Månedligt" }, { value: "interval", label: "Fast interval" }]} value={draft.schedule.type} onValueChange={changeSchedule}><SelectTrigger id="own-template-schedule" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="daily">Dagligt</SelectItem><SelectItem value="weekly">Ugentligt</SelectItem><SelectItem value="monthly">Månedligt</SelectItem><SelectItem value="interval">Fast interval</SelectItem></SelectGroup></SelectContent></Select></Field>
+              {draft.schedule.type === "weekly" ? <Field><FieldLabel>Ugedage</FieldLabel><div className="grid grid-cols-4 gap-2">{weekdays.map(({ label, day }) => <label key={day} className="flex min-h-11 items-center gap-2 rounded-md border px-2 text-sm"><Checkbox checked={draft.schedule.type === "weekly" && draft.schedule.weekdays.includes(day)} onCheckedChange={(checked) => setDraft((current) => current.schedule.type !== "weekly" ? current : { ...current, schedule: { ...current.schedule, weekdays: checked ? [...current.schedule.weekdays, day] : current.schedule.weekdays.filter((item) => item !== day) } })} />{label}</label>)}</div></Field> : null}
+              {draft.schedule.type === "monthly" ? <Field><FieldLabel htmlFor="own-template-month-days">Månedsdage</FieldLabel><Input id="own-template-month-days" value={draft.schedule.days.join(",")} onChange={(event) => setDraft((current) => current.schedule.type !== "monthly" ? current : { ...current, schedule: { ...current.schedule, days: event.target.value.split(",").map(Number).filter((value) => Number.isFinite(value)) } })} /><FieldDescription>Brug 1–28 eller 0 for sidste dag i måneden.</FieldDescription></Field> : null}
+              {draft.schedule.type === "interval" ? <FieldGroup className="grid grid-cols-2"><Field><FieldLabel htmlFor="own-template-interval">Antal dage</FieldLabel><Input id="own-template-interval" type="number" min={1} max={365} value={draft.schedule.intervalDays} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, intervalDays: Number(event.target.value) } })} /></Field><Field><div className="flex items-center gap-1"><FieldLabel htmlFor="own-template-anchor">Startdato</FieldLabel><HelpTooltip label="Startdato" content="Standarddatoen følger den valgte lokations tidszone." /></div><DatePicker id="own-template-anchor" value={draft.schedule.anchorDate} onValueChange={(value) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, anchorDate: value } })} /></Field></FieldGroup> : null}
+            </FieldGroup>
+            <FieldGroup className="grid md:grid-cols-2">
+              <Field><FieldLabel htmlFor="own-template-start">Starter kl.</FieldLabel><Input id="own-template-start" type="time" value={minutesLabel(draft.startMinuteOfDay).replace(".", ":")} onChange={(event) => setDraft((current) => ({ ...current, startMinuteOfDay: parseMinute(event.target.value) }))} /></Field>
+              <Field><FieldLabel htmlFor="own-template-due">Forfalder kl.</FieldLabel><Input id="own-template-due" type="time" value={minutesLabel(draft.dueMinuteOfDay).replace(".", ":")} onChange={(event) => setDraft((current) => ({ ...current, dueMinuteOfDay: parseMinute(event.target.value) }))} /><FieldDescription>Udfyld ikke feltet for forfald ved dagens slutning.</FieldDescription></Field>
+            </FieldGroup>
+          </FieldSet>
+          <FieldSet>
+            <FieldTitle>Lokationer</FieldTitle>
+            <Field orientation="horizontal"><FieldContent><FieldLabel htmlFor="own-template-all-locations">Alle lokationer</FieldLabel></FieldContent><Switch id="own-template-all-locations" checked={draft.allLocations} onCheckedChange={(checked) => setDraft((current) => ({ ...current, allLocations: checked }))} /></Field>
+            {!draft.allLocations ? <div className="grid gap-2 md:grid-cols-2">{locations.map((location) => <label key={location.id} className="flex min-h-11 items-center gap-2 rounded-md border px-3"><Checkbox checked={draft.locationIds.includes(location.id)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, locationIds: checked ? [...current.locationIds, location.id] : current.locationIds.filter((id) => id !== location.id) }))} />{location.name}</label>)}</div> : null}
+          </FieldSet>
+          <Field data-disabled={responsibleRoles === undefined}>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-role">Ansvarlig rolle</FieldLabel>
+              <HelpTooltip label="Ansvarlig rolle" content="Rollen bruges til visning og filtrering, men begrænser ikke, hvem der kan udføre kontrollen." />
+            </div>
+            <Combobox
+              items={["", ...(responsibleRoles ?? []).map((role) => role.key)]}
+              value={draft.responsibleRole || null}
+              itemToStringLabel={responsibleRoleLabel}
+              disabled={responsibleRoles === undefined}
+              onValueChange={(key) => setDraft((current) => ({ ...current, responsibleRole: key ?? "" }))}
+            >
+              <ComboboxInput
+                id="own-template-role"
+                disabled={responsibleRoles === undefined}
+                placeholder={responsibleRoles === undefined ? "Henter roller…" : "Vælg eller søg efter rolle"}
+              />
+              <ComboboxContent>
+                <ComboboxEmpty>Ingen roller matcher søgningen.</ComboboxEmpty>
+                <ComboboxList>
+                  {(key: string) => <ComboboxItem key={key} value={key}>{responsibleRoleLabel(key)}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+          </Field>
+          <FieldEditor draft={draft} setDraft={setDraft} disabled={saving} />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Annullér</Button>
+            <Button type="submit" size="lg" disabled={saving}>{saving ? <Spinner data-icon="inline-start" /> : null}Gem egenkontrol</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TemplateTable({ templates, onEdit, onAction }: { templates: Template[]; onEdit: (template: Template) => void; onAction: (template: Template, type: "archive" | "restore") => void }) {
+  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Navn</TableHead><TableHead>Kontroltype</TableHead><TableHead>Frekvens</TableHead><TableHead>Lokationer</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Handlinger</TableHead></TableRow></TableHeader><TableBody>{templates.map((template) => <TableRow key={template.id}><TableCell appearance="label">{template.name}<div className="text-xs text-muted-foreground">Version {template.version}</div></TableCell><TableCell>{controlTypes.find((item) => item.value === template.controlType)?.label}</TableCell><TableCell>{scheduleLabel(template.schedule)}{template.dueMinuteOfDay !== null ? <div className="text-xs text-muted-foreground">Kl. {minutesLabel(template.dueMinuteOfDay)}</div> : null}</TableCell><TableCell>{template.allLocations ? "Alle" : `${template.locationIds.length} valgt`}</TableCell><TableCell><Badge variant={template.status === "active" ? "secondary" : "outline"}>{template.status === "active" ? "Aktiv" : "Arkiveret"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1"><Button type="button" variant="ghost" size="icon" aria-label={`Redigér ${template.name}`} onClick={() => onEdit(template)} disabled={template.status !== "active"}><PencilIcon /><span className="sr-only">Redigér</span></Button>{template.status === "active" ? <Button type="button" variant="ghost" size="icon" aria-label={`Arkivér ${template.name}`} onClick={() => onAction(template, "archive")}><ArchiveIcon /></Button> : <Button type="button" variant="ghost" size="icon" aria-label={`Gendan ${template.name}`} onClick={() => onAction(template, "restore")}><RotateCcwIcon /></Button>}</div></TableCell></TableRow>)}</TableBody></Table></div>;
+}
+
+export function FoodSafetyTemplates() {
+  const access = useAccess();
+  const canManage = usePermission("foodSafety.manage");
+  const { locations } = useLocationAccess();
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const activeTemplates = usePaginatedQuery(api.foodSafetyTemplates.listTemplates, canManage ? { status: "active" } : "skip", { initialNumItems: 50 });
+  const archivedTemplates = usePaginatedQuery(api.foodSafetyTemplates.listTemplates, canManage && includeArchived ? { status: "archived" } : "skip", { initialNumItems: 50 });
+  const archiveTemplate = useMutation(api.foodSafetyTemplates.archiveTemplate);
+  const restoreTemplate = useMutation(api.foodSafetyTemplates.restoreTemplate);
+  const [editor, setEditor] = useState<EditorMode>(null);
+  const [action, setAction] = useState<{ template: Template; type: "archive" | "restore" } | null>(null);
+  const [actionReason, setActionReason] = useState("");
+  const [actionPending, setActionPending] = useState(false);
+
+  if (!access || (canManage && activeTemplates.status === "LoadingFirstPage")) return <CardGridSkeleton />;
+  if (!canManage) {
+    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at administrere egenkontroller.</AlertDescription></Alert>;
+  }
+
+  async function completeAction() {
+    if (!action || !actionReason.trim()) {
+      toast.error("Angiv en begrundelse");
+      return;
+    }
+    setActionPending(true);
+    try {
+      if (action.type === "archive") await archiveTemplate({ templateId: action.template.id, reason: actionReason });
+      else await restoreTemplate({ templateId: action.template.id, reason: actionReason });
+      toast.success(action.type === "archive" ? "Egenkontrollen er arkiveret" : "Egenkontrollen er gendannet");
+      setAction(null);
+      setActionReason("");
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Egenkontrollen kunne ikke opdateres. Prøv igen."));
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div><CardTitle>Egenkontroller</CardTitle><CardDescription>Versioner gemmes, så historiske kontroller altid bruger de rigtige felter og grænser.</CardDescription></div>
+            <div className="flex flex-wrap gap-2"><Button type="button" size="lg" onClick={() => setEditor("new")}><PlusIcon data-icon="inline-start" />Ny egenkontrol</Button><Button type="button" variant="outline" onClick={() => setIncludeArchived((current) => !current)}>{includeArchived ? "Skjul arkiverede" : "Vis arkiverede"}</Button></div>
+          </div>
+        </CardHeader>
+        <CardContent appearance="spacious" className="flex flex-col">
+          <section className="flex flex-col gap-3">
+            <h3 className="font-medium">Aktive egenkontroller</h3>
+            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen aktive egenkontroller endnu.</Empty>}
+            {activeTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => activeTemplates.loadMore(50)}>Vis flere aktive</Button> : null}
+            {activeTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere aktive egenkontroller…</div> : null}
+          </section>
+          {includeArchived ? <section className="flex flex-col gap-3">
+            <h3 className="font-medium">Arkiverede egenkontroller</h3>
+            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen arkiverede egenkontroller endnu.</Empty>}
+            {archivedTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => archivedTemplates.loadMore(50)}>Vis flere arkiverede</Button> : null}
+            {archivedTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere arkiverede egenkontroller…</div> : null}
+          </section> : null}
+        </CardContent>
+      </Card>
+      {editor ? (
+        <TemplateEditor
+          key={editor === "new" ? "new" : editor.id}
+          mode={editor}
+          locations={locations}
+          onClose={() => setEditor(null)}
+          onSaved={() => setEditor(null)}
+        />
+      ) : null}
+      <AlertDialog open={Boolean(action)} onOpenChange={(open) => !open && setAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>{action?.type === "archive" ? "Arkivér egenkontrollen?" : "Gendan egenkontrollen?"}</AlertDialogTitle><AlertDialogDescription>{action?.type === "archive" ? "Nye datoer får ikke længere planlagt denne kontrol. Historikken bevares." : "Kontrollen bliver planlagt igen fra den nye versions gyldighed."}</AlertDialogDescription></AlertDialogHeader>
+          <Field><FieldLabel htmlFor="own-template-action-reason">Begrundelse</FieldLabel><Input id="own-template-action-reason" value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder="Angiv en begrundelse" /></Field>
+          <AlertDialogFooter><AlertDialogCancel>Annullér</AlertDialogCancel><AlertDialogAction variant={action?.type === "archive" ? "destructive" : "default"} disabled={actionPending} onClick={() => void completeAction()}>{actionPending ? <Spinner data-icon="inline-start" /> : null}{action?.type === "archive" ? "Arkivér" : "Gendan"}</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

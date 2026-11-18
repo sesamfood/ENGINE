@@ -1223,7 +1223,7 @@ export const operationFeatures: HelpFeature[] = [
         label: "Overblik",
         summary:
           "Egenkontrol samler de kontroller, lokationerne skal udføre, og dokumentationen for dem.",
-        appHref: "/own-checks",
+        appHref: "/food-safety",
         appLinkLabel: "Åbn dagens egenkontroller",
         sections: [
           {
@@ -1248,7 +1248,7 @@ export const operationFeatures: HelpFeature[] = [
         label: "Opret og udfør egenkontroller",
         summary:
           "Opret kontrollens felter og tidsplan, og registrér den daglige udførelse.",
-        appHref: "/own-checks",
+        appHref: "/food-safety",
         appLinkLabel: "Åbn dagens egenkontroller",
         sections: [
           {
@@ -1312,7 +1312,7 @@ export const operationFeatures: HelpFeature[] = [
         label: "Følg op og godkend",
         summary:
           "Registrér korrigerende handlinger, ret registreringer, og godkend.",
-        appHref: "/own-checks/overview",
+        appHref: "/food-safety/overview",
         appLinkLabel: "Åbn Oversigt",
         sections: [
           {
@@ -1345,7 +1345,7 @@ export const operationFeatures: HelpFeature[] = [
         label: "Hent dokumentation",
         summary:
           "Saml udførte og manglende kontroller for en Lokation i PDF eller CSV.",
-        appHref: "/own-checks/documentation",
+        appHref: "/food-safety/documentation",
         appLinkLabel: "Åbn Dokumentation",
         sections: [
           {

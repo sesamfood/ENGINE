@@ -272,7 +272,7 @@ export function OrganizationThemeCard({
           Vælg en automatisk farveskala eller styr de enkelte farver selv.
         </CardDescription>
       </CardHeader>
-      <CardContent appearance="spacious" className="grid lg:grid-cols-(--grid-cols-own-check-template)">
+      <CardContent appearance="spacious" className="grid lg:grid-cols-(--grid-cols-food-safety-template)">
         <FieldGroup>
           <Field>
             <FieldTitle id="theme-mode-label">Tilstand</FieldTitle>

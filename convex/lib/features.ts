@@ -12,7 +12,7 @@ export const featureIds = [
   "expenses",
   "goodsReceipts",
   "waste",
-  "ownChecks",
+  "foodSafety",
   "staffFood",
   "count",
   "employees",
@@ -23,6 +23,13 @@ export const featureIdValidator = v.union(
 );
 
 export type FeatureId = Infer<typeof featureIdValidator>;
+
+// Rows written before the food safety rename hold "ownChecks" until migrations.runFoodSafetyRename runs.
+export const storedFeatureIdValidator = v.union(featureIdValidator, v.literal("ownChecks"));
+
+export function storedFeatures(features: readonly Infer<typeof storedFeatureIdValidator>[]): FeatureId[] {
+  return [...new Set(features.map((feature) => feature === "ownChecks" ? "foodSafety" : feature))];
+}
 
 // A missing row means the organization is active and entitled to everything.
 // An assigned plan and its purchased add-ons supply the features and integrations.
@@ -47,7 +54,7 @@ async function getStoredEntitlements(
     .unique();
   if (!row) return null;
   const plan = row.planId ? await ctx.db.get("plans", row.planId) : null;
-  if (!plan) return { ...row, planName: null };
+  if (!plan) return { ...row, features: storedFeatures(row.features), planName: null };
   const addOns = await Promise.all(
     (row.addOnIds ?? [])
       .filter((id) => plan.addOnIds?.includes(id))
@@ -56,7 +63,7 @@ async function getStoredEntitlements(
   const sources = [plan, ...addOns.filter((addOn) => addOn !== null)];
   return {
     ...row,
-    features: [...new Set(sources.flatMap((source) => source.features))],
+    features: storedFeatures(sources.flatMap((source) => source.features)),
     integrations: [...new Set(sources.flatMap((source) => source.integrations))],
     planName: plan.name,
   };
@@ -92,7 +99,7 @@ export async function getOrganizationDisabledFeatures(
     .query("featureSettings")
     .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
     .unique();
-  return settings?.disabledFeatures ?? [];
+  return storedFeatures(settings?.disabledFeatures ?? []);
 }
 
 // Effective availability: entitled by the platform and not switched off by the organization.
@@ -122,12 +129,12 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "waste.register": "waste",
   "waste.report": "waste",
   "waste.export": "waste",
-  "ownChecks.perform": "ownChecks",
-  "ownChecks.correct": "ownChecks",
-  "ownChecks.view": "ownChecks",
-  "ownChecks.approve": "ownChecks",
-  "ownChecks.edit": "ownChecks",
-  "ownChecks.export": "ownChecks",
+  "foodSafety.perform": "foodSafety",
+  "foodSafety.correct": "foodSafety",
+  "foodSafety.view": "foodSafety",
+  "foodSafety.approve": "foodSafety",
+  "foodSafety.edit": "foodSafety",
+  "foodSafety.export": "foodSafety",
   "transfers.view": "transfers",
   "transfers.manage": "transfers",
   "transfers.export": "transfers",
@@ -159,7 +166,7 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "locations.manage": null,
   "count.settings": null,
   "waste.settings": null,
-  "ownChecks.manage": null,
+  "foodSafety.manage": null,
   "kiosk.dayTasks.manage": null,
   "organization.settings": null,
   "integrations.manage": null,

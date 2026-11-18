@@ -77,7 +77,7 @@
   --grid-cols-opening-hours: 7rem minmax(7rem,1fr) minmax(7rem,1fr);
   --grid-cols-appearance: minmax(0,24rem) 1fr;
   --grid-cols-label-value: 8rem 1fr;
-  --grid-cols-own-check-template: minmax(0,1fr) 20rem;
+  --grid-cols-food-safety-template: minmax(0,1fr) 20rem;
   --grid-cols-sidebar-item: 1fr 10rem auto;
   --grid-cols-content-actions: minmax(0,1fr) auto auto;
   --grid-cols-staff-food-limit: minmax(0,1fr) 10rem;

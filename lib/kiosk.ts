@@ -17,11 +17,11 @@ export const kioskDestinations = [
   { id: "waste.register", route: "/waste", label: "Registrér Waste", feature: "waste" },
   { id: "waste.badDelivery", route: "/waste/bad-delivery", label: "Dårlig levering", feature: "waste" },
   { id: "waste.report", route: "/waste/report", label: "Waste-rapport", feature: "waste" },
-  { id: "ownChecks.today", route: "/own-checks", label: "Dagens egenkontrol", feature: "ownChecks" },
-  { id: "ownChecks.overview", route: "/own-checks/overview", label: "Egenkontroloversigt", feature: "ownChecks" },
-  { id: "ownChecks.documentation", route: "/own-checks/documentation", label: "Kontroldokumentation", feature: "ownChecks" },
-  { id: "ownChecks.allergens", route: "/own-checks/allergens", label: "Allergener", feature: "ownChecks" },
-  { id: "ownChecks.guidance", route: "/own-checks/guidance", label: "Vejledning", feature: "ownChecks" },
+  { id: "foodSafety.today", route: "/food-safety", label: "Dagens egenkontrol", feature: "foodSafety" },
+  { id: "foodSafety.overview", route: "/food-safety/overview", label: "Egenkontroloversigt", feature: "foodSafety" },
+  { id: "foodSafety.documentation", route: "/food-safety/documentation", label: "Kontroldokumentation", feature: "foodSafety" },
+  { id: "foodSafety.allergens", route: "/food-safety/allergens", label: "Allergener", feature: "foodSafety" },
+  { id: "foodSafety.guidance", route: "/food-safety/guidance", label: "Vejledning", feature: "foodSafety" },
   { id: "staffFood.register", route: "/staff-food", label: "Staff food", feature: "staffFood" },
   { id: "staffFood.report", route: "/staff-food/report", label: "Staff food-rapport", feature: "staffFood" },
   { id: "count.register", route: "/count", label: "Count", feature: "count" },
@@ -36,7 +36,7 @@ export function kioskDestinationMatches(id: string, pathname: string) {
   const destination = kioskDestinations.find((item) => item.id === id);
   return (
     destination?.route === pathname ||
-    (id === "ownChecks.today" && pathname.startsWith("/own-checks/check/")) ||
+    (id === "foodSafety.today" && pathname.startsWith("/food-safety/check/")) ||
     (id === "transfers.new" && pathname === "/transfers/orders") ||
     (id === "goodsReceipts.register" && pathname.startsWith("/goods-receipts/")) ||
     (id === "dashboard.view" &&

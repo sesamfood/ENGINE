@@ -8,9 +8,9 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { allergenValidator } from "./lib/allergens";
-import { ownCheckPageValidator } from "./lib/ownCheckSettings";
+import { foodSafetyPageValidator } from "./lib/foodSafetySettings";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
-import { featureIdValidator, unavailableDisplayValidator } from "./lib/features";
+import { storedFeatureIdValidator, unavailableDisplayValidator } from "./lib/features";
 import { expenseCategoryOptionValidator, expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
 import { economicCategoryValidator } from "./integrations/economic/lib/validators";
 import {
@@ -24,18 +24,18 @@ import {
 import {
   cashReportSalesValidator,
   cashReportValuesValidator,
-  kioskDayTaskValidator,
+  storedKioskDayTaskValidator,
 } from "./lib/kioskDayValidators";
 import { countScheduleValidator } from "./lib/countSettings";
 
 import {
-  ownCheckControlTypeValidator,
-  ownCheckFieldValidator,
-  ownCheckNoteValidator,
-  ownCheckProductTemperatureValidator,
-  ownCheckScheduleValidator,
-  ownCheckValueValidator,
-} from "./lib/ownCheckValidators";
+  foodSafetyControlTypeValidator,
+  foodSafetyFieldValidator,
+  foodSafetyNoteValidator,
+  foodSafetyProductTemperatureValidator,
+  foodSafetyScheduleValidator,
+  foodSafetyValueValidator,
+} from "./lib/foodSafetyValidators";
 import { organizationThemeValidator } from "./lib/organizationTheme";
 
 import {
@@ -103,7 +103,7 @@ export default defineSchema({
     planId: v.optional(v.id("plans")),
     // Purchased add-ons; only those offered by the assigned plan apply.
     addOnIds: v.optional(v.array(v.id("addOns"))),
-    features: v.array(featureIdValidator),
+    features: v.array(storedFeatureIdValidator),
     integrations: v.array(integrationIdValidator),
     // Missing means the platform default in platformSettings applies.
     unavailableDisplay: v.optional(unavailableDisplayValidator),
@@ -116,7 +116,7 @@ export default defineSchema({
 
   plans: defineTable({
     name: v.string(),
-    features: v.array(featureIdValidator),
+    features: v.array(storedFeatureIdValidator),
     integrations: v.array(integrationIdValidator),
     // Add-ons organizations on the plan can buy.
     addOnIds: v.optional(v.array(v.id("addOns"))),
@@ -127,7 +127,7 @@ export default defineSchema({
 
   addOns: defineTable({
     name: v.string(),
-    features: v.array(featureIdValidator),
+    features: v.array(storedFeatureIdValidator),
     integrations: v.array(integrationIdValidator),
     // Deprecated add-ons stay where they are but cannot be added again.
     deprecated: v.boolean(),
@@ -195,7 +195,7 @@ export default defineSchema({
 
   featureSettings: defineTable({
     organizationId: v.string(),
-    disabledFeatures: v.array(featureIdValidator),
+    disabledFeatures: v.array(storedFeatureIdValidator),
   }).index("by_organizationId", ["organizationId"]),
 
   addressSearchCache: defineTable({
@@ -2160,8 +2160,8 @@ export default defineSchema({
     organizationId: v.string(),
     locationId: v.id("locations"),
     // Plain strings are tasks saved before descriptions and icons existed.
-    endOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
-    startOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
+    endOfDay: v.array(v.union(v.string(), storedKioskDayTaskValidator)),
+    startOfDay: v.array(v.union(v.string(), storedKioskDayTaskValidator)),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 
@@ -2364,8 +2364,10 @@ export default defineSchema({
     .index("by_organizationId", ["organizationId"])
     .index("by_revokedAt_and_expiresAt", ["revokedAt", "expiresAt"]),
 
-  ownCheckTemplates: defineTable({
+  foodSafetyTemplates: defineTable({
     organizationId: v.string(),
+    // Source row id from the ownCheck* table this row was copied from.
+    legacyId: v.optional(v.string()),
     name: v.string(),
     normalizedName: v.string(),
     currentVersion: v.number(),
@@ -2374,6 +2376,7 @@ export default defineSchema({
     updatedAt: v.number(),
     archivedAt: v.optional(v.number()),
   })
+    .index("by_legacyId", ["legacyId"])
     .index("by_organizationId_and_normalizedName", ["organizationId", "normalizedName"])
     .index("by_organizationId_and_status_and_normalizedName", [
       "organizationId", "status", "normalizedName",
@@ -2382,20 +2385,21 @@ export default defineSchema({
       "organizationId", "status", "archivedAt",
     ]),
 
-  ownCheckTemplateVersions: defineTable({
+  foodSafetyTemplateVersions: defineTable({
     organizationId: v.string(),
-    templateId: v.id("ownCheckTemplates"),
+    legacyId: v.optional(v.string()),
+    templateId: v.id("foodSafetyTemplates"),
     version: v.number(),
     name: v.string(),
     description: v.string(),
     instructions: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")),
-    controlType: ownCheckControlTypeValidator,
+    controlType: foodSafetyControlTypeValidator,
     productTemperaturesEnabled: v.optional(v.boolean()),
-    schedule: ownCheckScheduleValidator,
+    schedule: foodSafetyScheduleValidator,
     startMinuteOfDay: v.optional(v.number()),
     dueMinuteOfDay: v.optional(v.number()),
-    fields: v.array(ownCheckFieldValidator),
+    fields: v.array(foodSafetyFieldValidator),
     allLocations: v.boolean(),
     locationIds: v.array(v.id("locations")),
     responsibleRole: v.optional(v.string()),
@@ -2405,6 +2409,7 @@ export default defineSchema({
     createdBy: v.string(),
     createdByName: v.string(),
   })
+    .index("by_legacyId", ["legacyId"])
     .index("by_imageStorageId", ["imageStorageId"])
     .index("by_organizationId_and_templateId_and_version", [
       "organizationId", "templateId", "version",
@@ -2414,28 +2419,29 @@ export default defineSchema({
       "organizationId", "templateId", "validFrom",
     ]),
 
-  ownCheckEntries: defineTable({
+  foodSafetyEntries: defineTable({
     organizationId: v.string(),
+    legacyId: v.optional(v.string()),
     locationId: v.id("locations"),
     locationName: v.string(),
-    templateId: v.id("ownCheckTemplates"),
-    templateVersionId: v.id("ownCheckTemplateVersions"),
+    templateId: v.id("foodSafetyTemplates"),
+    templateVersionId: v.id("foodSafetyTemplateVersions"),
     templateVersion: v.number(),
     name: v.string(),
-    controlType: ownCheckControlTypeValidator,
+    controlType: foodSafetyControlTypeValidator,
     dueDateKey: v.string(),
     dueAt: v.number(),
     status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
     hasDeviation: v.boolean(),
     followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
     compliant: v.boolean(),
-    values: v.array(ownCheckValueValidator),
+    values: v.array(foodSafetyValueValidator),
     startedAt: v.optional(v.number()),
     endedAt: v.optional(v.number()),
-    productTemperatures: v.optional(v.array(ownCheckProductTemperatureValidator)),
+    productTemperatures: v.optional(v.array(foodSafetyProductTemperatureValidator)),
     note: v.optional(v.string()),
-    deviation: v.optional(ownCheckNoteValidator),
-    correctiveAction: v.optional(ownCheckNoteValidator),
+    deviation: v.optional(foodSafetyNoteValidator),
+    correctiveAction: v.optional(foodSafetyNoteValidator),
     performedAt: v.number(),
     performedBy: v.string(),
     performedByName: v.string(),
@@ -2446,6 +2452,7 @@ export default defineSchema({
     updatedAt: v.number(),
     clientRequestId: v.optional(v.string()),
   })
+    .index("by_legacyId", ["legacyId"])
     .index("by_organizationId_and_locationId_and_dueDateKey", [
       "organizationId", "locationId", "dueDateKey",
     ])
@@ -2475,9 +2482,10 @@ export default defineSchema({
       "organizationId", "clientRequestId",
     ]),
 
-  ownCheckEntryRevisions: defineTable({
+  foodSafetyEntryRevisions: defineTable({
     organizationId: v.string(),
-    entryId: v.id("ownCheckEntries"),
+    legacyId: v.optional(v.string()),
+    entryId: v.id("foodSafetyEntries"),
     revision: v.number(),
     kind: v.union(
       v.literal("submitted"),
@@ -2486,17 +2494,17 @@ export default defineSchema({
       v.literal("correctiveActionRecorded"),
       v.literal("approved"),
     ),
-    values: v.array(ownCheckValueValidator),
+    values: v.array(foodSafetyValueValidator),
     startedAt: v.optional(v.number()),
     endedAt: v.optional(v.number()),
-    productTemperatures: v.optional(v.array(ownCheckProductTemperatureValidator)),
+    productTemperatures: v.optional(v.array(foodSafetyProductTemperatureValidator)),
     status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
     hasDeviation: v.boolean(),
     followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
     compliant: v.boolean(),
     note: v.optional(v.string()),
-    deviation: v.optional(ownCheckNoteValidator),
-    correctiveAction: v.optional(ownCheckNoteValidator),
+    deviation: v.optional(foodSafetyNoteValidator),
+    correctiveAction: v.optional(foodSafetyNoteValidator),
     changes: v.array(v.object({
       field: v.string(),
       label: v.string(),
@@ -2508,15 +2516,149 @@ export default defineSchema({
     actorUserId: v.string(),
     actorName: v.string(),
   })
+    .index("by_legacyId", ["legacyId"])
     .index("by_organizationId_and_entryId_and_revision", ["organizationId", "entryId", "revision"])
     .index("by_organizationId_and_entryId_and_at_and_revision", ["organizationId", "entryId", "at", "revision"]),
+
+  foodSafetySettings: defineTable({
+    organizationId: v.string(),
+    legacyId: v.optional(v.string()),
+    lateSubmissionDays: v.optional(v.number()),
+    requireSecondPersonApproval: v.optional(v.boolean()),
+    blockDuringCount: v.optional(v.boolean()),
+    hiddenPages: v.optional(v.array(foodSafetyPageValidator)),
+    updatedAt: v.number(),
+  })
+    .index("by_legacyId", ["legacyId"])
+    .index("by_organizationId", ["organizationId"]),
+
+  foodSafetyAttachments: defineTable({
+    organizationId: v.string(),
+    legacyId: v.optional(v.string()),
+    entryId: v.id("foodSafetyEntries"),
+    fieldKey: v.string(),
+    storageId: v.id("_storage"),
+    contentType: v.string(),
+    fileSize: v.number(),
+    addedAtRevision: v.number(),
+    removedAtRevision: v.optional(v.number()),
+    uploadedAt: v.number(),
+    uploadedBy: v.string(),
+  })
+    .index("by_legacyId", ["legacyId"])
+    .index("by_organizationId_and_entryId", ["organizationId", "entryId"])
+    .index("by_storageId", ["storageId"]),
+
+  // Legacy ownCheck* tables. Sources for the foodSafety* copy migration; dropped after it has run.
+  ownCheckTemplates: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    currentVersion: v.number(),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  }),
+
+  ownCheckTemplateVersions: defineTable({
+    organizationId: v.string(),
+    templateId: v.id("ownCheckTemplates"),
+    version: v.number(),
+    name: v.string(),
+    description: v.string(),
+    instructions: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
+    controlType: foodSafetyControlTypeValidator,
+    productTemperaturesEnabled: v.optional(v.boolean()),
+    schedule: foodSafetyScheduleValidator,
+    startMinuteOfDay: v.optional(v.number()),
+    dueMinuteOfDay: v.optional(v.number()),
+    fields: v.array(foodSafetyFieldValidator),
+    allLocations: v.boolean(),
+    locationIds: v.array(v.id("locations")),
+    responsibleRole: v.optional(v.string()),
+    validFrom: v.number(),
+    validTo: v.optional(v.number()),
+    createdAt: v.number(),
+    createdBy: v.string(),
+    createdByName: v.string(),
+  })
+    .index("by_imageStorageId", ["imageStorageId"]),
+
+  ownCheckEntries: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    templateId: v.id("ownCheckTemplates"),
+    templateVersionId: v.id("ownCheckTemplateVersions"),
+    templateVersion: v.number(),
+    name: v.string(),
+    controlType: foodSafetyControlTypeValidator,
+    dueDateKey: v.string(),
+    dueAt: v.number(),
+    status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
+    hasDeviation: v.boolean(),
+    followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
+    compliant: v.boolean(),
+    values: v.array(foodSafetyValueValidator),
+    startedAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    productTemperatures: v.optional(v.array(foodSafetyProductTemperatureValidator)),
+    note: v.optional(v.string()),
+    deviation: v.optional(foodSafetyNoteValidator),
+    correctiveAction: v.optional(foodSafetyNoteValidator),
+    performedAt: v.number(),
+    performedBy: v.string(),
+    performedByName: v.string(),
+    approvedAt: v.optional(v.number()),
+    approvedBy: v.optional(v.string()),
+    approvedByName: v.optional(v.string()),
+    revision: v.number(),
+    updatedAt: v.number(),
+    clientRequestId: v.optional(v.string()),
+  }),
+
+  ownCheckEntryRevisions: defineTable({
+    organizationId: v.string(),
+    entryId: v.id("ownCheckEntries"),
+    revision: v.number(),
+    kind: v.union(
+      v.literal("submitted"),
+      v.literal("edited"),
+      v.literal("deviationRecorded"),
+      v.literal("correctiveActionRecorded"),
+      v.literal("approved"),
+    ),
+    values: v.array(foodSafetyValueValidator),
+    startedAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    productTemperatures: v.optional(v.array(foodSafetyProductTemperatureValidator)),
+    status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
+    hasDeviation: v.boolean(),
+    followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
+    compliant: v.boolean(),
+    note: v.optional(v.string()),
+    deviation: v.optional(foodSafetyNoteValidator),
+    correctiveAction: v.optional(foodSafetyNoteValidator),
+    changes: v.array(v.object({
+      field: v.string(),
+      label: v.string(),
+      from: v.union(v.string(), v.null()),
+      to: v.union(v.string(), v.null()),
+    })),
+    reason: v.optional(v.string()),
+    at: v.number(),
+    actorUserId: v.string(),
+    actorName: v.string(),
+  }),
 
   ownCheckSettings: defineTable({
     organizationId: v.string(),
     lateSubmissionDays: v.optional(v.number()),
     requireSecondPersonApproval: v.optional(v.boolean()),
     blockDuringCount: v.optional(v.boolean()),
-    hiddenPages: v.optional(v.array(ownCheckPageValidator)),
+    hiddenPages: v.optional(v.array(v.string())),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
@@ -2532,6 +2674,5 @@ export default defineSchema({
     uploadedAt: v.number(),
     uploadedBy: v.string(),
   })
-    .index("by_organizationId_and_entryId", ["organizationId", "entryId"])
     .index("by_storageId", ["storageId"]),
 });

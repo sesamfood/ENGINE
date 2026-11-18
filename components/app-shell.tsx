@@ -154,7 +154,7 @@ const navigationIcons = {
   expenses: WalletIcon,
   goodsReceipts: PackageCheckIcon,
   waste: Trash2Icon,
-  ownChecks: ClipboardCheckIcon,
+  foodSafety: ClipboardCheckIcon,
   staffFood: UtensilsIcon,
   count: ClipboardListIcon,
   employees: UsersRoundIcon,
@@ -1742,8 +1742,8 @@ export function AppShell({
     pathname === "/ordering" || pathname.startsWith("/ordering/");
   const showWasteHeader =
     pathname === "/waste" || pathname.startsWith("/waste/");
-  const showOwnChecksHeader =
-    pathname === "/own-checks" || pathname.startsWith("/own-checks/");
+  const showFoodSafetyHeader =
+    pathname === "/food-safety" || pathname.startsWith("/food-safety/");
   const showStaffFoodHeader =
     pathname === "/staff-food" || pathname.startsWith("/staff-food/");
   const showEmployeesHeader =
@@ -1768,7 +1768,7 @@ export function AppShell({
     showOrderingHeader ||
     showCountHeader ||
     showWasteHeader ||
-    showOwnChecksHeader ||
+    showFoodSafetyHeader ||
     showStaffFoodHeader ||
     showEmployeesHeader ||
     showTransfersHeader ||

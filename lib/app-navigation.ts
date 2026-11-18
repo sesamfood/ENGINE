@@ -13,7 +13,7 @@ const administrationPermissions: PermissionId[] = [
   "waste.settings",
   "expenses.settings",
   "goodsReceipts.settings",
-  "ownChecks.manage",
+  "foodSafety.manage",
   "kiosk.dayTasks.manage",
   "integrations.manage",
   "staffFood.manage",
@@ -58,10 +58,10 @@ const routes: Record<SidebarItemId, readonly Route[]> = {
     { href: "/waste", permission: "waste.register" },
     { href: "/waste/report", permission: "waste.report" },
   ],
-  ownChecks: [
-    { href: "/own-checks", permission: "ownChecks.perform" },
-    { href: "/own-checks/overview", permission: "ownChecks.view" },
-    { href: "/own-checks/documentation", permission: "ownChecks.export" },
+  foodSafety: [
+    { href: "/food-safety", permission: "foodSafety.perform" },
+    { href: "/food-safety/overview", permission: "foodSafety.view" },
+    { href: "/food-safety/documentation", permission: "foodSafety.export" },
   ],
   staffFood: [
     { href: "/staff-food", permission: "staffFood.register" },
@@ -164,7 +164,7 @@ export function homeDestination(
     "expenses",
     "goodsReceipts",
     "waste",
-    "ownChecks",
+    "foodSafety",
     "staffFood",
     "count",
     "employees",
