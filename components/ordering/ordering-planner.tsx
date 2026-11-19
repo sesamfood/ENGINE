@@ -464,7 +464,11 @@ function Planner({
   const orderWindows = internalSupplier?.orderWindowWeekdays ?? [];
   const upcomingPlanDays =
     context && orderWindows.length
-      ? prepDaysAfter(context.today, orderWindows)
+      ? prepDaysAfter(
+          context.today,
+          orderWindows,
+          internalSupplier?.planDayChoices,
+        )
       : [];
   // Editing keeps a saved prep day that is no longer upcoming.
   const planDays =

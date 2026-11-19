@@ -1,7 +1,12 @@
 import { addDays, parseDateKey } from "./date";
 
-// How many upcoming prep days an internal order can be placed for.
+// How many upcoming prep days an internal order can be placed for, unless the supplier sets it.
 export const PREP_DAY_CHOICES = 3;
+export const MAX_PREP_DAY_CHOICES = 8;
+
+export function validPrepDayChoices(value: number) {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_PREP_DAY_CHOICES;
+}
 
 // A prep day is the day after an order window (0 = Sunday).
 export function isPrepDay(date: string, orderWindows: readonly number[]) {

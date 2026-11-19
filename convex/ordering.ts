@@ -49,7 +49,7 @@ import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { canOrderFrom, getInternalSupplier } from "./internalOrders";
-import { prepDaysAfter } from "../lib/prep-days";
+import { PREP_DAY_CHOICES, prepDaysAfter } from "../lib/prep-days";
 import {
   forecastSettings,
   forecastSettingsFields,
@@ -551,6 +551,7 @@ async function requireInternalSupplier(
     productIds: new Set(supplier.productIds),
     orderWindows: supplier.orderWindowWeekdays ?? [],
     allowExtraOrders: supplier.allowExtraOrders !== false,
+    planDayChoices: supplier.planDayChoices ?? PREP_DAY_CHOICES,
   };
 }
 
@@ -570,6 +571,7 @@ async function requirePlanDate(
   organizationId: string,
   locationId: Id<"locations">,
   orderWindows: number[],
+  planDayChoices: number,
   planDate: string,
   saved?: string,
 ) {
@@ -578,7 +580,7 @@ async function requirePlanDate(
     Date.now(),
     await resolveTimeZone(ctx, organizationId, locationId),
   );
-  if (!prepDaysAfter(today, orderWindows).includes(planDate)) {
+  if (!prepDaysAfter(today, orderWindows, planDayChoices).includes(planDate)) {
     throw new ConvexError("Prepdagen kan ikke vælges. Vælg en anden prepdag.");
   }
   return planDate;
@@ -593,6 +595,7 @@ export const listInternalSuppliers = query({
       productIds: v.array(v.id("products")),
       orderWindowWeekdays: v.array(v.number()),
       allowExtraOrders: v.boolean(),
+      planDayChoices: v.number(),
       ...forecastSettingsFields,
     }),
   ),
@@ -620,6 +623,7 @@ export const listInternalSuppliers = query({
               productIds: supplier.productIds,
               orderWindowWeekdays: supplier.orderWindowWeekdays ?? [],
               allowExtraOrders: supplier.allowExtraOrders !== false,
+              planDayChoices: supplier.planDayChoices ?? PREP_DAY_CHOICES,
               ...forecastSettings(supplier),
             },
           ]
@@ -815,6 +819,7 @@ async function prepareOrder(
     fulfillingLocationId: internalSupplier?.location._id,
     orderWindows: internalSupplier?.orderWindows ?? [],
     allowExtraOrders: internalSupplier?.allowExtraOrders ?? true,
+    planDayChoices: internalSupplier?.planDayChoices ?? PREP_DAY_CHOICES,
     catalogProvider,
     rows,
   };
@@ -887,6 +892,7 @@ export const placeOrder = mutation({
       fulfillingLocationId,
       orderWindows,
       allowExtraOrders,
+      planDayChoices,
       catalogProvider,
       rows,
     } = await prepareOrder(ctx, args);
@@ -900,6 +906,7 @@ export const placeOrder = mutation({
             auth.organizationId,
             args.locationId,
             orderWindows,
+            planDayChoices,
             args.planDate,
           )
         : undefined;
@@ -1146,11 +1153,12 @@ export const updateInternalOrder = mutation({
       );
     }
     // Checks location access and that the supplier still offers each Produkt.
-    const { rows, orderWindows, allowExtraOrders } = await prepareOrder(ctx, {
-      locationId: order.locationId,
-      fulfillingLocationId: order.fulfillingLocationId,
-      lines: args.lines,
-    });
+    const { rows, orderWindows, allowExtraOrders, planDayChoices } =
+      await prepareOrder(ctx, {
+        locationId: order.locationId,
+        fulfillingLocationId: order.fulfillingLocationId,
+        lines: args.lines,
+      });
     const planDate =
       typeof args.planDate === "string"
         ? await requirePlanDate(
@@ -1158,6 +1166,7 @@ export const updateInternalOrder = mutation({
             auth.organizationId,
             order.locationId,
             orderWindows,
+            planDayChoices,
             args.planDate,
             order.planDate,
           )

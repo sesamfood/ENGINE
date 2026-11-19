@@ -1492,6 +1492,8 @@ export default defineSchema({
     orderWindowWeekdays: v.optional(v.array(v.number())),
     // Missing means true. Extra orders stay out of the Prepplan.
     allowExtraOrders: v.optional(v.boolean()),
+    // How many upcoming prep days an order can be for. Missing means PREP_DAY_CHOICES.
+    planDayChoices: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 
