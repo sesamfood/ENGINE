@@ -71,6 +71,7 @@ export const getSettings = query({
         allLocations: v.boolean(),
         orderingLocationIds: v.array(v.id("locations")),
         productIds: v.array(v.id("products")),
+        orderWindowWeekdays: v.array(v.number()),
         ...forecastSettingsFields,
       }),
     ),
@@ -104,6 +105,7 @@ export const getSettings = query({
                   locationIds.has(id),
                 ),
                 productIds: supplier.productIds,
+                orderWindowWeekdays: supplier.orderWindowWeekdays ?? [],
                 ...forecastSettings(supplier),
               },
             ]
@@ -120,6 +122,8 @@ export const saveSupplier = mutation({
     allLocations: v.boolean(),
     orderingLocationIds: v.array(v.id("locations")),
     productIds: v.array(v.id("products")),
+    // Optional so older clients keep the stored windows.
+    orderWindowWeekdays: v.optional(v.array(v.number())),
     ...forecastSettingsFields,
   },
   returns: v.null(),
@@ -154,12 +158,24 @@ export const saveSupplier = mutation({
         throw new ConvexError("Et produkt blev ikke fundet. Opdatér siden.");
       }
     }
+    if (
+      args.orderWindowWeekdays?.some(
+        (day) => !Number.isInteger(day) || day < 0 || day > 6,
+      )
+    ) {
+      throw new ConvexError("Bestillingsvinduerne er ugyldige");
+    }
     const current = await getInternalSupplier(
       ctx,
       organizationId,
       args.locationId,
     );
     const next = {
+      ...(args.orderWindowWeekdays
+        ? {
+            orderWindowWeekdays: [...new Set(args.orderWindowWeekdays)].sort(),
+          }
+        : {}),
       active: args.active,
       allLocations: args.allLocations,
       orderingLocationIds,

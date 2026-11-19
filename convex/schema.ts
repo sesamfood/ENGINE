@@ -985,6 +985,9 @@ export default defineSchema({
     ),
     imageStorageId: v.optional(v.id("_storage")),
     maxTemperatureCelsius: v.optional(v.number()),
+    // Prepplan: hours of preparation before the Produkt is ready, and how it is made.
+    prepLeadTimeHours: v.optional(v.number()),
+    prepMethod: v.optional(v.string()),
     expiry: v.optional(expiryValidator),
     // Including VAT, in integer minor units.
     salesPrice: v.optional(v.number()),
@@ -1485,8 +1488,26 @@ export default defineSchema({
     // Forecast settings under Bestilling. Missing means the defaults.
     coverageDays: v.optional(v.number()),
     bufferPercent: v.optional(v.number()),
+    // Weekdays (0 = Sunday) whose orders become the next day's Prepplan.
+    orderWindowWeekdays: v.optional(v.array(v.number())),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  // One checked item in a Prepplan, keyed by the supplier location and prep day.
+  prepPlanChecks: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    planDate: v.string(),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    checkedAt: v.number(),
+    checkedBy: v.string(),
+    checkedByName: v.string(),
+  }).index("by_organizationId_and_locationId_and_planDate", [
+    "organizationId",
+    "locationId",
+    "planDate",
+  ]),
 
   suppliers: defineTable({
     organizationId: v.string(),

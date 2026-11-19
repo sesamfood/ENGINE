@@ -96,6 +96,16 @@ import {
 } from "@/lib/ordering-forecast";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
+const weekdays = [
+  { day: 1, label: "Man" },
+  { day: 2, label: "Tir" },
+  { day: 3, label: "Ons" },
+  { day: 4, label: "Tor" },
+  { day: 5, label: "Fre" },
+  { day: 6, label: "Lør" },
+  { day: 0, label: "Søn" },
+];
+
 type Settings = FunctionReturnType<typeof api.internalOrders.getSettings>;
 type Categories = FunctionReturnType<typeof api.catalog.listCategoryOptions>;
 type Products = NonNullable<
@@ -265,6 +275,7 @@ function SupplierCard({
   const [allDraft, setAllDraft] = useState<boolean | null>(null);
   const [orderingDraft, setOrderingDraft] = useState<Set<string> | null>(null);
   const [productDraft, setProductDraft] = useState<Set<string> | null>(null);
+  const [windowDraft, setWindowDraft] = useState<number[] | null>(null);
   const [forecastDraft, setForecastDraft] =
     useState<ForecastSettingsDraft | null>(null);
   const [busy, setBusy] = useState(false);
@@ -273,6 +284,7 @@ function SupplierCard({
   const orderingIds =
     orderingDraft ?? new Set<string>(saved?.orderingLocationIds);
   const productIds = productDraft ?? new Set<string>(saved?.productIds);
+  const orderWindows = windowDraft ?? saved?.orderWindowWeekdays ?? [];
   const forecastInput =
     forecastDraft ??
     forecastSettingsDraft(
@@ -288,6 +300,7 @@ function SupplierCard({
     allDraft !== null ||
     orderingDraft !== null ||
     productDraft !== null ||
+    windowDraft !== null ||
     forecastDraft !== null;
   const others = settings.locations.filter(
     (location) => location.id !== locationId,
@@ -310,8 +323,10 @@ function SupplierCard({
         productIds: [...productIds].filter((id) =>
           availableProducts.has(id),
         ) as Id<"products">[],
+        orderWindowWeekdays: orderWindows,
       });
       setActiveDraft(null);
+      setWindowDraft(null);
       setAllDraft(null);
       setOrderingDraft(null);
       setProductDraft(null);
@@ -408,6 +423,36 @@ function SupplierCard({
               disabled={busy}
             />
           </Field>
+          <FieldSet data-disabled={busy}>
+            <div className="flex items-center gap-1">
+              <FieldLegend variant="label">Bestillingsvinduer</FieldLegend>
+              <HelpTooltip
+                label="Bestillingsvinduer"
+                content="Bestillinger afgivet på de valgte dage samles i en Prepplan for dagen efter under Transfer → Prepplan. Bestillinger på andre dage kommer ikke med."
+              />
+            </div>
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+              {weekdays.map(({ day, label }) => (
+                <label
+                  key={day}
+                  className="flex min-h-11 items-center gap-2 rounded-md border px-2 text-sm"
+                >
+                  <Checkbox
+                    checked={orderWindows.includes(day)}
+                    disabled={busy}
+                    onCheckedChange={(checked) =>
+                      setWindowDraft(
+                        checked
+                          ? [...orderWindows, day]
+                          : orderWindows.filter((item) => item !== day),
+                      )
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </FieldSet>
           <ForecastSettingsFields
             id={`internal-${locationId}-forecast`}
             value={forecastInput}

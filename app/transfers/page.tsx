@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BottomBarSkeleton, CardGridSkeleton, DateRangeSkeleton, ProductFormSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
-import { ArrowRightLeftIcon, HistoryIcon, ShoppingCartIcon } from "lucide-react";
+import { ArrowRightLeftIcon, ChefHatIcon, HistoryIcon, ShoppingCartIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 
 const tabSkeletons = {
@@ -25,6 +25,12 @@ const tabSkeletons = {
   orders: (
     <>
       <CardGridSkeleton count={3} cardClassName="h-52" />
+      <BottomBarSkeleton />
+    </>
+  ),
+  prepplan: (
+    <>
+      <RowsSkeleton />
       <BottomBarSkeleton />
     </>
   ),
@@ -52,6 +58,13 @@ const InternalOrders = dynamic(
     ),
   { loading: () => tabSkeletons.orders },
 );
+const PrepPlan = dynamic(
+  () =>
+    import("@/components/transfers/prep-plan").then(
+      (module) => module.PrepPlan,
+    ),
+  { loading: () => tabSkeletons.prepplan },
+);
 const TransferHistory = dynamic(
   () =>
     import("@/components/transfers/transfer-history").then(
@@ -60,13 +73,13 @@ const TransferHistory = dynamic(
   { loading: () => tabSkeletons.history },
 );
 
-function tabPath(tab: string) {
-  return tab === "history"
-    ? "/transfers/history"
-    : tab === "orders"
-      ? "/transfers/orders"
-      : "/transfers";
-}
+const tabPaths = {
+  new: "/transfers",
+  orders: "/transfers/orders",
+  prepplan: "/transfers/prepplan",
+  history: "/transfers/history",
+} as const;
+type Tab = keyof typeof tabPaths;
 
 function TransfersContent() {
   const pathname = usePathname();
@@ -82,40 +95,54 @@ function TransfersContent() {
   const showHistory = kioskMode
     ? Boolean(kiosk?.settings?.enabledPages.includes("transfers.history"))
     : canView;
+  const canPrepplan = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("transfers.prepplan"))
+    : canManage;
+  // Null when Bestilling is off; no suppliers when no order windows are set.
+  const prepPlan = useQuery(api.prepPlans.get, canPrepplan ? {} : "skip");
+  const showPrepplan = canPrepplan && Boolean(prepPlan?.suppliers.length);
   // Null when internal orders are off.
   const openOrders = useQuery(
     api.internalOrders.listOpenOrders,
     showNew ? {} : "skip",
   );
   const showOrders = showNew && Boolean(openOrders);
-  const activeTab =
-    pathname === "/transfers/history"
-      ? "history"
-      : pathname === "/transfers/orders"
-        ? "orders"
-        : "new";
-  const selectedTab =
+  const activeTab: Tab =
+    (Object.keys(tabPaths) as Tab[]).find((tab) => tabPaths[tab] === pathname) ??
+    "new";
+  const selectedTab: Tab =
     activeTab === "history" && showHistory
       ? "history"
       : activeTab === "orders" &&
           showNew &&
           (showOrders || openOrders === undefined)
         ? "orders"
-        : showNew
-          ? "new"
-          : "history";
+        : activeTab === "prepplan" &&
+            canPrepplan &&
+            (showPrepplan || prepPlan === undefined)
+          ? "prepplan"
+          : showNew
+            ? "new"
+            : showHistory
+              ? "history"
+              : "prepplan";
   const showSectionTabs =
-    Number(showNew) + Number(showOrders) + Number(showHistory) > 1;
+    Number(showNew) +
+      Number(showOrders) +
+      Number(showPrepplan) +
+      Number(showHistory) >
+    1;
+  const hasAccess = showNew || showHistory || canPrepplan;
 
   useEffect(() => {
-    if (!showNew && !showHistory) return;
+    if (!hasAccess) return;
     if (activeTab === selectedTab) return;
-    router.replace(tabPath(selectedTab));
-  }, [activeTab, router, selectedTab, showHistory, showNew]);
+    router.replace(tabPaths[selectedTab]);
+  }, [activeTab, hasAccess, router, selectedTab]);
 
   if (!access) return tabSkeletons[activeTab];
 
-  if (!showNew && !showHistory) {
+  if (!hasAccess) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
@@ -132,6 +159,9 @@ function TransfersContent() {
       : []),
     ...(showOrders
       ? [{ href: "/transfers/orders", label: "Transferbestillinger", shortLabel: "Bestillinger", badgeLabel: "åbne transferbestillinger", icon: ShoppingCartIcon, active: selectedTab === "orders", badge: openOrders?.length || undefined }]
+      : []),
+    ...(showPrepplan
+      ? [{ href: "/transfers/prepplan", label: "Prepplan", icon: ChefHatIcon, active: selectedTab === "prepplan" }]
       : []),
     ...(showHistory
       ? [{ href: "/transfers/history", label: "Transferhistorik", shortLabel: "Historik", icon: HistoryIcon, active: selectedTab === "history" }]
@@ -150,6 +180,20 @@ function TransfersContent() {
           <InternalOrders orders={openOrders} navigation={navigation} />
         ) : (
           tabSkeletons.orders
+        )
+      ) : null}
+      {selectedTab === "prepplan" ? (
+        prepPlan ? (
+          <PrepPlan navigation={navigation} />
+        ) : prepPlan === null ? (
+          <Alert className="max-w-xl">
+            <AlertTitle>Prepplan er ikke tilgængelig</AlertTitle>
+            <AlertDescription>
+              Prepplan bruger interne bestillinger, som kræver Bestilling.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          tabSkeletons.prepplan
         )
       ) : null}
       {showHistory && selectedTab === "history" ? (

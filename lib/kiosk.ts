@@ -9,6 +9,7 @@ export const kioskDestinations = [
   { id: "ordering.history", route: "/ordering/history", label: "Bestillingshistorik", feature: "ordering" },
   { id: "transfers.new", route: "/transfers", label: "Ny transfer", feature: "transfers" },
   { id: "transfers.history", route: "/transfers/history", label: "Transferhistorik", feature: "transfers" },
+  { id: "transfers.prepplan", route: "/transfers/prepplan", label: "Prepplan", feature: "transfers" },
   { id: "invoices.new", route: "/invoices", label: "Registrér salg", feature: "invoices" },
   { id: "invoices.history", route: "/invoices/history", label: "Salgshistorik", feature: "invoices" },
   { id: "expenses.new", route: "/expenses", label: "Opret udgift", feature: "expenses" },
