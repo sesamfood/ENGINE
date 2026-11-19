@@ -458,6 +458,7 @@ function SupplierCard({
             value={forecastInput}
             onChange={setForecastDraft}
             disabled={busy}
+            windowCoverage={orderWindows.length > 0}
           />
         </FieldGroup>
       </CardContent>

@@ -116,6 +116,7 @@ import {
   parseOrderQuantity,
   shiftOrderDate,
   type DemandObservation,
+  windowCoverageDays,
 } from "@/lib/ordering-forecast";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useActiveOrganization } from "@/lib/active-organization";
@@ -443,8 +444,11 @@ function Planner({
     };
   }, [consumption, context]);
 
-  // Set per supplier under Administration → Bestilling.
+  // Set per supplier under Administration → Bestilling. Order windows override it.
   const coverageDays =
+    (context &&
+      internalSupplier &&
+      windowCoverageDays(context.today, internalSupplier.orderWindowWeekdays)) ??
     supplier?.coverageDays ??
     internalSupplier?.coverageDays ??
     settings?.coverageDays ??

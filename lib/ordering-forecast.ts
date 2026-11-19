@@ -23,6 +23,15 @@ export function validForecastSettings(
   );
 }
 
+// Covers from today until the delivery after the next order window (orders are delivered the day after).
+export function windowCoverageDays(today: string, weekdays: number[]) {
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  for (let days = 1; days <= 7; days++) {
+    if (weekdays.includes((weekday + days) % 7)) return days + 1;
+  }
+  return null;
+}
+
 export type DemandObservation = {
   date: string;
   productId: string;

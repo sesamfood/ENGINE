@@ -554,6 +554,7 @@ export const listInternalSuppliers = query({
       locationId: v.id("locations"),
       name: v.string(),
       productIds: v.array(v.id("products")),
+      orderWindowWeekdays: v.array(v.number()),
       ...forecastSettingsFields,
     }),
   ),
@@ -579,6 +580,7 @@ export const listInternalSuppliers = query({
               locationId: supplier.locationId,
               name: location.name,
               productIds: supplier.productIds,
+              orderWindowWeekdays: supplier.orderWindowWeekdays ?? [],
               ...forecastSettings(supplier),
             },
           ]
