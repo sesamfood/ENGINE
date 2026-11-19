@@ -34,9 +34,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Field, FieldDescription, FieldTitle } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldTitle,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { parseDecimal } from "@/lib/containers";
 import type {
   ParsedProductArchive,
   ProductExportRow,
@@ -55,6 +62,15 @@ export function ProductImportExport() {
   const [conflictMode, setConflictMode] = useState<"skip" | "overwrite">(
     "skip",
   );
+  // Asked mid-import when the file measures a product as another type.
+  const [conversion, setConversion] = useState<{
+    productName: string;
+    fromUnit: string;
+    toUnit: string;
+    resolve: (factor: number | null) => void;
+  } | null>(null);
+  const [conversionInput, setConversionInput] = useState("");
+  const conversionFactor = parseDecimal(conversionInput);
   const importProduct = useMutation(api.catalog.importProduct);
   const importIngredients = useMutation(api.catalog.importProductIngredients);
   const generateUploadUrl = useMutation(
@@ -68,11 +84,8 @@ export function ProductImportExport() {
   async function exportProducts() {
     setIsExporting(true);
     try {
-      const {
-        createProductArchive,
-        downloadProductArchive,
-        MAX_PRODUCTS,
-      } = await import("@/lib/product-archive");
+      const { createProductArchive, downloadProductArchive, MAX_PRODUCTS } =
+        await import("@/lib/product-archive");
       const products: ProductExportRow[] = [];
       let cursor: string | null = null;
       let done = false;
@@ -96,7 +109,12 @@ export function ProductImportExport() {
       downloadProductArchive(await createProductArchive(products));
       toast.success(`${products.length} produkter er eksporteret`);
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Produktfilen kunne ikke behandles. Prøv igen.",
+        ),
+      );
     } finally {
       setIsExporting(false);
     }
@@ -109,7 +127,12 @@ export function ProductImportExport() {
       setArchive(await readProductArchive(file));
       setArchiveName(file.name);
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Produktfilen kunne ikke behandles. Prøv igen.",
+        ),
+      );
     } finally {
       setIsReading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -137,6 +160,22 @@ export function ProductImportExport() {
     });
   }
 
+  function askConversion(request: {
+    productName: string;
+    fromUnit: string;
+    toUnit: string;
+  }) {
+    return new Promise<number | null>((resolve) => {
+      setConversionInput("");
+      setConversion({ ...request, resolve });
+    });
+  }
+
+  function answerConversion(factor: number | null) {
+    conversion?.resolve(factor);
+    setConversion(null);
+  }
+
   async function confirmImport() {
     if (!archive) return;
     setIsImporting(true);
@@ -160,17 +199,31 @@ export function ProductImportExport() {
           `Behandler produkter ${index + 1} af ${archive.manifest.products.length}`,
         );
         const maxTemperature =
-          archive.manifest.version !== 1 &&
-          "maxTemperatureCelsius" in product
+          archive.manifest.version !== 1 && "maxTemperatureCelsius" in product
             ? { maxTemperatureCelsius: product.maxTemperatureCelsius }
             : {};
-        const result = await importProduct({
+        const args = {
           name: product.name,
           categories: product.categories ?? [product.category],
           units: product.units,
           overwrite: conflictMode === "overwrite",
           ...maxTemperature,
-        });
+        };
+        let result = await importProduct(args);
+        if (result.status === "needsConversion") {
+          const factor = await askConversion({
+            productName: product.name,
+            fromUnit: result.fromUnit,
+            toUnit: result.toUnit,
+          });
+          result =
+            factor === null
+              ? { productId: result.productId, status: "skipped" }
+              : await importProduct({ ...args, typeConversion: factor });
+        }
+        if (result.status === "needsConversion") {
+          throw new Error(`Omregningen for ${product.name} mangler`);
+        }
         productIds.set(product.sourceId, result);
         processedCount += 1;
         if (result.status === "skipped") continue;
@@ -388,15 +441,57 @@ export function ProductImportExport() {
               {progress}
             </p>
           ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isImporting}>
-              Annullér
-            </AlertDialogCancel>
-            <AlertDialogAction disabled={isImporting} onClick={confirmImport}>
-              {isImporting ? <Spinner data-icon="inline-start" /> : null}
-              Importér
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          {conversion ? (
+            <Field>
+              <FieldLabel htmlFor="import-type-conversion">
+                1 {conversion.fromUnit} {conversion.productName} svarer til
+              </FieldLabel>
+              <Input
+                id="import-type-conversion"
+                type="text"
+                inputMode="decimal"
+                autoFocus
+                value={conversionInput}
+                onChange={(event) => setConversionInput(event.target.value)}
+                className="h-11"
+              />
+              <FieldDescription>
+                {conversion.toUnit}. Filen måler produktet i {conversion.toUnit}
+                , men det bruger {conversion.fromUnit} nu. Lager og opskrifter
+                omregnes med tallet.
+              </FieldDescription>
+            </Field>
+          ) : null}
+          {conversion ? (
+            <AlertDialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={() => answerConversion(null)}
+              >
+                Spring over
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11"
+                disabled={!(conversionFactor > 0)}
+                onClick={() => answerConversion(conversionFactor)}
+              >
+                Fortsæt
+              </Button>
+            </AlertDialogFooter>
+          ) : (
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isImporting}>
+                Annullér
+              </AlertDialogCancel>
+              <AlertDialogAction disabled={isImporting} onClick={confirmImport}>
+                {isImporting ? <Spinner data-icon="inline-start" /> : null}
+                Importér
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </>
