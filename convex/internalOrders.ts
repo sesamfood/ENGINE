@@ -1,3 +1,8 @@
+import {
+  MAX_PREP_DAY_CHOICES,
+  PREP_DAY_CHOICES,
+  validPrepDayChoices,
+} from "../lib/prep-days";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -71,6 +76,9 @@ export const getSettings = query({
         allLocations: v.boolean(),
         orderingLocationIds: v.array(v.id("locations")),
         productIds: v.array(v.id("products")),
+        orderWindowWeekdays: v.array(v.number()),
+        allowExtraOrders: v.boolean(),
+        planDayChoices: v.number(),
         ...forecastSettingsFields,
       }),
     ),
@@ -104,6 +112,9 @@ export const getSettings = query({
                   locationIds.has(id),
                 ),
                 productIds: supplier.productIds,
+                orderWindowWeekdays: supplier.orderWindowWeekdays ?? [],
+                allowExtraOrders: supplier.allowExtraOrders !== false,
+                planDayChoices: supplier.planDayChoices ?? PREP_DAY_CHOICES,
                 ...forecastSettings(supplier),
               },
             ]
@@ -120,6 +131,10 @@ export const saveSupplier = mutation({
     allLocations: v.boolean(),
     orderingLocationIds: v.array(v.id("locations")),
     productIds: v.array(v.id("products")),
+    // Optional so older clients keep the stored windows.
+    orderWindowWeekdays: v.optional(v.array(v.number())),
+    allowExtraOrders: v.optional(v.boolean()),
+    planDayChoices: v.optional(v.number()),
     ...forecastSettingsFields,
   },
   returns: v.null(),
@@ -154,12 +169,38 @@ export const saveSupplier = mutation({
         throw new ConvexError("Et produkt blev ikke fundet. Opdatér siden.");
       }
     }
+    if (
+      args.orderWindowWeekdays?.some(
+        (day) => !Number.isInteger(day) || day < 0 || day > 6,
+      )
+    ) {
+      throw new ConvexError("Bestillingsvinduerne er ugyldige");
+    }
+    if (
+      args.planDayChoices !== undefined &&
+      !validPrepDayChoices(args.planDayChoices)
+    ) {
+      throw new ConvexError(
+        `Vælg fra 1 til ${MAX_PREP_DAY_CHOICES} prepdage frem`,
+      );
+    }
     const current = await getInternalSupplier(
       ctx,
       organizationId,
       args.locationId,
     );
     const next = {
+      ...(args.orderWindowWeekdays
+        ? {
+            orderWindowWeekdays: [...new Set(args.orderWindowWeekdays)].sort(),
+          }
+        : {}),
+      ...(args.planDayChoices === undefined
+        ? {}
+        : { planDayChoices: args.planDayChoices }),
+      ...(args.allowExtraOrders === undefined
+        ? {}
+        : { allowExtraOrders: args.allowExtraOrders }),
       active: args.active,
       allLocations: args.allLocations,
       orderingLocationIds,

@@ -69,6 +69,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
@@ -94,7 +95,22 @@ import {
   DEFAULT_BUFFER_PERCENT,
   DEFAULT_COVERAGE_DAYS,
 } from "@/lib/ordering-forecast";
+import {
+  MAX_PREP_DAY_CHOICES,
+  PREP_DAY_CHOICES,
+  validPrepDayChoices,
+} from "@/lib/prep-days";
 import { getUserErrorMessage } from "@/lib/user-errors";
+
+const weekdays = [
+  { day: 1, label: "Man" },
+  { day: 2, label: "Tir" },
+  { day: 3, label: "Ons" },
+  { day: 4, label: "Tor" },
+  { day: 5, label: "Fre" },
+  { day: 6, label: "Lør" },
+  { day: 0, label: "Søn" },
+];
 
 type Settings = FunctionReturnType<typeof api.internalOrders.getSettings>;
 type Categories = FunctionReturnType<typeof api.catalog.listCategoryOptions>;
@@ -265,6 +281,9 @@ function SupplierCard({
   const [allDraft, setAllDraft] = useState<boolean | null>(null);
   const [orderingDraft, setOrderingDraft] = useState<Set<string> | null>(null);
   const [productDraft, setProductDraft] = useState<Set<string> | null>(null);
+  const [windowDraft, setWindowDraft] = useState<number[] | null>(null);
+  const [extraDraft, setExtraDraft] = useState<boolean | null>(null);
+  const [choicesDraft, setChoicesDraft] = useState<string | null>(null);
   const [forecastDraft, setForecastDraft] =
     useState<ForecastSettingsDraft | null>(null);
   const [busy, setBusy] = useState(false);
@@ -273,6 +292,13 @@ function SupplierCard({
   const orderingIds =
     orderingDraft ?? new Set<string>(saved?.orderingLocationIds);
   const productIds = productDraft ?? new Set<string>(saved?.productIds);
+  const orderWindows = windowDraft ?? saved?.orderWindowWeekdays ?? [];
+  const allowExtraOrders = extraDraft ?? saved?.allowExtraOrders ?? true;
+  const choicesInput =
+    choicesDraft ?? String(saved?.planDayChoices ?? PREP_DAY_CHOICES);
+  const planDayChoices = Number(choicesInput);
+  const validChoices =
+    choicesInput.trim() !== "" && validPrepDayChoices(planDayChoices);
   const forecastInput =
     forecastDraft ??
     forecastSettingsDraft(
@@ -288,6 +314,9 @@ function SupplierCard({
     allDraft !== null ||
     orderingDraft !== null ||
     productDraft !== null ||
+    windowDraft !== null ||
+    extraDraft !== null ||
+    choicesDraft !== null ||
     forecastDraft !== null;
   const others = settings.locations.filter(
     (location) => location.id !== locationId,
@@ -297,7 +326,7 @@ function SupplierCard({
   );
 
   async function save() {
-    if (!forecast) return;
+    if (!forecast || !validChoices) return;
     setBusy(true);
     try {
       await saveSupplier({
@@ -310,8 +339,14 @@ function SupplierCard({
         productIds: [...productIds].filter((id) =>
           availableProducts.has(id),
         ) as Id<"products">[],
+        orderWindowWeekdays: orderWindows,
+        allowExtraOrders,
+        planDayChoices,
       });
       setActiveDraft(null);
+      setWindowDraft(null);
+      setExtraDraft(null);
+      setChoicesDraft(null);
       setAllDraft(null);
       setOrderingDraft(null);
       setProductDraft(null);
@@ -408,11 +443,77 @@ function SupplierCard({
               disabled={busy}
             />
           </Field>
+          <FieldSet data-disabled={busy}>
+            <div className="flex items-center gap-1">
+              <FieldLegend variant="label">Bestillingsvinduer</FieldLegend>
+              <HelpTooltip
+                label="Bestillingsvinduer"
+                content="Dagen efter hvert vindue er en prepdag. Interne bestillinger vælger en prepdag og samles i dens Prepplan. Ekstra bestillinger kommer ikke med."
+              />
+            </div>
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+              {weekdays.map(({ day, label }) => (
+                <label
+                  key={day}
+                  className="flex min-h-11 items-center gap-2 rounded-md border px-2 text-sm"
+                >
+                  <Checkbox
+                    checked={orderWindows.includes(day)}
+                    disabled={busy}
+                    onCheckedChange={(checked) =>
+                      setWindowDraft(
+                        checked
+                          ? [...orderWindows, day]
+                          : orderWindows.filter((item) => item !== day),
+                      )
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </FieldSet>
+          {orderWindows.length ? (
+            <Field data-invalid={!validChoices} data-disabled={busy}>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor={`internal-${locationId}-choices`}>
+                  Prepdage frem
+                </FieldLabel>
+                <HelpTooltip
+                  label="prepdage frem"
+                  content={`Hvor mange kommende prepdage lokationerne kan vælge imellem, når de bestiller. Vælg 1 til ${MAX_PREP_DAY_CHOICES}.`}
+                />
+              </div>
+              <Input
+                id={`internal-${locationId}-choices`}
+                type="number"
+                min={1}
+                max={MAX_PREP_DAY_CHOICES}
+                step={1}
+                className="h-11 sm:max-w-40"
+                value={choicesInput}
+                disabled={busy}
+                aria-invalid={!validChoices}
+                onChange={(event) => setChoicesDraft(event.target.value)}
+              />
+            </Field>
+          ) : null}
+          {orderWindows.length ? (
+            <SettingsSwitchField
+              id={`internal-${locationId}-extra`}
+              label="Tillad ekstra bestillinger"
+              description="Lokationer kan bestille uden for Prepplanen ved at vælge Ingen som prepdag."
+              checked={allowExtraOrders}
+              onCheckedChange={setExtraDraft}
+              disabled={busy}
+            />
+          ) : null}
           <ForecastSettingsFields
             id={`internal-${locationId}-forecast`}
             value={forecastInput}
             onChange={setForecastDraft}
             disabled={busy}
+            windowCoverage={orderWindows.length > 0}
           />
         </FieldGroup>
       </CardContent>
@@ -451,7 +552,7 @@ function SupplierCard({
         </AlertDialog>
         <Button
           size="lg"
-          disabled={!changed || !forecast || busy}
+          disabled={!changed || !forecast || !validChoices || busy}
           onClick={() => void save()}
         >
           {busy ? <Spinner data-icon="inline-start" /> : null}

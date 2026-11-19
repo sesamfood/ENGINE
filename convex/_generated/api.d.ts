@@ -202,6 +202,7 @@ import type * as platform_settings from "../platform/settings.js";
 import type * as platform_support from "../platform/support.js";
 import type * as platform_testOrganizations from "../platform/testOrganizations.js";
 import type * as platformMembers from "../platformMembers.js";
+import type * as prepPlans from "../prepPlans.js";
 import type * as presence from "../presence.js";
 import type * as rest_catalog from "../rest/catalog.js";
 import type * as rest_employees from "../rest/employees.js";
@@ -427,6 +428,7 @@ declare const fullApi: ApiFromModules<{
   "platform/support": typeof platform_support;
   "platform/testOrganizations": typeof platform_testOrganizations;
   platformMembers: typeof platformMembers;
+  prepPlans: typeof prepPlans;
   presence: typeof presence;
   "rest/catalog": typeof rest_catalog;
   "rest/employees": typeof rest_employees;

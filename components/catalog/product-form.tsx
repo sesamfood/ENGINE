@@ -103,6 +103,7 @@ import {
 import { Empty } from "@/components/ui/empty";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   InputGroup,
   InputGroupAddon,
@@ -313,6 +314,15 @@ function parseSalesPrice(value: string) {
     : null;
 }
 
+function prepLeadTimeError(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return undefined;
+  const hours = Number(normalized);
+  return Number.isFinite(hours) && hours > 0 && hours <= 336
+    ? undefined
+    : "Angiv en forberedelsestid mellem 0 og 336 timer";
+}
+
 function parseMaxTemperature(value: string) {
   const normalized = value.trim();
   return normalized ? Number(normalized.replace(",", ".")) : null;
@@ -521,6 +531,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   >(undefined);
   const [name, setName] = useState("");
   const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
+  const [prepLeadTimeHours, setPrepLeadTimeHours] = useState("");
+  const [prepMethod, setPrepMethod] = useState("");
   const [salesPrice, setSalesPrice] = useState("");
   const [productAllergens, setProductAllergens] = useState<AllergenId[]>([]);
   const [expiryValue, setExpiryValue] = useState("");
@@ -591,6 +603,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     setMaxTemperatureCelsius(
       product.maxTemperatureCelsius?.toString() ?? "",
     );
+    setPrepLeadTimeHours(
+      product.prepLeadTimeHours?.toString().replace(".", ",") ?? "",
+    );
+    setPrepMethod(product.prepMethod ?? "");
     setSalesPrice(
       product.salesPrice === null
         ? ""
@@ -1132,6 +1148,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     if (temperatureError) {
       nextErrors.maxTemperatureCelsius = temperatureError;
     }
+    const leadTimeError = prepLeadTimeError(prepLeadTimeHours);
+    if (leadTimeError) nextErrors.prepLeadTimeHours = leadTimeError;
     if (salesPrice.trim() && !SALES_PRICE_INPUT.test(salesPrice.trim())) {
       nextErrors.salesPrice = "Angiv et beløb med højst to decimaler";
     }
@@ -1292,6 +1310,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             recipeYield,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
+            prepLeadTimeHours: prepLeadTimeHours.trim()
+              ? Number(prepLeadTimeHours.trim().replace(",", "."))
+              : null,
+            prepMethod: prepMethod.trim() || null,
             salesPrice: parseSalesPrice(salesPrice),
             allergens: productAllergens,
             expiry: expiryValue.trim()
@@ -1314,6 +1336,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             recipeYield,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
+            prepLeadTimeHours: prepLeadTimeHours.trim()
+              ? Number(prepLeadTimeHours.trim().replace(",", "."))
+              : null,
+            prepMethod: prepMethod.trim() || null,
             salesPrice: parseSalesPrice(salesPrice),
             allergens: productAllergens,
             expiry: expiryValue.trim()
@@ -2173,6 +2199,56 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   </Button>
                 </FieldGroup>
               </FieldSet>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Prepplan</CardTitle>
+              <CardDescription>
+                Bruges, når produktet laves ud fra interne bestillinger.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <Field data-invalid={Boolean(errors.prepLeadTimeHours)}>
+                  <div className="flex items-center gap-1">
+                    <FieldLabel htmlFor="product-prep-lead-time">
+                      Forberedelsestid
+                    </FieldLabel>
+                    <HelpTooltip
+                      label="Forberedelsestid"
+                      content="Hvor lang tid produktet tager, fx at marinere eller køle ned. Produkter med lang forberedelsestid kommer først i Prepplan."
+                    />
+                  </div>
+                  <InputGroup className="h-11 max-w-48">
+                    <InputGroupInput
+                      id="product-prep-lead-time"
+                      type="text"
+                      inputMode="decimal"
+                      value={prepLeadTimeHours}
+                      onChange={(event) =>
+                        setPrepLeadTimeHours(event.target.value)
+                      }
+                      aria-invalid={Boolean(errors.prepLeadTimeHours)}
+                    />
+                    <InputGroupAddon align="inline-end">timer</InputGroupAddon>
+                  </InputGroup>
+                  <FieldError>{errors.prepLeadTimeHours}</FieldError>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="product-prep-method">
+                    Fremgangsmåde
+                  </FieldLabel>
+                  <Textarea
+                    id="product-prep-method"
+                    value={prepMethod}
+                    onChange={(event) => setPrepMethod(event.target.value)}
+                    maxLength={5000}
+                    rows={5}
+                  />
+                </Field>
+              </FieldGroup>
             </CardContent>
           </Card>
 

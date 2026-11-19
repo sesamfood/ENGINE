@@ -29,6 +29,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DraftRestoredNotice } from "@/components/draft-restored-notice";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   useAccess,
   useLocationAccess,
@@ -117,6 +118,8 @@ import {
   shiftOrderDate,
   type DemandObservation,
 } from "@/lib/ordering-forecast";
+import { prepDaysAfter, windowCoverageDays } from "@/lib/prep-days";
+import { dateTimeFormatter, parseDateKey } from "@/lib/date";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useActiveOrganization } from "@/lib/active-organization";
 
@@ -128,6 +131,18 @@ const priceFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 2,
 });
 const NO_SUPPLIER = "none";
+const NO_PLAN_DATE = "none";
+const planDayFormatter = dateTimeFormatter("da-DK", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
+
+function formatPlanDay(date: string) {
+  const label = planDayFormatter.format(parseDateKey(date));
+  return label.charAt(0).toLocaleUpperCase("da") + label.slice(1);
+}
 const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
 
 export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
@@ -192,6 +207,8 @@ function Planner({
   // null until the user has typed, so editing starts from the saved comment.
   const [commentInput, setCommentInput] = useState<string | null>(null);
   const comment = commentInput ?? editOrder?.comment ?? "";
+  // null until the user has chosen, so it starts from the next or saved prep day.
+  const [planDateChoice, setPlanDateChoice] = useState<string | null>(null);
   const [catalogInputs, setCatalogInputs] = useState<Record<string, string>>(
     {},
   );
@@ -443,8 +460,41 @@ function Planner({
     };
   }, [consumption, context]);
 
+  // Internal orders to a supplier with order windows are for a Prepplan day.
+  const orderWindows = internalSupplier?.orderWindowWeekdays ?? [];
+  const upcomingPlanDays =
+    context && orderWindows.length
+      ? prepDaysAfter(
+          context.today,
+          orderWindows,
+          internalSupplier?.planDayChoices,
+        )
+      : [];
+  // Editing keeps a saved prep day that is no longer upcoming.
+  const planDays =
+    editOrder?.planDate && !upcomingPlanDays.includes(editOrder.planDate)
+      ? [editOrder.planDate, ...upcomingPlanDays]
+      : upcomingPlanDays;
   // Set per supplier under Administration → Bestilling.
+  const allowExtraOrders =
+    !planDays.length || internalSupplier?.allowExtraOrders !== false;
+  const planDate =
+    (planDateChoice === NO_PLAN_DATE && allowExtraOrders) ||
+    (planDateChoice && planDays.includes(planDateChoice))
+      ? planDateChoice
+      : editing && (editOrder?.planDate || allowExtraOrders)
+        ? (editOrder?.planDate ?? NO_PLAN_DATE)
+        : (planDays[0] ?? NO_PLAN_DATE);
+  // Set per supplier under Administration → Bestilling. Order windows override it,
+  // so the order lasts until the next planned delivery.
   const coverageDays =
+    (context && orderWindows.length
+      ? windowCoverageDays(
+          context.today,
+          planDate === NO_PLAN_DATE ? context.today : planDate,
+          orderWindows,
+        )
+      : null) ??
     supplier?.coverageDays ??
     internalSupplier?.coverageDays ??
     settings?.coverageDays ??
@@ -649,7 +699,14 @@ function Planner({
     !choosingSupplier;
 
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
+    <div
+      className={cn(
+        "grid gap-5 sm:items-center",
+        planDays.length
+          ? "sm:grid-cols-(--grid-cols-page-header-wide)"
+          : "sm:grid-cols-(--grid-cols-page-header)",
+      )}
+    >
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>
           {editing ? "Redigér bestilling" : "Bestilling"}
@@ -681,29 +738,69 @@ function Planner({
               </Select>
             </Field>
           ) : null}
-          <Field>
-            <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
-            <LocationField
-              id="ordering-location"
-              locations={locations}
-              value={locationId}
-              locked={isLocked || editing}
-              lockedName={
-                editing
-                  ? locations.find((location) => location.id === locationId)
-                      ?.name
-                  : lockedName
-              }
-              disabled={busy || !locations.length}
-              onValueChange={(value) => {
-                const location = locations.find((item) => item.id === value);
-                if (location) {
-                  setOrderingLocation(organizationId, location.id);
-                  setAsOf(currentMinute());
+          <div className={cn("grid gap-4", planDays.length && "lg:grid-cols-2")}>
+            {planDays.length ? (
+              <Select
+                items={[
+                  ...planDays.map((day) => ({
+                    value: day,
+                    label: formatPlanDay(day),
+                  })),
+                  ...(allowExtraOrders
+                    ? [{ value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" }]
+                    : []),
+                ]}
+                value={planDate}
+                onValueChange={(value) => value && setPlanDateChoice(value)}
+                disabled={busy}
+              >
+                <SelectTrigger
+                  aria-label="Prepdag"
+                  className="h-11 w-full"
+                >
+                  <span className="text-muted-foreground">Prepdag</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {planDays.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {formatPlanDay(day)}
+                      </SelectItem>
+                    ))}
+                    {allowExtraOrders ? (
+                      <SelectItem value={NO_PLAN_DATE}>
+                        Ingen – ekstra bestilling
+                      </SelectItem>
+                    ) : null}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Field>
+              <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
+              <LocationField
+                id="ordering-location"
+                locations={locations}
+                value={locationId}
+                locked={isLocked || editing}
+                lockedName={
+                  editing
+                    ? locations.find((location) => location.id === locationId)
+                        ?.name
+                    : lockedName
                 }
-              }}
-            />
-          </Field>
+                disabled={busy || !locations.length}
+                onValueChange={(value) => {
+                  const location = locations.find((item) => item.id === value);
+                  if (location) {
+                    setOrderingLocation(organizationId, location.id);
+                    setAsOf(currentMinute());
+                  }
+                }}
+              />
+            </Field>
+          </div>
         </div>
       ) : null}
     </div>
@@ -764,7 +861,12 @@ function Planner({
     setPlacing(true);
     if (editOrder) {
       try {
-        await updateOrder({ orderId: editOrder.id, lines: orderLines, comment });
+        await updateOrder({
+          orderId: editOrder.id,
+          lines: orderLines,
+          comment,
+          planDate: planDate === NO_PLAN_DATE ? null : planDate,
+        });
         if (!mounted.current) return;
         setConfirming(false);
         toast.success("Bestillingen er opdateret");
@@ -794,6 +896,7 @@ function Planner({
         lines: orderLines,
         catalogLines,
         ...(internalSupplier ? { comment } : {}),
+        ...(internalSupplier && planDate !== NO_PLAN_DATE ? { planDate } : {}),
       });
       if (draftUserId) clearOrderingDraft(organizationId, draftUserId, locationId);
       if (!mounted.current) return;
@@ -996,19 +1099,22 @@ function Planner({
     setDraftNoticeVisible(false);
   }
 
+  const draftNotice =
+    draftNoticeVisible &&
+    (supplierChoice ||
+      Object.keys(overrides).length > 0 ||
+      Object.keys(unitLines).length > 0 ||
+      Object.keys(catalogInputs).length > 0) ? (
+      <DraftRestoredNotice
+        description="Din ufærdige bestilling er hentet frem igen."
+        onDiscard={discardDraft}
+      />
+    ) : null;
+
   return (
     <>
       <AppPageHeader>{header}</AppPageHeader>
-      {draftNoticeVisible &&
-      (supplierChoice ||
-        Object.keys(overrides).length > 0 ||
-        Object.keys(unitLines).length > 0 ||
-        Object.keys(catalogInputs).length > 0) ? (
-        <DraftRestoredNotice
-          description="Din ufærdige bestilling er hentet frem igen."
-          onDiscard={discardDraft}
-        />
-      ) : null}
+      {draftNotice}
       {!canPlan ? (
         <Alert variant="destructive">
           <AlertTitle>Ingen adgang</AlertTitle>
@@ -1486,6 +1592,11 @@ function Planner({
                 <AlertDialogDescription>
                   {plannedCount} {plannedCount === 1 ? "Produkt" : "Produkter"}
                   {supplierName ? ` hos ${supplierName}` : ""}.
+                  {internalSupplier && planDays.length
+                    ? planDate === NO_PLAN_DATE
+                      ? " Ekstra bestilling uden for Prepplanen."
+                      : ` Til Prepplanen ${planDayFormatter.format(parseDateKey(planDate))}.`
+                    : ""}
                   {sendsToApi
                     ? ` Bestillingen sendes direkte til ${supplierCatalog?.name}.`
                     : supplier && !supplier.email

@@ -985,6 +985,9 @@ export default defineSchema({
     ),
     imageStorageId: v.optional(v.id("_storage")),
     maxTemperatureCelsius: v.optional(v.number()),
+    // Prepplan: hours of preparation before the Produkt is ready, and how it is made.
+    prepLeadTimeHours: v.optional(v.number()),
+    prepMethod: v.optional(v.string()),
     expiry: v.optional(expiryValidator),
     // Including VAT, in integer minor units.
     salesPrice: v.optional(v.number()),
@@ -1485,8 +1488,32 @@ export default defineSchema({
     // Forecast settings under Bestilling. Missing means the defaults.
     coverageDays: v.optional(v.number()),
     bufferPercent: v.optional(v.number()),
+    // Weekdays (0 = Sunday) whose orders become the next day's Prepplan.
+    orderWindowWeekdays: v.optional(v.array(v.number())),
+    // Missing means true. Extra orders stay out of the Prepplan.
+    allowExtraOrders: v.optional(v.boolean()),
+    // How many upcoming prep days an order can be for. Missing means PREP_DAY_CHOICES.
+    planDayChoices: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  // One checked item in a Prepplan, keyed by the supplier location and prep day.
+  prepPlanChecks: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    planDate: v.string(),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    // The total the check was made for. A changed total reopens the item.
+    total: v.number(),
+    checkedAt: v.number(),
+    checkedBy: v.string(),
+    checkedByName: v.string(),
+  }).index("by_organizationId_and_locationId_and_planDate", [
+    "organizationId",
+    "locationId",
+    "planDate",
+  ]),
 
   suppliers: defineTable({
     organizationId: v.string(),
@@ -1556,6 +1583,8 @@ export default defineSchema({
     transferId: v.optional(v.id("transfers")),
     // Set when an open internal order is edited. A Transfer must match the latest version.
     editedAt: v.optional(v.number()),
+    // Internal orders: the Prepplan day the order is for. Missing means an extra order.
+    planDate: v.optional(v.string()),
   })
     .index("by_organizationId_and_locationId_and_createdAt", [
       "organizationId",
@@ -1573,6 +1602,11 @@ export default defineSchema({
       "fulfillmentStatus",
       "fulfillingLocationId",
       "createdAt",
+    ])
+    .index("by_org_fulfillingLocation_planDate", [
+      "organizationId",
+      "fulfillingLocationId",
+      "planDate",
     ]),
 
   orderLines: defineTable({

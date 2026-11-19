@@ -7,6 +7,7 @@ export const kioskDestinations = [
   { id: "woltOrders.view", route: "/wolt-orders", label: "Wolt-ordrer", feature: "woltOrders" },
   { id: "ordering.new", route: "/ordering", label: "Ny bestilling", feature: "ordering" },
   { id: "ordering.history", route: "/ordering/history", label: "Bestillingshistorik", feature: "ordering" },
+  { id: "prepplan.view", route: "/prepplan", label: "Prepplan", feature: "ordering" },
   { id: "transfers.new", route: "/transfers", label: "Ny transfer", feature: "transfers" },
   { id: "transfers.history", route: "/transfers/history", label: "Transferhistorik", feature: "transfers" },
   { id: "invoices.new", route: "/invoices", label: "Registrér salg", feature: "invoices" },

@@ -137,6 +137,8 @@ const productDetailValidator = v.object({
   status: statusValidator,
   productType: v.union(productTypeValidator, v.null()),
   maxTemperatureCelsius: v.union(v.number(), v.null()),
+  prepLeadTimeHours: v.union(v.number(), v.null()),
+  prepMethod: v.union(v.string(), v.null()),
   expiry: v.union(expiryValidator, v.null()),
   salesPrice: v.union(v.number(), v.null()),
   allergens: v.array(allergenValidator),
@@ -1834,6 +1836,8 @@ export const getProduct = query({
       status: product.status,
       productType: product.productType ?? null,
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
+      prepLeadTimeHours: product.prepLeadTimeHours ?? null,
+      prepMethod: product.prepMethod ?? null,
       expiry: product.expiry ?? null,
       salesPrice: product.salesPrice ?? null,
       allergens: product.allergens ?? [],
@@ -2097,6 +2101,36 @@ export const listUnits = query({
   },
 });
 
+const MAX_PREP_LEAD_TIME_HOURS = 24 * 14;
+const MAX_PREP_METHOD_LENGTH = 5000;
+
+// Undefined leaves a field unchanged; null clears it.
+function prepFields(args: {
+  prepLeadTimeHours?: number | null;
+  prepMethod?: string | null;
+}) {
+  const hours = args.prepLeadTimeHours;
+  if (
+    typeof hours === "number" &&
+    !(Number.isFinite(hours) && hours > 0 && hours <= MAX_PREP_LEAD_TIME_HOURS)
+  ) {
+    throw new ConvexError(
+      `Forberedelsestiden skal være mellem 0 og ${MAX_PREP_LEAD_TIME_HOURS} timer`,
+    );
+  }
+  const method =
+    args.prepMethod === undefined ? undefined : args.prepMethod?.trim() || null;
+  if (method && method.length > MAX_PREP_METHOD_LENGTH) {
+    throw new ConvexError(
+      `Fremgangsmåden må højst være ${MAX_PREP_METHOD_LENGTH} tegn`,
+    );
+  }
+  return {
+    ...(hours !== undefined ? { prepLeadTimeHours: hours ?? undefined } : {}),
+    ...(method !== undefined ? { prepMethod: method ?? undefined } : {}),
+  };
+}
+
 export async function createProductWithAuth(
   ctx: MutationCtx,
   auth: OrganizationAuth,
@@ -2108,6 +2142,8 @@ export async function createProductWithAuth(
     recipeYield?: RecipeYieldInput;
     addableIngredients: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
+    prepLeadTimeHours?: number | null;
+    prepMethod?: string | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
     allergens?: AllergenId[];
@@ -2157,6 +2193,7 @@ export async function createProductWithAuth(
   if (typeof args.maxTemperatureCelsius === "number") {
     requireTemperature(args.maxTemperatureCelsius, "Maksimumtemperaturen");
   }
+  const prep = prepFields(args);
 
   const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
   const productId = await ctx.db.insert("products", {
@@ -2170,6 +2207,10 @@ export async function createProductWithAuth(
     ...(typeof args.maxTemperatureCelsius === "number"
       ? { maxTemperatureCelsius: args.maxTemperatureCelsius }
       : {}),
+    ...(prep.prepLeadTimeHours !== undefined
+      ? { prepLeadTimeHours: prep.prepLeadTimeHours }
+      : {}),
+    ...(prep.prepMethod !== undefined ? { prepMethod: prep.prepMethod } : {}),
     status: "active",
     createdBy: userIdentifier,
     ...(args.expiry ? { expiry: args.expiry } : {}),
@@ -2221,6 +2262,8 @@ export async function updateProductWithAuth(
     recipeYield?: RecipeYieldInput;
     addableIngredients?: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
+    prepLeadTimeHours?: number | null;
+    prepMethod?: string | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
     allergens?: AllergenId[];
@@ -2240,6 +2283,7 @@ export async function updateProductWithAuth(
   if (typeof args.maxTemperatureCelsius === "number") {
     requireTemperature(args.maxTemperatureCelsius, "Maksimumtemperaturen");
   }
+  const prep = prepFields(args);
 
   const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
   await assertProductNameAvailable(
@@ -2427,6 +2471,7 @@ export async function updateProductWithAuth(
               : args.maxTemperatureCelsius,
         }
       : {}),
+    ...prep,
     updatedAt,
   });
   await replaceProductCategories(
@@ -2525,6 +2570,8 @@ export const createProduct = mutation({
     recipeYield: recipeYieldInputValidator,
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
+    prepLeadTimeHours: v.optional(v.union(v.number(), v.null())),
+    prepMethod: v.optional(v.union(v.string(), v.null())),
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     allergens: v.optional(v.array(allergenValidator)),
@@ -2977,6 +3024,8 @@ export const updateProduct = mutation({
     recipeYield: recipeYieldInputValidator,
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
+    prepLeadTimeHours: v.optional(v.union(v.number(), v.null())),
+    prepMethod: v.optional(v.union(v.string(), v.null())),
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     allergens: v.optional(v.array(allergenValidator)),
