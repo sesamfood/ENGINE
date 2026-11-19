@@ -3,6 +3,7 @@ import {
   checkUnitName,
   normalizeUnitName,
   resolveUnitSystem,
+  standardUnitFor,
   standardUnitsFor,
   suggestMigration,
   systemKeyFor,
@@ -659,6 +660,64 @@ async function applyStandardUnits(
     }
   }
   return merged;
+}
+
+// Picks the type and "1 file default = scale standard units" from a known
+// measure in the file (kg, L, stk), preferring the product's current type.
+function planImportedUnits(
+  type: ProductType,
+  settings: UnitSystemSettings,
+  units: Array<{ name: string; factorToDefault: number }>,
+) {
+  const measures = units.flatMap((unit) => {
+    const measure = suggestMigration(unit.name, settings);
+    return measure
+      ? [
+          {
+            type: measure.productType,
+            scale: measure.factorToStandard / unit.factorToDefault,
+          },
+        ]
+      : [];
+  });
+  return measures.find((measure) => measure.type === type) ?? measures[0];
+}
+
+// Import factors are relative to the file's default unit, but typed products
+// count in their standard unit. Rescale via the plan's scale or the product's
+// current factor for the file's default unit.
+async function rebaseImportedUnits(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+  planScale: number | undefined,
+  names: string[],
+  units: ResolvedProductUnit[],
+): Promise<ResolvedProductUnit[]> {
+  let scale = planScale;
+  if (scale === undefined) {
+    const fileDefault = units.find((unit) => unit.isDefault)!;
+    const current = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("productId", productId)
+          .eq("unitId", fileDefault.unitId),
+      )
+      .first();
+    if (!current) {
+      throw new ConvexError(
+        `Enheden ${names[units.indexOf(fileDefault)]} i filen kan ikke omregnes til produktets standardenhed. Tilføj produktets standardenhed i filen.`,
+      );
+    }
+    scale = current.factorToDefault;
+  }
+  return units.map((unit) => ({
+    ...unit,
+    factorToDefault: unit.factorToDefault * scale,
+    isDefault: false,
+  }));
 }
 
 async function resolveUnit(
@@ -2594,15 +2653,25 @@ export const importProduct = mutation({
     units: v.array(importedProductUnitValidator),
     overwrite: v.boolean(),
     maxTemperatureCelsius: maxTemperatureInputValidator,
+    // 1 current standard unit = this many standard units of the file's type.
+    typeConversion: v.optional(v.number()),
   },
-  returns: v.object({
-    productId: v.id("products"),
-    status: v.union(
-      v.literal("created"),
-      v.literal("skipped"),
-      v.literal("overwritten"),
-    ),
-  }),
+  returns: v.union(
+    v.object({
+      productId: v.id("products"),
+      status: v.union(
+        v.literal("created"),
+        v.literal("skipped"),
+        v.literal("overwritten"),
+      ),
+    }),
+    v.object({
+      productId: v.id("products"),
+      status: v.literal("needsConversion"),
+      fromUnit: v.string(),
+      toUnit: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId, userIdentifier } = auth;
@@ -2625,14 +2694,34 @@ export const importProduct = mutation({
       return { productId: existing._id, status: "skipped" as const };
     }
 
+    const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+    const plan = existing?.productType
+      ? planImportedUnits(existing.productType, unitSystem, args.units)
+      : undefined;
+    // The file measures the product as another type, e.g. g for a Styk product.
+    const retype =
+      existing?.productType && plan && plan.type !== existing.productType
+        ? { from: existing.productType, to: plan.type }
+        : undefined;
+    if (retype && args.typeConversion === undefined) {
+      return {
+        productId: existing!._id,
+        status: "needsConversion" as const,
+        fromUnit: standardUnitFor(retype.from, unitSystem).name,
+        toUnit: standardUnitFor(retype.to, unitSystem).name,
+      };
+    }
+    if (retype) {
+      requirePositiveNumber(args.typeConversion!, "Omregningen");
+    }
+
     const categoryIds = await resolveCategories(
       ctx,
       organizationId,
       args.categories.map((name) => ({ kind: "new", name })),
     );
     const categoryId = categoryIds[0];
-    const productType = existing?.productType;
-    const unitSystem = await getUnitSystemSettings(ctx, organizationId);
+    const productType = retype?.to ?? existing?.productType;
     const resolvedUnits = await resolveUnits(
       ctx,
       organizationId,
@@ -2644,15 +2733,23 @@ export const importProduct = mutation({
       productType ? { type: productType, settings: unitSystem } : undefined,
     );
     // Overwriting a typed product keeps its standard units and default.
-    const units = productType
-      ? await applyStandardUnits(
-          ctx,
-          organizationId,
-          productType,
-          unitSystem,
-          resolvedUnits,
-        )
-      : resolvedUnits;
+    const units =
+      existing && productType
+        ? await applyStandardUnits(
+            ctx,
+            organizationId,
+            productType,
+            unitSystem,
+            await rebaseImportedUnits(
+              ctx,
+              organizationId,
+              existing._id,
+              plan?.scale,
+              args.units.map((unit) => unit.name),
+              resolvedUnits,
+            ),
+          )
+        : resolvedUnits;
     const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
 
     if (existing) {
@@ -2739,9 +2836,11 @@ export const importProduct = mutation({
             unit.unitId === existing.defaultUnitId && oldUnits.has(unit.unitId),
         ) ??
         units.find((unit) => oldUnits.has(unit.unitId));
-      const conversion = bridge
-        ? bridge.factorToDefault / oldUnits.get(bridge.unitId)!
-        : null;
+      const conversion = retype
+        ? args.typeConversion!
+        : bridge
+          ? bridge.factorToDefault / oldUnits.get(bridge.unitId)!
+          : null;
       const removedUnitReferences = recipeReferences.filter(
         (row) => !nextUnitIds.has(row.unitId),
       );
@@ -2855,6 +2954,7 @@ export const importProduct = mutation({
         normalizedName,
         categoryId,
         defaultUnitId,
+        productType,
         recipeYield: undefined,
         ...(args.maxTemperatureCelsius !== undefined
           ? {
