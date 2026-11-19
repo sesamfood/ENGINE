@@ -116,8 +116,9 @@ import {
   parseOrderQuantity,
   shiftOrderDate,
   type DemandObservation,
-  windowCoverageDays,
 } from "@/lib/ordering-forecast";
+import { prepDaysAfter, windowCoverageDays } from "@/lib/prep-days";
+import { dateTimeFormatter, parseDateKey } from "@/lib/date";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useActiveOrganization } from "@/lib/active-organization";
 
@@ -129,6 +130,18 @@ const priceFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 2,
 });
 const NO_SUPPLIER = "none";
+const NO_PLAN_DATE = "none";
+const planDayFormatter = dateTimeFormatter("da-DK", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
+
+function formatPlanDay(date: string) {
+  const label = planDayFormatter.format(parseDateKey(date));
+  return label.charAt(0).toLocaleUpperCase("da") + label.slice(1);
+}
 const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
 
 export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
@@ -193,6 +206,8 @@ function Planner({
   // null until the user has typed, so editing starts from the saved comment.
   const [commentInput, setCommentInput] = useState<string | null>(null);
   const comment = commentInput ?? editOrder?.comment ?? "";
+  // null until the user has chosen, so it starts from the next or saved prep day.
+  const [planDateChoice, setPlanDateChoice] = useState<string | null>(null);
   const [catalogInputs, setCatalogInputs] = useState<Record<string, string>>(
     {},
   );
@@ -444,11 +459,34 @@ function Planner({
     };
   }, [consumption, context]);
 
-  // Set per supplier under Administration → Bestilling. Order windows override it.
+  // Internal orders to a supplier with order windows are for a Prepplan day.
+  const orderWindows = internalSupplier?.orderWindowWeekdays ?? [];
+  const upcomingPlanDays =
+    context && orderWindows.length
+      ? prepDaysAfter(context.today, orderWindows)
+      : [];
+  // Editing keeps a saved prep day that is no longer upcoming.
+  const planDays =
+    editOrder?.planDate && !upcomingPlanDays.includes(editOrder.planDate)
+      ? [editOrder.planDate, ...upcomingPlanDays]
+      : upcomingPlanDays;
+  const planDate =
+    planDateChoice === NO_PLAN_DATE ||
+    (planDateChoice && planDays.includes(planDateChoice))
+      ? planDateChoice
+      : editing
+        ? (editOrder?.planDate ?? NO_PLAN_DATE)
+        : (planDays[0] ?? NO_PLAN_DATE);
+  // Set per supplier under Administration → Bestilling. Order windows override it,
+  // so the order lasts until the next planned delivery.
   const coverageDays =
-    (context &&
-      internalSupplier &&
-      windowCoverageDays(context.today, internalSupplier.orderWindowWeekdays)) ??
+    (context && orderWindows.length
+      ? windowCoverageDays(
+          context.today,
+          planDate === NO_PLAN_DATE ? context.today : planDate,
+          orderWindows,
+        )
+      : null) ??
     supplier?.coverageDays ??
     internalSupplier?.coverageDays ??
     settings?.coverageDays ??
@@ -685,6 +723,45 @@ function Planner({
               </Select>
             </Field>
           ) : null}
+          {showSupplierField && planDays.length ? (
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="ordering-plan-date">Prepdag</FieldLabel>
+                <HelpTooltip
+                  label="prepdag"
+                  content="Den Prepplan, bestillingen kommer med i. Vælg Ingen for en ekstra bestilling uden for Prepplanen."
+                />
+              </div>
+              <Select
+                items={[
+                  ...planDays.map((day) => ({
+                    value: day,
+                    label: formatPlanDay(day),
+                  })),
+                  { value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" },
+                ]}
+                value={planDate}
+                onValueChange={(value) => value && setPlanDateChoice(value)}
+                disabled={busy}
+              >
+                <SelectTrigger id="ordering-plan-date" className="h-11 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {planDays.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {formatPlanDay(day)}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={NO_PLAN_DATE}>
+                      Ingen – ekstra bestilling
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : null}
           <Field>
             <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
@@ -768,7 +845,12 @@ function Planner({
     setPlacing(true);
     if (editOrder) {
       try {
-        await updateOrder({ orderId: editOrder.id, lines: orderLines, comment });
+        await updateOrder({
+          orderId: editOrder.id,
+          lines: orderLines,
+          comment,
+          planDate: planDate === NO_PLAN_DATE ? null : planDate,
+        });
         if (!mounted.current) return;
         setConfirming(false);
         toast.success("Bestillingen er opdateret");
@@ -798,6 +880,7 @@ function Planner({
         lines: orderLines,
         catalogLines,
         ...(internalSupplier ? { comment } : {}),
+        ...(internalSupplier && planDate !== NO_PLAN_DATE ? { planDate } : {}),
       });
       if (draftUserId) clearOrderingDraft(organizationId, draftUserId, locationId);
       if (!mounted.current) return;
@@ -1490,6 +1573,11 @@ function Planner({
                 <AlertDialogDescription>
                   {plannedCount} {plannedCount === 1 ? "Produkt" : "Produkter"}
                   {supplierName ? ` hos ${supplierName}` : ""}.
+                  {internalSupplier && planDays.length
+                    ? planDate === NO_PLAN_DATE
+                      ? " Ekstra bestilling uden for Prepplanen."
+                      : ` Til Prepplanen ${planDayFormatter.format(parseDateKey(planDate))}.`
+                    : ""}
                   {sendsToApi
                     ? ` Bestillingen sendes direkte til ${supplierCatalog?.name}.`
                     : supplier && !supplier.email

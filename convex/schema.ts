@@ -1579,6 +1579,8 @@ export default defineSchema({
     transferId: v.optional(v.id("transfers")),
     // Set when an open internal order is edited. A Transfer must match the latest version.
     editedAt: v.optional(v.number()),
+    // Internal orders: the Prepplan day the order is for. Missing means an extra order.
+    planDate: v.optional(v.string()),
   })
     .index("by_organizationId_and_locationId_and_createdAt", [
       "organizationId",
@@ -1596,6 +1598,11 @@ export default defineSchema({
       "fulfillmentStatus",
       "fulfillingLocationId",
       "createdAt",
+    ])
+    .index("by_org_fulfillingLocation_planDate", [
+      "organizationId",
+      "fulfillingLocationId",
+      "planDate",
     ]),
 
   orderLines: defineTable({

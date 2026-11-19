@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
-import { addDays, dateKey, parseDateKey, zonedStart } from "../lib/date";
+import { dateKey, parseDateKey } from "../lib/date";
+import { isPrepDay, prepDaysAfter } from "../lib/prep-days";
 import {
   requireLocationAccess,
   requirePermission,
@@ -26,17 +27,10 @@ function canAccess(auth: OrganizationAuth, locationId: Id<"locations">) {
   );
 }
 
-function weekday(date: string) {
-  return parseDateKey(date).getUTCDay();
-}
-
-// The first prep day on or after `from`. A prep day follows an order window.
+// The first prep day on or after `from`.
 function nextPlanDate(from: string, orderWindows: number[]) {
-  for (let offset = 0; offset < 7; offset += 1) {
-    const date = addDays(from, offset);
-    if (orderWindows.includes(weekday(addDays(date, -1)))) return date;
-  }
-  return from;
+  if (isPrepDay(from, orderWindows)) return from;
+  return prepDaysAfter(from, orderWindows, 1)[0] ?? from;
 }
 
 const ingredientValidator = v.object({
@@ -158,9 +152,8 @@ export const get = query({
     const { orders, items, unavailableLineCount } = await loadPlan(
       ctx,
       organizationId,
-      supplier,
+      supplier.locationId,
       date,
-      timeZone,
     );
     const checks = await ctx.db
       .query("prepPlanChecks")
@@ -210,48 +203,24 @@ export const get = query({
 async function loadPlan(
   ctx: QueryCtx,
   organizationId: string,
-  supplier: { locationId: Id<"locations">; orderWindowWeekdays: number[] },
-  date: string,
-  timeZone: string,
-) {
-  const orderDate = addDays(date, -1);
-  const orders = supplier.orderWindowWeekdays.includes(weekday(orderDate))
-    ? await listWindowOrders(
-        ctx,
-        organizationId,
-        supplier.locationId,
-        zonedStart(orderDate, timeZone),
-        zonedStart(date, timeZone),
-      )
-    : [];
-  return { orders, ...(await buildItems(ctx, organizationId, orders)) };
-}
-
-async function listWindowOrders(
-  ctx: QueryCtx,
-  organizationId: string,
   locationId: Id<"locations">,
-  from: number,
-  to: number,
+  date: string,
 ) {
-  const byStatus = (status: "open" | "transferred") =>
-    ctx.db
+  const orders = (
+    await ctx.db
       .query("orders")
-      .withIndex("by_org_fulfillmentStatus_fulfillingLocation_createdAt", (q) =>
+      .withIndex("by_org_fulfillingLocation_planDate", (q) =>
         q
           .eq("organizationId", organizationId)
-          .eq("fulfillmentStatus", status)
           .eq("fulfillingLocationId", locationId)
-          .gte("createdAt", from)
-          .lt("createdAt", to),
+          .eq("planDate", date),
       )
-      .take(MAX_ORDERS);
-  const orders = (
-    await Promise.all([byStatus("open"), byStatus("transferred")])
-  ).flat();
-  return orders
+      .take(MAX_ORDERS * 2)
+  )
+    .filter((order) => order.fulfillmentStatus !== "cancelled")
     .sort((a, b) => a.createdAt - b.createdAt)
     .slice(0, MAX_ORDERS);
+  return { orders, ...(await buildItems(ctx, organizationId, orders)) };
 }
 
 async function buildItems(
@@ -511,12 +480,8 @@ export const setChecked = mutation({
     const { items } = await loadPlan(
       ctx,
       organizationId,
-      {
-        locationId: args.locationId,
-        orderWindowWeekdays: supplier?.orderWindowWeekdays ?? [],
-      },
+      args.locationId,
       args.date,
-      await resolveTimeZone(ctx, organizationId, args.locationId),
     );
     const item = items.find(
       (row) => row.productId === args.productId && row.unitId === args.unitId,

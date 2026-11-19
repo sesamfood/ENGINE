@@ -67,10 +67,6 @@ const dayFormatter = dateTimeFormatter("da-DK", {
   month: "long",
   timeZone: "UTC",
 });
-const weekdayFormatter = dateTimeFormatter("da-DK", {
-  weekday: "long",
-  timeZone: "UTC",
-});
 const timeFormatter = dateTimeFormatter("da-DK", { timeStyle: "short" });
 
 function formatDay(date: string) {
@@ -243,12 +239,10 @@ export function PrepPlan() {
               </span>
               <span className="text-sm text-muted-foreground">
                 {plan.date === plan.today
-                  ? "I dag · "
+                  ? "I dag"
                   : plan.date === addDays(plan.today, 1)
-                    ? "I morgen · "
-                    : ""}
-                Bestillinger fra{" "}
-                {weekdayFormatter.format(parseDateKey(addDays(plan.date, -1)))}
+                    ? "I morgen"
+                    : "Prepdag"}
               </span>
             </div>
             <Button
@@ -339,8 +333,8 @@ export function PrepPlan() {
             </EmptyMedia>
             <EmptyTitle>Ingen bestillinger</EmptyTitle>
             <EmptyDescription>
-              Der er ingen interne bestillinger til {supplier.locationName} i
-              bestillingsvinduet før denne dag.
+              Der er ingen interne bestillinger til {supplier.locationName} for
+              denne prepdag.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

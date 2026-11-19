@@ -14,6 +14,7 @@ import {
 import { ConvexError, v, type Infer } from "convex/values";
 import {
   addDays,
+  dateKey,
   DEFAULT_TIME_ZONE,
   parseDateKey,
   zonedStart,
@@ -48,6 +49,7 @@ import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { canOrderFrom, getInternalSupplier } from "./internalOrders";
+import { prepDaysAfter } from "../lib/prep-days";
 import {
   forecastSettings,
   forecastSettingsFields,
@@ -544,7 +546,31 @@ async function requireInternalSupplier(
       "Lokationen kan ikke længere bestille internt herfra. Opdatér siden.",
     );
   }
-  return { location, productIds: new Set(supplier.productIds) };
+  return {
+    location,
+    productIds: new Set(supplier.productIds),
+    orderWindows: supplier.orderWindowWeekdays ?? [],
+  };
+}
+
+// An internal order's Prepplan day must be one of the next prep days. A saved day can be kept.
+async function requirePlanDate(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  orderWindows: number[],
+  planDate: string,
+  saved?: string,
+) {
+  if (planDate === saved) return planDate;
+  const today = dateKey(
+    Date.now(),
+    await resolveTimeZone(ctx, organizationId, locationId),
+  );
+  if (!prepDaysAfter(today, orderWindows).includes(planDate)) {
+    throw new ConvexError("Prepdagen kan ikke vælges. Vælg en anden prepdag.");
+  }
+  return planDate;
 }
 
 export const listInternalSuppliers = query({
@@ -774,6 +800,7 @@ async function prepareOrder(
     supplier,
     supplierName: supplier?.name ?? internalSupplier?.location.name,
     fulfillingLocationId: internalSupplier?.location._id,
+    orderWindows: internalSupplier?.orderWindows ?? [],
     catalogProvider,
     rows,
   };
@@ -833,6 +860,8 @@ export const placeOrder = mutation({
     bufferPercent: v.number(),
     sendEmail: v.optional(v.boolean()),
     comment: v.optional(v.string()),
+    // Internal orders only. Missing means an extra order outside the Prepplan.
+    planDate: v.optional(v.string()),
   }).fields,
   returns: v.id("orders"),
   handler: async (ctx, args) => {
@@ -842,9 +871,20 @@ export const placeOrder = mutation({
       supplier,
       supplierName,
       fulfillingLocationId,
+      orderWindows,
       catalogProvider,
       rows,
     } = await prepareOrder(ctx, args);
+    const planDate =
+      fulfillingLocationId && args.planDate !== undefined
+        ? await requirePlanDate(
+            ctx,
+            auth.organizationId,
+            args.locationId,
+            orderWindows,
+            args.planDate,
+          )
+        : undefined;
     // AB Catering orders go to its API instead of by e-mail, unless turned off.
     const sendsToApi =
       catalogProvider === "abcatering" &&
@@ -882,6 +922,7 @@ export const placeOrder = mutation({
             fulfillingLocationId,
             fulfillmentStatus: "open" as const,
             comment: orderComment(args.comment),
+            ...(planDate ? { planDate } : {}),
           }
         : {}),
       ...(sendsToApi
@@ -1017,6 +1058,7 @@ export const getEditableOrder = query({
       locationId: v.id("locations"),
       fulfillingLocationId: v.id("locations"),
       comment: v.optional(v.string()),
+      planDate: v.optional(v.string()),
       lines: v.array(
         v.object({
           productId: v.id("products"),
@@ -1050,6 +1092,7 @@ export const getEditableOrder = query({
       locationId: order.locationId,
       fulfillingLocationId: order.fulfillingLocationId,
       comment: order.comment,
+      planDate: order.planDate,
       lines: lines.flatMap(({ productId, unitId, quantity }) =>
         productId && unitId ? [{ productId, unitId, quantity }] : [],
       ),
@@ -1062,6 +1105,8 @@ export const updateInternalOrder = mutation({
     orderId: v.id("orders"),
     lines: orderInputValidator.fields.lines,
     comment: v.optional(v.string()),
+    // Missing keeps the saved Prepplan day; null makes it an extra order.
+    planDate: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1083,11 +1128,22 @@ export const updateInternalOrder = mutation({
       );
     }
     // Checks location access and that the supplier still offers each Produkt.
-    const { rows } = await prepareOrder(ctx, {
+    const { rows, orderWindows } = await prepareOrder(ctx, {
       locationId: order.locationId,
       fulfillingLocationId: order.fulfillingLocationId,
       lines: args.lines,
     });
+    const planDate =
+      typeof args.planDate === "string"
+        ? await requirePlanDate(
+            ctx,
+            auth.organizationId,
+            order.locationId,
+            orderWindows,
+            args.planDate,
+            order.planDate,
+          )
+        : args.planDate;
     const existing = await ctx.db
       .query("orderLines")
       .withIndex("by_organizationId_and_orderId", (q) =>
@@ -1109,6 +1165,7 @@ export const updateInternalOrder = mutation({
       ...(args.comment === undefined
         ? {}
         : { comment: orderComment(args.comment) }),
+      ...(planDate === undefined ? {} : { planDate: planDate ?? undefined }),
     });
     await recordAudit(ctx, auth, {
       action: "ordering.update",
