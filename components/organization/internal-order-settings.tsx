@@ -276,6 +276,7 @@ function SupplierCard({
   const [orderingDraft, setOrderingDraft] = useState<Set<string> | null>(null);
   const [productDraft, setProductDraft] = useState<Set<string> | null>(null);
   const [windowDraft, setWindowDraft] = useState<number[] | null>(null);
+  const [extraDraft, setExtraDraft] = useState<boolean | null>(null);
   const [forecastDraft, setForecastDraft] =
     useState<ForecastSettingsDraft | null>(null);
   const [busy, setBusy] = useState(false);
@@ -285,6 +286,7 @@ function SupplierCard({
     orderingDraft ?? new Set<string>(saved?.orderingLocationIds);
   const productIds = productDraft ?? new Set<string>(saved?.productIds);
   const orderWindows = windowDraft ?? saved?.orderWindowWeekdays ?? [];
+  const allowExtraOrders = extraDraft ?? saved?.allowExtraOrders ?? true;
   const forecastInput =
     forecastDraft ??
     forecastSettingsDraft(
@@ -301,6 +303,7 @@ function SupplierCard({
     orderingDraft !== null ||
     productDraft !== null ||
     windowDraft !== null ||
+    extraDraft !== null ||
     forecastDraft !== null;
   const others = settings.locations.filter(
     (location) => location.id !== locationId,
@@ -324,9 +327,11 @@ function SupplierCard({
           availableProducts.has(id),
         ) as Id<"products">[],
         orderWindowWeekdays: orderWindows,
+        allowExtraOrders,
       });
       setActiveDraft(null);
       setWindowDraft(null);
+      setExtraDraft(null);
       setAllDraft(null);
       setOrderingDraft(null);
       setProductDraft(null);
@@ -453,6 +458,16 @@ function SupplierCard({
               ))}
             </div>
           </FieldSet>
+          {orderWindows.length ? (
+            <SettingsSwitchField
+              id={`internal-${locationId}-extra`}
+              label="Tillad ekstra bestillinger"
+              description="Lokationer kan bestille uden for Prepplanen ved at vælge Ingen som prepdag."
+              checked={allowExtraOrders}
+              onCheckedChange={setExtraDraft}
+              disabled={busy}
+            />
+          ) : null}
           <ForecastSettingsFields
             id={`internal-${locationId}-forecast`}
             value={forecastInput}

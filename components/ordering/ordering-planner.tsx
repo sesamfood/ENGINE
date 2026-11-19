@@ -64,7 +64,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { Switch } from "@/components/ui/switch";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -471,11 +470,14 @@ function Planner({
     editOrder?.planDate && !upcomingPlanDays.includes(editOrder.planDate)
       ? [editOrder.planDate, ...upcomingPlanDays]
       : upcomingPlanDays;
+  // Set per supplier under Administration → Bestilling.
+  const allowExtraOrders =
+    !planDays.length || internalSupplier?.allowExtraOrders !== false;
   const planDate =
-    planDateChoice === NO_PLAN_DATE ||
+    (planDateChoice === NO_PLAN_DATE && allowExtraOrders) ||
     (planDateChoice && planDays.includes(planDateChoice))
       ? planDateChoice
-      : editing
+      : editing && (editOrder?.planDate || allowExtraOrders)
         ? (editOrder?.planDate ?? NO_PLAN_DATE)
         : (planDays[0] ?? NO_PLAN_DATE);
   // Set per supplier under Administration → Bestilling. Order windows override it,
@@ -1045,19 +1047,23 @@ function Planner({
     setDraftNoticeVisible(false);
   }
 
+  const draftNotice =
+    draftNoticeVisible &&
+    (supplierChoice ||
+      Object.keys(overrides).length > 0 ||
+      Object.keys(unitLines).length > 0 ||
+      Object.keys(catalogInputs).length > 0) ? (
+      <DraftRestoredNotice
+        description="Din ufærdige bestilling er hentet frem igen."
+        onDiscard={discardDraft}
+      />
+    ) : null;
+
   return (
     <>
       <AppPageHeader>{header}</AppPageHeader>
-      {draftNoticeVisible &&
-      (supplierChoice ||
-        Object.keys(overrides).length > 0 ||
-        Object.keys(unitLines).length > 0 ||
-        Object.keys(catalogInputs).length > 0) ? (
-        <DraftRestoredNotice
-          description="Din ufærdige bestilling er hentet frem igen."
-          onDiscard={discardDraft}
-        />
-      ) : null}
+      {/* Shown beside the Prepdag controls when they are visible. */}
+      {planDays.length ? null : draftNotice}
       {!canPlan ? (
         <Alert variant="destructive">
           <AlertTitle>Ingen adgang</AlertTitle>
@@ -1191,13 +1197,18 @@ function Planner({
           {planDays.length ? (
             <div className="flex flex-wrap items-center gap-4">
               <Select
-                items={planDays.map((day) => ({
-                  value: day,
-                  label: formatPlanDay(day),
-                }))}
-                value={planDate === NO_PLAN_DATE ? planDays[0] : planDate}
+                items={[
+                  ...planDays.map((day) => ({
+                    value: day,
+                    label: formatPlanDay(day),
+                  })),
+                  ...(allowExtraOrders
+                    ? [{ value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" }]
+                    : []),
+                ]}
+                value={planDate}
                 onValueChange={(value) => value && setPlanDateChoice(value)}
-                disabled={busy || planDate === NO_PLAN_DATE}
+                disabled={busy}
               >
                 <SelectTrigger
                   aria-label="Prepdag"
@@ -1213,26 +1224,17 @@ function Planner({
                         {formatPlanDay(day)}
                       </SelectItem>
                     ))}
+                    {allowExtraOrders ? (
+                      <SelectItem value={NO_PLAN_DATE}>
+                        Ingen – ekstra bestilling
+                      </SelectItem>
+                    ) : null}
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <Field orientation="horizontal" className="w-auto">
-                <Switch
-                  id="ordering-extra"
-                  checked={planDate === NO_PLAN_DATE}
-                  onCheckedChange={(checked) =>
-                    setPlanDateChoice(checked ? NO_PLAN_DATE : planDays[0])
-                  }
-                  disabled={busy}
-                />
-                <FieldLabel htmlFor="ordering-extra" className="min-h-11">
-                  Ekstra bestilling
-                </FieldLabel>
-                <HelpTooltip
-                  label="ekstra bestilling"
-                  content="En ekstra bestilling kommer ikke med i Prepplanen."
-                />
-              </Field>
+              {draftNotice ? (
+                <div className="min-w-0 flex-1 basis-80">{draftNotice}</div>
+              ) : null}
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-4">

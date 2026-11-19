@@ -550,7 +550,18 @@ async function requireInternalSupplier(
     location,
     productIds: new Set(supplier.productIds),
     orderWindows: supplier.orderWindowWeekdays ?? [],
+    allowExtraOrders: supplier.allowExtraOrders !== false,
   };
+}
+
+// Suppliers with order windows can require every order to be for a Prepplan day.
+function requireExtraOrderAllowed(supplier: {
+  orderWindows: number[];
+  allowExtraOrders: boolean;
+}) {
+  if (supplier.orderWindows.length && !supplier.allowExtraOrders) {
+    throw new ConvexError("Vælg en prepdag for bestillingen");
+  }
 }
 
 // An internal order's Prepplan day must be one of the next prep days. A saved day can be kept.
@@ -581,6 +592,7 @@ export const listInternalSuppliers = query({
       name: v.string(),
       productIds: v.array(v.id("products")),
       orderWindowWeekdays: v.array(v.number()),
+      allowExtraOrders: v.boolean(),
       ...forecastSettingsFields,
     }),
   ),
@@ -607,6 +619,7 @@ export const listInternalSuppliers = query({
               name: location.name,
               productIds: supplier.productIds,
               orderWindowWeekdays: supplier.orderWindowWeekdays ?? [],
+              allowExtraOrders: supplier.allowExtraOrders !== false,
               ...forecastSettings(supplier),
             },
           ]
@@ -801,6 +814,7 @@ async function prepareOrder(
     supplierName: supplier?.name ?? internalSupplier?.location.name,
     fulfillingLocationId: internalSupplier?.location._id,
     orderWindows: internalSupplier?.orderWindows ?? [],
+    allowExtraOrders: internalSupplier?.allowExtraOrders ?? true,
     catalogProvider,
     rows,
   };
@@ -872,9 +886,13 @@ export const placeOrder = mutation({
       supplierName,
       fulfillingLocationId,
       orderWindows,
+      allowExtraOrders,
       catalogProvider,
       rows,
     } = await prepareOrder(ctx, args);
+    if (fulfillingLocationId && args.planDate === undefined) {
+      requireExtraOrderAllowed({ orderWindows, allowExtraOrders });
+    }
     const planDate =
       fulfillingLocationId && args.planDate !== undefined
         ? await requirePlanDate(
@@ -1128,7 +1146,7 @@ export const updateInternalOrder = mutation({
       );
     }
     // Checks location access and that the supplier still offers each Produkt.
-    const { rows, orderWindows } = await prepareOrder(ctx, {
+    const { rows, orderWindows, allowExtraOrders } = await prepareOrder(ctx, {
       locationId: order.locationId,
       fulfillingLocationId: order.fulfillingLocationId,
       lines: args.lines,
@@ -1144,6 +1162,9 @@ export const updateInternalOrder = mutation({
             order.planDate,
           )
         : args.planDate;
+    if (planDate === null) {
+      requireExtraOrderAllowed({ orderWindows, allowExtraOrders });
+    }
     const existing = await ctx.db
       .query("orderLines")
       .withIndex("by_organizationId_and_orderId", (q) =>

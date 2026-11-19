@@ -1490,6 +1490,8 @@ export default defineSchema({
     bufferPercent: v.optional(v.number()),
     // Weekdays (0 = Sunday) whose orders become the next day's Prepplan.
     orderWindowWeekdays: v.optional(v.array(v.number())),
+    // Missing means true. Extra orders stay out of the Prepplan.
+    allowExtraOrders: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 

@@ -72,6 +72,7 @@ export const getSettings = query({
         orderingLocationIds: v.array(v.id("locations")),
         productIds: v.array(v.id("products")),
         orderWindowWeekdays: v.array(v.number()),
+        allowExtraOrders: v.boolean(),
         ...forecastSettingsFields,
       }),
     ),
@@ -106,6 +107,7 @@ export const getSettings = query({
                 ),
                 productIds: supplier.productIds,
                 orderWindowWeekdays: supplier.orderWindowWeekdays ?? [],
+                allowExtraOrders: supplier.allowExtraOrders !== false,
                 ...forecastSettings(supplier),
               },
             ]
@@ -124,6 +126,7 @@ export const saveSupplier = mutation({
     productIds: v.array(v.id("products")),
     // Optional so older clients keep the stored windows.
     orderWindowWeekdays: v.optional(v.array(v.number())),
+    allowExtraOrders: v.optional(v.boolean()),
     ...forecastSettingsFields,
   },
   returns: v.null(),
@@ -176,6 +179,9 @@ export const saveSupplier = mutation({
             orderWindowWeekdays: [...new Set(args.orderWindowWeekdays)].sort(),
           }
         : {}),
+      ...(args.allowExtraOrders === undefined
+        ? {}
+        : { allowExtraOrders: args.allowExtraOrders }),
       active: args.active,
       allLocations: args.allLocations,
       orderingLocationIds,
