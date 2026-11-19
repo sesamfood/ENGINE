@@ -47,6 +47,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { addDays, dateTimeFormatter, parseDateKey } from "@/lib/date";
+import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Plan = NonNullable<
@@ -111,11 +112,13 @@ export function PrepPlan({ navigation }: { navigation?: ReactNode }) {
     const timer = setInterval(() => setNow(roundedNow()), 60_000);
     return () => clearInterval(timer);
   }, []);
-  const data = useQuery(api.prepPlans.get, {
+  const live = useQuery(api.prepPlans.get, {
     ...(locationId ? { locationId } : {}),
     ...(date ? { date } : {}),
     now,
   });
+  // Keep the plan on screen while a clock refresh loads.
+  const data = useLastDefined(live, `${locationId}:${date}`);
   const setChecked = useMutation(api.prepPlans.setChecked);
   const [pending, setPending] = useState<Set<string>>(new Set());
 

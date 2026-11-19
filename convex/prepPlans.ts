@@ -9,6 +9,7 @@ import {
 } from "./lib/auth";
 import { normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
+import { getInternalSupplier } from "./internalOrders";
 
 const PAGE = "transfers.prepplan";
 const MAX_SUPPLIERS = 200;
@@ -156,21 +157,12 @@ export const get = query({
     } catch {
       date = nextPlanDate(today, supplier.orderWindowWeekdays);
     }
-    const orderDate = addDays(date, -1);
-    const isPlanDate = supplier.orderWindowWeekdays.includes(weekday(orderDate));
-    const orders = isPlanDate
-      ? await listWindowOrders(
-          ctx,
-          organizationId,
-          supplier.locationId,
-          zonedStart(orderDate, timeZone),
-          zonedStart(date, timeZone),
-        )
-      : [];
-    const { items, unavailableLineCount } = await buildItems(
+    const { orders, items, unavailableLineCount } = await loadPlan(
       ctx,
       organizationId,
-      orders,
+      supplier,
+      date,
+      timeZone,
     );
     const checks = await ctx.db
       .query("prepPlanChecks")
@@ -216,6 +208,26 @@ export const get = query({
     };
   },
 });
+
+async function loadPlan(
+  ctx: QueryCtx,
+  organizationId: string,
+  supplier: { locationId: Id<"locations">; orderWindowWeekdays: number[] },
+  date: string,
+  timeZone: string,
+) {
+  const orderDate = addDays(date, -1);
+  const orders = supplier.orderWindowWeekdays.includes(weekday(orderDate))
+    ? await listWindowOrders(
+        ctx,
+        organizationId,
+        supplier.locationId,
+        zonedStart(orderDate, timeZone),
+        zonedStart(date, timeZone),
+      )
+    : [];
+  return { orders, ...(await buildItems(ctx, organizationId, orders)) };
+}
 
 async function listWindowOrders(
   ctx: QueryCtx,
@@ -488,6 +500,28 @@ export const setChecked = mutation({
       product?.organizationId !== organizationId
     ) {
       throw new ConvexError("Prepplanen blev ikke fundet. Opdatér siden.");
+    }
+    // Reject a toggle made from a stale screen, so it can't replace a newer check.
+    const supplier = await getInternalSupplier(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const { items } = await loadPlan(
+      ctx,
+      organizationId,
+      {
+        locationId: args.locationId,
+        orderWindowWeekdays: supplier?.orderWindowWeekdays ?? [],
+      },
+      args.date,
+      await resolveTimeZone(ctx, organizationId, args.locationId),
+    );
+    const item = items.find(
+      (row) => row.productId === args.productId && row.unitId === args.unitId,
+    );
+    if (item?.total !== args.total) {
+      throw new ConvexError("Prepplanen er ændret. Tjek mængden igen.");
     }
     const rows = await ctx.db
       .query("prepPlanChecks")
