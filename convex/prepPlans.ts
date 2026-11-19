@@ -507,6 +507,9 @@ export const setChecked = mutation({
       organizationId,
       args.locationId,
     );
+    if (auth.disabledFeatures.has("ordering") || supplier?.active === false) {
+      throw new ConvexError("Prepplanen er ikke længere tilgængelig");
+    }
     const { items } = await loadPlan(
       ctx,
       organizationId,
