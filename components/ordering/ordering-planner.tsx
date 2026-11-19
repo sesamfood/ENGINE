@@ -64,6 +64,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -723,45 +724,6 @@ function Planner({
               </Select>
             </Field>
           ) : null}
-          {showSupplierField && planDays.length ? (
-            <Field>
-              <div className="flex items-center gap-1">
-                <FieldLabel htmlFor="ordering-plan-date">Prepdag</FieldLabel>
-                <HelpTooltip
-                  label="prepdag"
-                  content="Den Prepplan, bestillingen kommer med i. Vælg Ingen for en ekstra bestilling uden for Prepplanen."
-                />
-              </div>
-              <Select
-                items={[
-                  ...planDays.map((day) => ({
-                    value: day,
-                    label: formatPlanDay(day),
-                  })),
-                  { value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" },
-                ]}
-                value={planDate}
-                onValueChange={(value) => value && setPlanDateChoice(value)}
-                disabled={busy}
-              >
-                <SelectTrigger id="ordering-plan-date" className="h-11 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {planDays.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {formatPlanDay(day)}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value={NO_PLAN_DATE}>
-                      Ingen – ekstra bestilling
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-          ) : null}
           <Field>
             <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
             <LocationField
@@ -1225,6 +1187,53 @@ function Planner({
                 </div>
               </AlertDescription>
             </Alert>
+          ) : null}
+          {planDays.length ? (
+            <div className="flex flex-wrap items-center gap-4">
+              <Select
+                items={planDays.map((day) => ({
+                  value: day,
+                  label: formatPlanDay(day),
+                }))}
+                value={planDate === NO_PLAN_DATE ? planDays[0] : planDate}
+                onValueChange={(value) => value && setPlanDateChoice(value)}
+                disabled={busy || planDate === NO_PLAN_DATE}
+              >
+                <SelectTrigger
+                  aria-label="Prepdag"
+                  className="h-11 w-full sm:w-auto sm:min-w-64"
+                >
+                  <span className="text-muted-foreground">Prepdag</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {planDays.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {formatPlanDay(day)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Field orientation="horizontal" className="w-auto">
+                <Switch
+                  id="ordering-extra"
+                  checked={planDate === NO_PLAN_DATE}
+                  onCheckedChange={(checked) =>
+                    setPlanDateChoice(checked ? NO_PLAN_DATE : planDays[0])
+                  }
+                  disabled={busy}
+                />
+                <FieldLabel htmlFor="ordering-extra" className="min-h-11">
+                  Ekstra bestilling
+                </FieldLabel>
+                <HelpTooltip
+                  label="ekstra bestilling"
+                  content="En ekstra bestilling kommer ikke med i Prepplanen."
+                />
+              </Field>
+            </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-4">
             <InputGroup className="h-11 w-full sm:max-w-80">
