@@ -94,6 +94,12 @@ export const permissionCatalog = [
     ],
   },
   {
+    group: "Prepplan",
+    permissions: [
+      { id: "prepplan.use", label: "Se Prepplan og markere produkter som færdige" },
+    ],
+  },
+  {
     group: "Transfer",
     permissions: [
       { id: "transfers.view", label: "Se transfers" },

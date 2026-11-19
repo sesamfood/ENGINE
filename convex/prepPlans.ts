@@ -4,14 +4,14 @@ import { mutation, query, type QueryCtx } from "./_generated/server";
 import { addDays, dateKey, parseDateKey, zonedStart } from "../lib/date";
 import {
   requireLocationAccess,
-  requireTransferManager,
+  requirePermission,
   type OrganizationAuth,
 } from "./lib/auth";
 import { normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getInternalSupplier } from "./internalOrders";
 
-const PAGE = "transfers.prepplan";
+const PAGE = "prepplan.view";
 const MAX_SUPPLIERS = 200;
 const MAX_ORDERS = 200;
 const MAX_ORDER_LINES = 200;
@@ -107,9 +107,7 @@ export const get = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, PAGE);
-    // Planned orders are internal orders, which belong to Bestilling.
-    if (auth.disabledFeatures.has("ordering")) return null;
+    const auth = await requirePermission(ctx, "prepplan.use", PAGE);
     const { organizationId } = auth;
     const rows = await ctx.db
       .query("internalSuppliers")
@@ -485,7 +483,7 @@ export const setChecked = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, PAGE);
+    const auth = await requirePermission(ctx, "prepplan.use", PAGE);
     requireLocationAccess(auth, args.locationId);
     try {
       parseDateKey(args.date);
@@ -507,7 +505,7 @@ export const setChecked = mutation({
       organizationId,
       args.locationId,
     );
-    if (auth.disabledFeatures.has("ordering") || supplier?.active === false) {
+    if (supplier?.active === false) {
       throw new ConvexError("Prepplanen er ikke længere tilgængelig");
     }
     const { items } = await loadPlan(

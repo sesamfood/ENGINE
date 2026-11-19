@@ -101,7 +101,7 @@ function itemKey(item: Item) {
   return `${item.productId}:${item.unitId}`;
 }
 
-export function PrepPlan({ navigation }: { navigation?: ReactNode }) {
+export function PrepPlan() {
   const [locationId, setLocationId] = useState<Id<"locations"> | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [mode, setMode] = useState<"overview" | "steps">("overview");
@@ -124,11 +124,10 @@ export function PrepPlan({ navigation }: { navigation?: ReactNode }) {
 
   if (data === undefined) return <RowsSkeleton />;
   const bottomBar = (children?: ReactNode) =>
-    navigation || children ? (
+    children ? (
       <AppBottomBar>
         <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-3">
           {children}
-          {navigation}
         </div>
       </AppBottomBar>
     ) : null;

@@ -428,7 +428,7 @@ function SupplierCard({
               <FieldLegend variant="label">Bestillingsvinduer</FieldLegend>
               <HelpTooltip
                 label="Bestillingsvinduer"
-                content="Bestillinger afgivet på de valgte dage samles i en Prepplan for dagen efter under Transfer → Prepplan. Bestillinger på andre dage kommer ikke med."
+                content="Bestillinger afgivet på de valgte dage samles i en Prepplan for dagen efter under Prepplan. Bestillinger på andre dage kommer ikke med."
               />
             </div>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">

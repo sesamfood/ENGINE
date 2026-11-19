@@ -39,6 +39,7 @@ const routes: Record<SidebarItemId, readonly Route[]> = {
   ],
   woltOrders: [{ href: "/wolt-orders", permission: "sales.viewDetail" }],
   ordering: [{ href: "/ordering", permission: "ordering.plan" }],
+  prepplan: [{ href: "/prepplan", permission: "prepplan.use" }],
   transfers: [
     { href: "/transfers", permission: "transfers.manage" },
     { href: "/transfers/history", permission: "transfers.view" },
@@ -123,7 +124,7 @@ export function resolveAppNavigation({
 }) {
   const otherFeaturesLocked = countLocked && !disabledFeatures.includes("count");
   return sidebarItems.flatMap((item) => {
-    if (item.id !== "organization" && disabledFeatures.includes(item.id === "manager" ? "dashboard" : item.id))
+    if (item.id !== "organization" && disabledFeatures.includes(item.id === "manager" ? "dashboard" : item.id === "prepplan" ? "ordering" : item.id))
       return [];
     if (item.id === "woltOrders" && !woltEnabled) return [];
     const candidates = routes[item.id];
@@ -169,6 +170,7 @@ export function homeDestination(
     "count",
     "employees",
     "ordering",
+    "prepplan",
     "organization",
   ];
   for (const id of order) {

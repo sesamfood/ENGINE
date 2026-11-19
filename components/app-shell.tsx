@@ -34,6 +34,7 @@ import {
   ShoppingBagIcon,
   ShoppingCartIcon,
   SunIcon,
+  ChefHatIcon,
 } from "lucide-react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
@@ -149,6 +150,7 @@ const navigationIcons = {
   dateLabels: PrinterIcon,
   woltOrders: ShoppingBagIcon,
   ordering: ShoppingCartIcon,
+  prepplan: ChefHatIcon,
   transfers: ArrowRightLeftIcon,
   invoices: ReceiptTextIcon,
   expenses: WalletIcon,
@@ -1765,6 +1767,7 @@ export function AppShell({
   const showPageHeader =
     pathname === "/profile" ||
     pathname === "/date-labels" ||
+    pathname === "/prepplan" ||
     showOrderingHeader ||
     showCountHeader ||
     showWasteHeader ||

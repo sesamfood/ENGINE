@@ -4,6 +4,7 @@ export const sidebarItems = [
   { id: "dateLabels", label: "Datomærkning" },
   { id: "woltOrders", label: "Wolt-ordrer" },
   { id: "ordering", label: "Bestilling" },
+  { id: "prepplan", label: "Prepplan" },
   { id: "transfers", label: "Transfer" },
   { id: "invoices", label: "Salg" },
   { id: "expenses", label: "Udgift" },
@@ -33,6 +34,8 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
   const newlyAddedDashboard = missing.includes("dashboard") ? ["dashboard" as const] : [];
   const addManagerAfterDashboard =
     missing.includes("manager") && configured.includes("dashboard");
+  const addPrepplanAfterOrdering =
+    missing.includes("prepplan") && configured.includes("ordering");
   const addInvoicesAfterTransfers =
     missing.includes("invoices") && configured.includes("transfers");
   const addGoodsReceiptsAfterTransfers =
@@ -43,6 +46,9 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
       id,
       ...(id === "dashboard" && addManagerAfterDashboard
         ? ["manager" as const]
+        : []),
+      ...(id === "ordering" && addPrepplanAfterOrdering
+        ? ["prepplan" as const]
         : []),
       ...(id === "transfers" && addInvoicesAfterTransfers
         ? ["invoices" as const]
@@ -55,6 +61,7 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
       (id) =>
         id !== "dashboard" &&
         !(id === "manager" && addManagerAfterDashboard) &&
+        !(id === "prepplan" && addPrepplanAfterOrdering) &&
         !(id === "invoices" && addInvoicesAfterTransfers) &&
         !(id === "goodsReceipts" && addGoodsReceiptsAfterTransfers),
     ),

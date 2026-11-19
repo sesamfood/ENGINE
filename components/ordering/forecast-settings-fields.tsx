@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { validForecastSettings } from "@/lib/ordering-forecast";
@@ -54,18 +54,7 @@ export function ForecastSettingsFields({
     validForecastSettings(1, bufferPercent);
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {windowCoverage ? (
-        <Field>
-          <div className="flex items-center gap-1">
-            <FieldLabel>Dækning</FieldLabel>
-            <HelpTooltip
-              label="dækning"
-              content="Bestillingen dækker fra i dag og frem til leveringen fra næste bestillingsvindue."
-            />
-          </div>
-          <FieldDescription>Følger bestillingsvinduerne</FieldDescription>
-        </Field>
-      ) : (
+      {windowCoverage ? null : (
         <Field data-invalid={!validCoverage} data-disabled={disabled}>
           <div className="flex items-center gap-1">
             <FieldLabel htmlFor={`${id}-days`}>Dækning i dage</FieldLabel>
