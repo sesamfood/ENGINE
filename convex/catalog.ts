@@ -661,6 +661,51 @@ async function applyStandardUnits(
   return merged;
 }
 
+// Import factors are relative to the file's default unit, but typed products
+// count in their standard unit. Rescale via a known measure in the file
+// (kg, L, stk) or the product's current factor for the file's default unit.
+async function rebaseImportedUnits(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+  type: ProductType,
+  settings: UnitSystemSettings,
+  names: string[],
+  units: ResolvedProductUnit[],
+): Promise<ResolvedProductUnit[]> {
+  let scale: number | undefined;
+  for (const [index, unit] of units.entries()) {
+    const measure = suggestMigration(names[index], settings);
+    if (measure?.productType === type) {
+      scale = measure.factorToStandard / unit.factorToDefault;
+      break;
+    }
+  }
+  if (scale === undefined) {
+    const fileDefault = units.find((unit) => unit.isDefault)!;
+    const current = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("productId", productId)
+          .eq("unitId", fileDefault.unitId),
+      )
+      .first();
+    if (!current) {
+      throw new ConvexError(
+        `Enheden ${names[units.indexOf(fileDefault)]} i filen kan ikke omregnes til produktets standardenhed. Tilføj produktets standardenhed i filen.`,
+      );
+    }
+    scale = current.factorToDefault;
+  }
+  return units.map((unit) => ({
+    ...unit,
+    factorToDefault: unit.factorToDefault * scale,
+    isDefault: false,
+  }));
+}
+
 async function resolveUnit(
   ctx: MutationCtx,
   organizationId: string,
@@ -2644,15 +2689,24 @@ export const importProduct = mutation({
       productType ? { type: productType, settings: unitSystem } : undefined,
     );
     // Overwriting a typed product keeps its standard units and default.
-    const units = productType
-      ? await applyStandardUnits(
-          ctx,
-          organizationId,
-          productType,
-          unitSystem,
-          resolvedUnits,
-        )
-      : resolvedUnits;
+    const units =
+      existing && productType
+        ? await applyStandardUnits(
+            ctx,
+            organizationId,
+            productType,
+            unitSystem,
+            await rebaseImportedUnits(
+              ctx,
+              organizationId,
+              existing._id,
+              productType,
+              unitSystem,
+              args.units.map((unit) => unit.name),
+              resolvedUnits,
+            ),
+          )
+        : resolvedUnits;
     const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
 
     if (existing) {
