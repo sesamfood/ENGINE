@@ -29,6 +29,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DraftRestoredNotice } from "@/components/draft-restored-notice";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   useAccess,
   useLocationAccess,
@@ -694,7 +695,14 @@ function Planner({
     !choosingSupplier;
 
   const header = (
-    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-center">
+    <div
+      className={cn(
+        "grid gap-5 sm:items-center",
+        planDays.length
+          ? "sm:grid-cols-(--grid-cols-page-header-wide)"
+          : "sm:grid-cols-(--grid-cols-page-header)",
+      )}
+    >
       <div className="flex min-w-0 flex-col gap-2">
         <PageTitle>
           {editing ? "Redigér bestilling" : "Bestilling"}
@@ -726,29 +734,69 @@ function Planner({
               </Select>
             </Field>
           ) : null}
-          <Field>
-            <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
-            <LocationField
-              id="ordering-location"
-              locations={locations}
-              value={locationId}
-              locked={isLocked || editing}
-              lockedName={
-                editing
-                  ? locations.find((location) => location.id === locationId)
-                      ?.name
-                  : lockedName
-              }
-              disabled={busy || !locations.length}
-              onValueChange={(value) => {
-                const location = locations.find((item) => item.id === value);
-                if (location) {
-                  setOrderingLocation(organizationId, location.id);
-                  setAsOf(currentMinute());
+          <div className={cn("grid gap-4", planDays.length && "lg:grid-cols-2")}>
+            {planDays.length ? (
+              <Select
+                items={[
+                  ...planDays.map((day) => ({
+                    value: day,
+                    label: formatPlanDay(day),
+                  })),
+                  ...(allowExtraOrders
+                    ? [{ value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" }]
+                    : []),
+                ]}
+                value={planDate}
+                onValueChange={(value) => value && setPlanDateChoice(value)}
+                disabled={busy}
+              >
+                <SelectTrigger
+                  aria-label="Prepdag"
+                  className="h-11 w-full"
+                >
+                  <span className="text-muted-foreground">Prepdag</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {planDays.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {formatPlanDay(day)}
+                      </SelectItem>
+                    ))}
+                    {allowExtraOrders ? (
+                      <SelectItem value={NO_PLAN_DATE}>
+                        Ingen – ekstra bestilling
+                      </SelectItem>
+                    ) : null}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Field>
+              <FieldLabel htmlFor="ordering-location" className="sr-only">Lokation</FieldLabel>
+              <LocationField
+                id="ordering-location"
+                locations={locations}
+                value={locationId}
+                locked={isLocked || editing}
+                lockedName={
+                  editing
+                    ? locations.find((location) => location.id === locationId)
+                        ?.name
+                    : lockedName
                 }
-              }}
-            />
-          </Field>
+                disabled={busy || !locations.length}
+                onValueChange={(value) => {
+                  const location = locations.find((item) => item.id === value);
+                  if (location) {
+                    setOrderingLocation(organizationId, location.id);
+                    setAsOf(currentMinute());
+                  }
+                }}
+              />
+            </Field>
+          </div>
         </div>
       ) : null}
     </div>
@@ -1062,8 +1110,7 @@ function Planner({
   return (
     <>
       <AppPageHeader>{header}</AppPageHeader>
-      {/* Shown beside the Prepdag controls when they are visible. */}
-      {planDays.length ? null : draftNotice}
+      {draftNotice}
       {!canPlan ? (
         <Alert variant="destructive">
           <AlertTitle>Ingen adgang</AlertTitle>
@@ -1193,49 +1240,6 @@ function Planner({
                 </div>
               </AlertDescription>
             </Alert>
-          ) : null}
-          {planDays.length ? (
-            <div className="flex flex-wrap items-center gap-4">
-              <Select
-                items={[
-                  ...planDays.map((day) => ({
-                    value: day,
-                    label: formatPlanDay(day),
-                  })),
-                  ...(allowExtraOrders
-                    ? [{ value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" }]
-                    : []),
-                ]}
-                value={planDate}
-                onValueChange={(value) => value && setPlanDateChoice(value)}
-                disabled={busy}
-              >
-                <SelectTrigger
-                  aria-label="Prepdag"
-                  className="h-11 w-full sm:w-auto sm:min-w-64"
-                >
-                  <span className="text-muted-foreground">Prepdag</span>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {planDays.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {formatPlanDay(day)}
-                      </SelectItem>
-                    ))}
-                    {allowExtraOrders ? (
-                      <SelectItem value={NO_PLAN_DATE}>
-                        Ingen – ekstra bestilling
-                      </SelectItem>
-                    ) : null}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              {draftNotice ? (
-                <div className="min-w-0 flex-1 basis-80">{draftNotice}</div>
-              ) : null}
-            </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-4">
             <InputGroup className="h-11 w-full sm:max-w-80">
