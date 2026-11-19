@@ -71,6 +71,8 @@ export const get = query({
   args: {
     locationId: v.optional(v.id("locations")),
     date: v.optional(v.string()),
+    // Sent by the client so the default day rolls over on an open page.
+    now: v.optional(v.number()),
   },
   returns: v.union(
     v.null(),
@@ -147,7 +149,7 @@ export const get = query({
       organizationId,
       supplier.locationId,
     );
-    const today = dateKey(Date.now(), timeZone);
+    const today = dateKey(args.now ?? Date.now(), timeZone);
     let date = args.date ?? nextPlanDate(today, supplier.orderWindowWeekdays);
     try {
       parseDateKey(date);
@@ -203,7 +205,8 @@ export const get = query({
           const check = checked.get(`${item.productId}:${item.unitId}`);
           return {
             ...item,
-            checked: check
+            checked:
+              check?.total === item.total
               ? { checkedByName: check.checkedByName, checkedAt: check.checkedAt }
               : null,
           };
@@ -308,7 +311,8 @@ async function buildItems(
       .take(MAX_ORDER_LINES);
     for (const line of lines) {
       const product = line.productId ? await getProduct(line.productId) : null;
-      if (!product || product.status !== "active" || !line.unitId) {
+      // Archived Produkter stay in the plan; deleted ones can't be made.
+      if (!product || !line.unitId) {
         unavailableLineCount += 1;
         continue;
       }
@@ -464,6 +468,7 @@ export const setChecked = mutation({
     date: v.string(),
     productId: v.id("products"),
     unitId: v.id("units"),
+    total: v.number(),
     checked: v.boolean(),
   },
   returns: v.null(),
@@ -496,17 +501,15 @@ export const setChecked = mutation({
     const existing = rows.filter(
       (row) => row.productId === args.productId && row.unitId === args.unitId,
     );
-    if (!args.checked) {
-      for (const row of existing) await ctx.db.delete("prepPlanChecks", row._id);
-      return null;
-    }
-    if (existing.length) return null;
+    for (const row of existing) await ctx.db.delete("prepPlanChecks", row._id);
+    if (!args.checked) return null;
     await ctx.db.insert("prepPlanChecks", {
       organizationId,
       locationId: args.locationId,
       planDate: args.date,
       productId: args.productId,
       unitId: args.unitId,
+      total: args.total,
       checkedAt: Date.now(),
       checkedBy: auth.userIdentifier,
       checkedByName: auth.userName,

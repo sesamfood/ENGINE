@@ -13,7 +13,7 @@ import {
   MessageSquareIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { RowsSkeleton } from "@/components/page-skeletons";
@@ -54,8 +54,11 @@ type Plan = NonNullable<
 >;
 type Item = Plan["items"][number];
 
+// Small scaled amounts such as 0,004 kg must not round to 0.
 const quantityFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 2,
+  maximumSignificantDigits: 3,
+  roundingPriority: "morePrecision",
 });
 const dayFormatter = dateTimeFormatter("da-DK", {
   weekday: "long",
@@ -89,6 +92,10 @@ function stepPlanDate(date: string, orderWindows: number[], step: 1 | -1) {
   return date;
 }
 
+function roundedNow() {
+  return Math.floor(Date.now() / 300_000) * 300_000;
+}
+
 function itemKey(item: Item) {
   return `${item.productId}:${item.unitId}`;
 }
@@ -98,9 +105,16 @@ export function PrepPlan({ navigation }: { navigation?: ReactNode }) {
   const [date, setDate] = useState<string | null>(null);
   const [mode, setMode] = useState<"overview" | "steps">("overview");
   const [step, setStep] = useState(0);
+  // Refreshed so a kiosk left open moves to the next prep day after midnight.
+  const [now, setNow] = useState(() => roundedNow());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(roundedNow()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const data = useQuery(api.prepPlans.get, {
     ...(locationId ? { locationId } : {}),
     ...(date ? { date } : {}),
+    now,
   });
   const setChecked = useMutation(api.prepPlans.setChecked);
   const [pending, setPending] = useState<Set<string>>(new Set());
@@ -159,10 +173,13 @@ export function PrepPlan({ navigation }: { navigation?: ReactNode }) {
         date: plan.date,
         productId: item.productId,
         unitId: item.unitId,
+        total: item.total,
         checked,
       });
+      return true;
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Produktet kunne ikke opdateres"));
+      return false;
     } finally {
       setPending((current) => {
         const next = new Set(current);
@@ -307,7 +324,7 @@ export function PrepPlan({ navigation }: { navigation?: ReactNode }) {
           <AlertDescription>
             {plan.unavailableLineCount}{" "}
             {plan.unavailableLineCount === 1 ? "linje" : "linjer"} i
-            bestillingerne har et produkt, der ikke længere er aktivt.
+            bestillingerne har et produkt, der ikke længere findes.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -349,8 +366,8 @@ export function PrepPlan({ navigation }: { navigation?: ReactNode }) {
           count={items.length}
           pending={pending.has(itemKey(items[currentStep]))}
           onToggle={async (checked) => {
-            await toggle(items[currentStep], checked);
-            if (checked && currentStep < items.length - 1) {
+            const saved = await toggle(items[currentStep], checked);
+            if (saved && checked && currentStep < items.length - 1) {
               setStep(currentStep + 1);
             }
           }}

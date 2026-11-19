@@ -1500,6 +1500,8 @@ export default defineSchema({
     planDate: v.string(),
     productId: v.id("products"),
     unitId: v.id("units"),
+    // The total the check was made for. A changed total reopens the item.
+    total: v.number(),
     checkedAt: v.number(),
     checkedBy: v.string(),
     checkedByName: v.string(),
