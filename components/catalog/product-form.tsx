@@ -632,7 +632,26 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         ? withStandardRows(loadedUnitRows, product.productType, options)
         : loadedUnitRows,
     );
-    setYieldQuantity(product.recipeYield?.quantity.toString() ?? "1");
+    // Recipes saved without a yield get the ingredient total, like new ones.
+    const defaultUnitId = product.units.find((unit) => unit.isDefault)?.id;
+    const yieldMeasure =
+      product.productType === "dry" || product.productType === "wet"
+        ? knownMeasure(
+            options.units.find((unit) => unit.id === defaultUnitId)?.name ?? "",
+          )
+        : null;
+    const ingredientTotal = product.ingredients.reduce((sum, ingredient) => {
+      const measure = knownMeasure(ingredient.unitName);
+      return ingredient.packaging || !measure || measure.type === "piece"
+        ? sum
+        : sum + ingredient.quantity * measure.canonical;
+    }, 0);
+    setYieldQuantity(
+      product.recipeYield?.quantity.toString() ??
+        (yieldMeasure && yieldMeasure.type !== "piece" && ingredientTotal > 0
+          ? String(Number((ingredientTotal / yieldMeasure.canonical).toFixed(3)))
+          : "1"),
+    );
     setYieldUnitKey(
       product.recipeYield ? `unit-${product.recipeYield.unitId}` : null,
     );
