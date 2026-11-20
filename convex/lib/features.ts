@@ -135,6 +135,7 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "foodSafety.approve": "foodSafety",
   "foodSafety.edit": "foodSafety",
   "foodSafety.export": "foodSafety",
+  "foodSafety.clearBacklog": "foodSafety",
   // Prepplan is built from internal orders under Bestilling.
   "prepplan.use": "ordering",
   "transfers.view": "transfers",

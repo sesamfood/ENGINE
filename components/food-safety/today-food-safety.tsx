@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
+import { useMutation } from "convex/react";
+import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -22,7 +24,18 @@ import { Badge } from "@/components/ui/badge";
 import { FoodSafetyStatusBadge } from "./food-safety-results";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Empty,
   EmptyDescription,
@@ -117,6 +130,7 @@ function CheckSection({
   now,
   icon,
   showDates,
+  action,
 }: {
   title: string;
   items: PlanItem[];
@@ -125,6 +139,7 @@ function CheckSection({
   now: number;
   icon: React.ReactNode;
   showDates?: boolean;
+  action?: React.ReactNode;
 }) {
   if (!items.length) return null;
   return (
@@ -137,6 +152,7 @@ function CheckSection({
           </CardTitle>
           <Badge variant="secondary">{items.length}</Badge>
         </div>
+        {action ? <CardAction>{action}</CardAction> : null}
       </CardHeader>
       <CardContent appearance="dense" className="flex flex-col">
         {items.map((item) => (
@@ -154,6 +170,70 @@ function CheckSection({
   );
 }
 
+function ClearBacklogButton({
+  locationId,
+  count,
+}: {
+  locationId: Id<"locations">;
+  count: number;
+}) {
+  const clearBacklog = useMutation(api.foodSafety.clearBacklog);
+  const [open, setOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+
+  async function clear() {
+    setIsClearing(true);
+    try {
+      await clearBacklog({ locationId });
+      toast.success("Manglende kontroller fra tidligere dage er ryddet");
+      setOpen(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Kontrollerne kunne ikke ryddes",
+      );
+    } finally {
+      setIsClearing(false);
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        Ryd
+      </Button>
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!isClearing) setOpen(next);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ryd manglende kontroller?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {count === 1 ? "1 manglende kontrol" : `${count} manglende kontroller`}{" "}
+              fra tidligere dage fjernes fra listen, og de kan ikke længere
+              udføres herfra. De vises stadig som manglende i oversigten og
+              kontroldokumentationen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearing}>Annullér</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isClearing}
+              onClick={clear}
+            >
+              {isClearing ? <Spinner data-icon="inline-start" /> : null}
+              Ryd
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 export function TodayFoodSafety({
   initialLocationId,
 }: {
@@ -162,6 +242,8 @@ export function TodayFoodSafety({
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const kiosk = useKiosk();
   const canManage = usePermission("foodSafety.manage") && !kiosk?.kioskModeEnabled;
+  const canClearBacklog =
+    usePermission("foodSafety.clearBacklog") && !kiosk?.kioskModeEnabled;
   const [selectedLocation, setSelectedLocation] = useState<string | null>(
     initialLocationId ?? null,
   );
@@ -279,6 +361,14 @@ export function TodayFoodSafety({
             title="Manglende fra tidligere dage"
             items={result.backlog}
             showDates
+            action={
+              canClearBacklog ? (
+                <ClearBacklogButton
+                  locationId={locationId}
+                  count={result.backlog.length}
+                />
+              ) : null
+            }
             timeZone={result.timeZone}
             now={now}
             icon={<AlertTriangleIcon />}

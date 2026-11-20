@@ -11,6 +11,7 @@ import {
   requireFoodSafetyCorrector,
   requireFoodSafetyEditor,
   requireFoodSafetyPerformer,
+  requirePermission,
   resolveLocationFilter,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
@@ -220,8 +221,10 @@ export const listToday = query({
     const items = await mergedPlan(ctx, auth.organizationId, locationId, dateKey, timeZone);
     let backlog: typeof items = [];
     let truncated = false;
-    if (configuration.lateSubmissionDays > 0) {
-      const fromDateKey = addDateKey(dateKey, -configuration.lateSubmissionDays);
+    const clearedThrough = location.foodSafetyBacklogClearedThrough;
+    let fromDateKey = addDateKey(dateKey, -configuration.lateSubmissionDays);
+    if (clearedThrough && clearedThrough >= fromDateKey) fromDateKey = addDateKey(clearedThrough, 1);
+    if (configuration.lateSubmissionDays > 0 && fromDateKey < dateKey) {
       const versions = await loadTemplateVersions(ctx, auth.organizationId, fromDateKey, addDateKey(dateKey, -1), timeZone);
       const occurrences = expandFoodSafetyOccurrences({
         versions: versions.map(versionInput),
@@ -268,6 +271,28 @@ export const listToday = query({
       backlog: await withMedia(backlog),
       truncated,
     };
+  },
+});
+
+export const clearBacklog = mutation({
+  args: { locationId: v.id("locations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "foodSafety.clearBacklog");
+    if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(ctx, auth.organizationId, args.locationId);
+    const { todayDateKey } = await foodSafetyDateContext(ctx, auth.organizationId, args.locationId, Date.now());
+    const clearedThrough = addDateKey(todayDateKey, -1);
+    await ctx.db.patch("locations", location._id, { foodSafetyBacklogClearedThrough: clearedThrough });
+    await recordAudit(ctx, auth, {
+      action: "foodSafety.backlogCleared",
+      entityTable: "locations",
+      entityId: location._id,
+      locationId: location._id,
+      summary: `Manglende kontroller til og med ${clearedThrough} på ${location.name} blev ryddet`,
+    });
+    return null;
   },
 });
 
