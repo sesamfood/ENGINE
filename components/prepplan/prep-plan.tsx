@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
 import {
+  ArrowRightLeftIcon,
   CheckIcon,
   ChefHatIcon,
   ChevronLeftIcon,
@@ -13,9 +14,11 @@ import {
   MessageSquareIcon,
   TriangleAlertIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AppBottomBar } from "@/components/app-bottom-bar";
+import { useKiosk, usePermission } from "@/components/app-shell";
 import { RowsSkeleton } from "@/components/page-skeletons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -117,6 +120,12 @@ export function PrepPlan() {
   const data = useLastDefined(live, `${locationId}:${date}`);
   const setChecked = useMutation(api.prepPlans.setChecked);
   const [pending, setPending] = useState<Set<string>>(new Set());
+  const kiosk = useKiosk();
+  const canManageTransfers = usePermission("transfers.manage");
+  // Same rule as the transfer page's order tab.
+  const canTransfer = kiosk?.kioskModeEnabled
+    ? Boolean(kiosk.settings?.enabledPages.includes("transfers.new"))
+    : canManageTransfers;
 
   if (data === undefined) return <RowsSkeleton />;
   const bottomBar = (children?: ReactNode) =>
@@ -152,6 +161,7 @@ export function PrepPlan() {
   const supplier = suppliers.find((row) => row.locationId === plan.locationId)!;
   const items = plan.items;
   const doneCount = items.filter((item) => item.checked).length;
+  const allDone = items.length > 0 && doneCount === items.length;
   const storeCount = new Set(plan.orders.map((order) => order.locationName))
     .size;
   const currentStep = Math.min(step, Math.max(items.length - 1, 0));
@@ -371,29 +381,44 @@ export function PrepPlan() {
       )}
 
       {bottomBar(
-        mode === "steps" && items.length ? (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="lg"
-              className="min-h-11 flex-1"
-              disabled={currentStep === 0}
-              onClick={() => setStep(currentStep - 1)}
-            >
-              <ChevronLeftIcon data-icon="inline-start" />
-              Forrige
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="min-h-11 flex-1"
-              disabled={currentStep >= items.length - 1}
-              onClick={() => setStep(currentStep + 1)}
-            >
-              Næste
-              <ChevronRightIcon data-icon="inline-end" />
-            </Button>
-          </div>
+        items.length && (mode === "steps" || (allDone && canTransfer)) ? (
+          <>
+            {allDone && canTransfer ? (
+              <Button
+                size="lg"
+                className="min-h-14"
+                render={<Link href="/transfers/orders" />}
+                nativeButton={false}
+              >
+                <ArrowRightLeftIcon data-icon="inline-start" />
+                Opret transfers
+              </Button>
+            ) : null}
+            {mode === "steps" ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="min-h-11 flex-1"
+                  disabled={currentStep === 0}
+                  onClick={() => setStep(currentStep - 1)}
+                >
+                  <ChevronLeftIcon data-icon="inline-start" />
+                  Forrige
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="min-h-11 flex-1"
+                  disabled={currentStep >= items.length - 1}
+                  onClick={() => setStep(currentStep + 1)}
+                >
+                  Næste
+                  <ChevronRightIcon data-icon="inline-end" />
+                </Button>
+              </div>
+            ) : null}
+          </>
         ) : undefined,
       )}
     </div>
