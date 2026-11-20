@@ -204,9 +204,10 @@ export function CreatableCombobox({
         }
       }}
       disabled={disabled}
+      // Look up all options: the selected label may not match the current filter.
       itemToStringLabel={(itemValue) =>
-        displayedOptions.find((option) => option.value === itemValue)?.label ??
-        ""
+        options.find((option) => option.value === itemValue)?.label ??
+        (itemValue.startsWith("new:") ? itemValue.slice(4) : "")
       }
     >
       <ComboboxInput
