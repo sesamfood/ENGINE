@@ -68,7 +68,7 @@ export function createSalesStockResolver(
   let integration: ReturnType<typeof getOnlinePosMaster> | undefined;
   let modifierDefaults:
     | Promise<{
-        mappings: Map<string, number>;
+        mappings: Map<string, number[]>;
         quantities: Map<Id<"products">, Doc<"ingredientAdditionDefaults">>;
       }>
     | undefined;
@@ -101,13 +101,16 @@ export function createSalesStockResolver(
       throw new ConvexError(
         "Der er for mange tilvalg og fravalg til lagersynkronisering",
       );
+    const byIngredient = new Map<string, number[]>();
+    for (const row of mappings) {
+      const key = `${row.kind}:${row.ingredientProductId}`;
+      byIngredient.set(key, [
+        ...(byIngredient.get(key) ?? []),
+        row.onlinePosProductId,
+      ]);
+    }
     return {
-      mappings: new Map(
-        mappings.map((row) => [
-          `${row.kind}:${row.ingredientProductId}`,
-          row.onlinePosProductId,
-        ]),
-      ),
+      mappings: byIngredient,
       quantities: new Map(
         quantities.map((row) => [row.ingredientProductId, row]),
       ),
@@ -245,17 +248,23 @@ export function createSalesStockResolver(
     for (const id of soldIds) {
       const batchesPerSale = 1 / (await recipeYield(id));
       for (const ingredient of await recipe(id)) {
-        const removalId = settings
-          ? (ingredient.onlinePosRemovalMappings?.find(
-              (mapping) => mapping.integrationId === settings._id,
-            )?.onlinePosProductId ??
-            (ingredient.onlinePosRemovalIntegrationId === settings._id &&
-            ingredient.onlinePosRemovalCompanyId === settings.companyId
-              ? ingredient.onlinePosRemovalProductId
-              : undefined) ??
-            defaults.mappings.get(`removal:${ingredient.ingredientProductId}`))
-          : undefined;
-        if (ingredient.removable && removalId !== undefined) {
+        if (!settings || !ingredient.removable) continue;
+        // A per-product link overrides every shared default.
+        const override =
+          ingredient.onlinePosRemovalMappings?.find(
+            (mapping) => mapping.integrationId === settings._id,
+          )?.onlinePosProductId ??
+          (ingredient.onlinePosRemovalIntegrationId === settings._id &&
+          ingredient.onlinePosRemovalCompanyId === settings.companyId
+            ? ingredient.onlinePosRemovalProductId
+            : undefined);
+        const removalIds =
+          override !== undefined
+            ? [override]
+            : (defaults.mappings.get(
+                `removal:${ingredient.ingredientProductId}`,
+              ) ?? []);
+        for (const removalId of removalIds) {
           addModifier(removalId, {
             productId: ingredient.ingredientProductId,
             quantity: -ingredient.quantity * batchesPerSale,
@@ -278,20 +287,25 @@ export function createSalesStockResolver(
         additions.set(id, rows);
       }
       for (const row of rows) {
-        const additionId = settings
-          ? (row.onlinePosAdditionMappings?.find(
-              (mapping) => mapping.integrationId === settings._id,
-            )?.onlinePosProductId ??
-            (row.onlinePosAdditionIntegrationId === settings._id &&
-            row.onlinePosAdditionCompanyId === settings.companyId
-              ? row.onlinePosAdditionProductId
-              : undefined) ??
-            defaults.mappings.get(`addition:${row.ingredientProductId}`))
-          : undefined;
-        if (
-          additionId !== undefined &&
-          lines.some((line) => line.externalProductId === String(additionId))
-        ) {
+        if (!settings) continue;
+        const override =
+          row.onlinePosAdditionMappings?.find(
+            (mapping) => mapping.integrationId === settings._id,
+          )?.onlinePosProductId ??
+          (row.onlinePosAdditionIntegrationId === settings._id &&
+          row.onlinePosAdditionCompanyId === settings.companyId
+            ? row.onlinePosAdditionProductId
+            : undefined);
+        const additionIds =
+          override !== undefined
+            ? [override]
+            : (defaults.mappings.get(`addition:${row.ingredientProductId}`) ??
+              []);
+        for (const additionId of additionIds) {
+          if (
+            !lines.some((line) => line.externalProductId === String(additionId))
+          )
+            continue;
           const amount =
             row.quantity !== undefined && row.unitId !== undefined
               ? { quantity: row.quantity, unitId: row.unitId }

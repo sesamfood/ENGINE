@@ -1255,6 +1255,7 @@ function PosMappingDialog({
     kind: "removal" | "addition",
     ingredientProductId: Id<"products">,
     onlinePosProductId: number | null,
+    previousOnlinePosProductId: number | null,
   ) {
     if (!posSettings.integrationId) return;
     try {
@@ -1263,6 +1264,7 @@ function PosMappingDialog({
         kind,
         ingredientProductId,
         onlinePosProductId,
+        previousOnlinePosProductId,
       });
       toast.success("OnlinePOS-koblingen er gemt");
     } catch (error) {
@@ -1300,8 +1302,8 @@ function PosMappingDialog({
         <DialogHeader>
           <DialogTitle>OnlinePOS-koblinger</DialogTitle>
           <DialogDescription>
-            Vælg det OnlinePOS-produkt, der svarer til hvert tilvalg og
-            fravalg. Koblingen gælder for alle produkter.
+            Vælg de OnlinePOS-produkter, der svarer til hvert tilvalg og
+            fravalg. Koblingerne gælder for alle produkter.
           </DialogDescription>
         </DialogHeader>
         {sections.map((section) => (
@@ -1316,27 +1318,49 @@ function PosMappingDialog({
             {section.ids.length === 0 ? (
               <p className="text-sm text-muted-foreground">{section.empty}</p>
             ) : (
-              section.ids.map((id) => (
-                <Field key={id} orientation="responsive">
-                  <FieldLabel className="sm:w-48">{name(id)}</FieldLabel>
-                  <OnlinePosProductSelect
-                    options={posOptions}
-                    productName={section.productName(id)}
-                    value={
-                      posSettings.mappings.find(
-                        (row) =>
-                          row.kind === section.kind &&
-                          row.ingredientProductId === id,
-                      )?.onlinePosProductId ?? null
-                    }
-                    onValueChange={(value) =>
-                      void changeMapping(section.kind, id, value)
-                    }
-                    ariaLabel={`OnlinePOS-produkt for ${section.title.toLowerCase()} af ${name(id)}`}
-                    onRetry={() => setPosProducts(undefined)}
-                  />
-                </Field>
-              ))
+              section.ids.map((id) => {
+                const linked = posSettings.mappings.flatMap((row) =>
+                  row.kind === section.kind && row.ingredientProductId === id
+                    ? [row.onlinePosProductId]
+                    : [],
+                );
+                const label = `OnlinePOS-produkt for ${section.title.toLowerCase()} af ${name(id)}`;
+                return (
+                  <Field key={id} orientation="responsive">
+                    <FieldLabel className="sm:w-48">{name(id)}</FieldLabel>
+                    <div className="flex min-w-0 flex-1 flex-col gap-2">
+                      {linked.map((posId) => (
+                        <OnlinePosProductSelect
+                          key={posId}
+                          options={posOptions}
+                          productName={section.productName(id)}
+                          value={posId}
+                          onValueChange={(value) =>
+                            void changeMapping(section.kind, id, value, posId)
+                          }
+                          ariaLabel={label}
+                          onRetry={() => setPosProducts(undefined)}
+                        />
+                      ))}
+                      {/* Remounts after each add so it starts empty again. */}
+                      <OnlinePosProductSelect
+                        key={`add-${linked.length}`}
+                        options={posOptions}
+                        productName={section.productName(id)}
+                        value={null}
+                        onValueChange={(value) => {
+                          if (value !== null)
+                            void changeMapping(section.kind, id, value, null);
+                        }}
+                        ariaLabel={
+                          linked.length === 0 ? label : `Tilføj ${label}`
+                        }
+                        onRetry={() => setPosProducts(undefined)}
+                      />
+                    </div>
+                  </Field>
+                );
+              })
             )}
           </div>
         ))}

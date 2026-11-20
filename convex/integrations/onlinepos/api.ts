@@ -63,13 +63,14 @@ async function loadModifierMappings(
   if (rows.length > MAX_MODIFIER_DEFAULTS) {
     throw new ConvexError("Der er for mange tilvalg og fravalg");
   }
-  return new Map(
-    rows.flatMap((row) =>
-      row.kind === kind
-        ? [[row.ingredientProductId, row.onlinePosProductId] as const]
-        : [],
-    ),
-  );
+  const result = new Map<Id<"products">, number[]>();
+  for (const row of rows) {
+    if (row.kind !== kind) continue;
+    const ids = result.get(row.ingredientProductId) ?? [];
+    ids.push(row.onlinePosProductId);
+    result.set(row.ingredientProductId, ids);
+  }
+  return result;
 }
 
 async function beginLocationSalesReset(
@@ -928,7 +929,7 @@ export const getIngredientRemovalSettings = query({
     }
     const defaults = settings
       ? await loadModifierMappings(ctx, organizationId, settings._id, "removal")
-      : new Map<Id<"products">, number>();
+      : new Map<Id<"products">, number[]>();
 
     return {
       connected: settings !== null,
@@ -946,7 +947,7 @@ export const getIngredientRemovalSettings = query({
                 ingredient.onlinePosRemovalCompanyId === settings.companyId
                   ? ingredient.onlinePosRemovalProductId
                   : undefined) ??
-                defaults.get(ingredient.ingredientProductId);
+                defaults.get(ingredient.ingredientProductId)?.[0];
               return ingredient.removable === true && id !== undefined
                 ? [
                     {
@@ -1004,7 +1005,7 @@ export const getIngredientAdditionSettings = query({
     }
     const defaults = settings
       ? await loadModifierMappings(ctx, organizationId, settings._id, "addition")
-      : new Map<Id<"products">, number>();
+      : new Map<Id<"products">, number[]>();
 
     return {
       connected: settings !== null,
@@ -1022,7 +1023,7 @@ export const getIngredientAdditionSettings = query({
                 addition.onlinePosAdditionCompanyId === settings.companyId
                   ? addition.onlinePosAdditionProductId
                   : undefined) ??
-                defaults.get(addition.ingredientProductId);
+                defaults.get(addition.ingredientProductId)?.[0];
               return id !== undefined
                 ? [
                     {
@@ -1298,7 +1299,9 @@ export const saveIngredientRemovalMappings = internalMutation({
     );
     const mappingsByIngredientProductId = new Map(
       args.mappings.flatMap((mapping) =>
-        defaults.get(mapping.ingredientProductId) === mapping.onlinePosProductId
+        defaults
+          .get(mapping.ingredientProductId)
+          ?.includes(mapping.onlinePosProductId)
           ? []
           : [[mapping.ingredientProductId, mapping.onlinePosProductId] as const],
       ),
@@ -1498,7 +1501,9 @@ export const saveIngredientAdditionMappings = internalMutation({
     );
     const mappingsByIngredientProductId = new Map(
       args.mappings.flatMap((mapping) =>
-        defaults.get(mapping.ingredientProductId) === mapping.onlinePosProductId
+        defaults
+          .get(mapping.ingredientProductId)
+          ?.includes(mapping.onlinePosProductId)
           ? []
           : [[mapping.ingredientProductId, mapping.onlinePosProductId] as const],
       ),
@@ -1679,6 +1684,7 @@ export const saveModifierMapping = internalMutation({
     kind: modifierKindValidator,
     ingredientProductId: v.id("products"),
     onlinePosProductId: v.union(v.number(), v.null()),
+    ...previousMappingArg,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1708,43 +1714,53 @@ export const saveModifierMapping = internalMutation({
     if (!ingredient || ingredient.organizationId !== args.organizationId) {
       throw new ConvexError("Ingrediensen blev ikke fundet");
     }
-    const current = rows.find(
+    const onlinePosProductId = args.onlinePosProductId;
+    // Same contract as product links: undefined replaces every link, null
+    // adds one, and a number replaces or removes that one link.
+    const previous = args.previousOnlinePosProductId;
+    if (previous === null && onlinePosProductId === null) {
+      throw new ConvexError("Vælg et OnlinePOS-produkt");
+    }
+    const currents = rows.filter(
       (row) =>
         row.kind === args.kind &&
         row.ingredientProductId === args.ingredientProductId,
     );
-    if ((current?.onlinePosProductId ?? null) === args.onlinePosProductId) {
-      return null;
+    const removed = currents.filter((row) =>
+      previous === undefined
+        ? row.onlinePosProductId !== onlinePosProductId
+        : previous !== null && row.onlinePosProductId === previous,
+    );
+    const insert =
+      onlinePosProductId !== null &&
+      !currents.some(
+        (row) =>
+          row.onlinePosProductId === onlinePosProductId && !removed.includes(row),
+      );
+    if (removed.length === 0 && !insert) return null;
+    if (
+      insert &&
+      rows.some(
+        (row) =>
+          !currents.includes(row) && row.onlinePosProductId === onlinePosProductId,
+      )
+    ) {
+      throw new ConvexError(
+        "OnlinePOS-produktet bruges allerede til et andet tilvalg eller fravalg",
+      );
     }
-    if (args.onlinePosProductId === null) {
-      if (current) await ctx.db.delete(current._id);
-    } else {
-      if (
-        rows.some(
-          (row) =>
-            row !== current && row.onlinePosProductId === args.onlinePosProductId,
-        )
-      ) {
-        throw new ConvexError(
-          "OnlinePOS-produktet bruges allerede til et andet tilvalg eller fravalg",
-        );
-      }
-      if (current) {
-        await ctx.db.patch(current._id, {
-          onlinePosProductId: args.onlinePosProductId,
-        });
-      } else {
-        if (rows.length >= MAX_MODIFIER_DEFAULTS) {
-          throw new ConvexError("Der er for mange tilvalg og fravalg");
-        }
-        await ctx.db.insert("onlinePosModifierMappings", {
-          organizationId: args.organizationId,
-          integrationId: args.integrationId,
-          kind: args.kind,
-          ingredientProductId: args.ingredientProductId,
-          onlinePosProductId: args.onlinePosProductId,
-        });
-      }
+    if (insert && rows.length - removed.length >= MAX_MODIFIER_DEFAULTS) {
+      throw new ConvexError("Der er for mange tilvalg og fravalg");
+    }
+    for (const row of removed) await ctx.db.delete(row._id);
+    if (insert) {
+      await ctx.db.insert("onlinePosModifierMappings", {
+        organizationId: args.organizationId,
+        integrationId: args.integrationId,
+        kind: args.kind,
+        ingredientProductId: args.ingredientProductId,
+        onlinePosProductId,
+      });
     }
     await invalidateSalesStockMappings(ctx, args.organizationId);
     return null;
@@ -1757,6 +1773,7 @@ export const setModifierMapping = action({
     kind: modifierKindValidator,
     ingredientProductId: v.id("products"),
     onlinePosProductId: v.union(v.number(), v.null()),
+    ...previousMappingArg,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1799,6 +1816,7 @@ export const setModifierMapping = action({
       kind: args.kind,
       ingredientProductId: args.ingredientProductId,
       onlinePosProductId,
+      previousOnlinePosProductId: args.previousOnlinePosProductId,
     });
     return null;
   },

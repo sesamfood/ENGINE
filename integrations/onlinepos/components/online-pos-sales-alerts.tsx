@@ -71,7 +71,7 @@ const MAX_SUGGESTIONS = 3;
 
 // Matches either way round, so "Pointy Green Bowl" suggests "Pointy Green"
 // and "PLUS Selleri" suggests "Selleri".
-function suggestByName<T extends { searchName: string; disabled: boolean }>(
+function suggestByName<T extends { searchName: string }>(
   options: T[],
   name: string,
 ) {
@@ -83,7 +83,7 @@ function suggestByName<T extends { searchName: string; disabled: boolean }>(
           ? productNameSearchScore(name, option.searchName)
           : null,
       ].filter((score) => score !== null);
-      return option.disabled || scores.length === 0
+      return scores.length === 0
         ? []
         : [{ option, score: Math.min(...scores) }];
     })
@@ -344,6 +344,7 @@ function ModifierSetupForm({
           kind,
           ingredientProductId: ingredientId,
           onlinePosProductId: item.onlinePosProductId,
+          previousOnlinePosProductId: null,
         });
       }
       toast.success(
@@ -486,7 +487,7 @@ function UnmappedRow({
 
   const comboboxOptions = useMemo(() => {
     if (!options || !modifiers) return [];
-    // Products can have several POS links; a tilvalg/fravalg default has one.
+    // Every target can have several POS links; a new one is added beside them.
     const linked = new Set(
       kind === "product"
         ? options.products.flatMap((product) =>
@@ -498,13 +499,10 @@ function UnmappedRow({
     );
     return options.products.map((product) => ({
       value: product.id,
-      label: !linked.has(product.id)
-        ? product.name
-        : kind === "product"
-          ? `${product.name} (har en kobling)`
-          : `${product.name} (allerede koblet)`,
+      label: linked.has(product.id)
+        ? `${product.name} (har en kobling)`
+        : product.name,
       searchName: product.name,
-      disabled: kind !== "product" && linked.has(product.id),
     }));
   }, [kind, modifiers, options]);
 
@@ -532,6 +530,7 @@ function UnmappedRow({
           kind,
           ingredientProductId: productId,
           onlinePosProductId: item.onlinePosProductId,
+          previousOnlinePosProductId: null,
         });
       }
       toast.success(`${item.name} er koblet til ${name ?? "produktet"}`);
