@@ -1200,6 +1200,8 @@ export default defineSchema({
     name: v.string(),
     normalizedName: v.string(),
     countProductOrder: v.optional(v.array(v.id("products"))),
+    // Missing food safety kontroller due on or before this date are hidden from the backlog.
+    foodSafetyBacklogClearedThrough: v.optional(v.string()),
     openingHoursMode: v.optional(openingHoursModeValidator),
     weeklyOpeningHours: v.optional(v.array(weeklyOpeningHoursValidator)),
     marketId: v.optional(v.id("markets")),

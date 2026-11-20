@@ -91,6 +91,7 @@ export const permissionCatalog = [
       { id: "foodSafety.approve", label: "Godkende kontroller" },
       { id: "foodSafety.edit", label: "Rette indsendte kontroller" },
       { id: "foodSafety.export", label: "Eksportere kontroldokumentation" },
+      { id: "foodSafety.clearBacklog", label: "Rydde manglende kontroller fra tidligere dage" },
     ],
   },
   {
