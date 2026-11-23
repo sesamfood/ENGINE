@@ -216,6 +216,14 @@ function FeedbackForm({
                   : "Kort overskrift på forslaget"
               }
               onChange={(event) => setTitle(event.target.value)}
+              // Enter would submit a half-written report; move on to the description instead.
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+                  return;
+                }
+                event.preventDefault();
+                document.getElementById(`${fieldId}-description`)?.focus();
+              }}
             />
             <FieldError>{error}</FieldError>
           </Field>
