@@ -63,6 +63,7 @@ import {
   type IngredientDraft,
 } from "@/components/catalog/ingredient-editor-row";
 import { ProductImageCropDialog } from "@/components/catalog/product-image-crop-dialog";
+import { ProductUsages } from "@/components/catalog/product-usages";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -2453,6 +2454,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               </FieldSet>
             </CardContent>
           </Card>
+
+          {productId ? (
+            <ProductUsages productId={productId} linkQuery={returnQuery} />
+          ) : null}
         </div>
       </div>
 

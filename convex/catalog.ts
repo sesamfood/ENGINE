@@ -1912,6 +1912,60 @@ export const getProduct = query({
   },
 });
 
+// Products whose recipe uses this product, with the amount per recipe yield.
+export const listProductUsages = query({
+  args: { productId: v.id("products") },
+  returns: v.array(
+    v.object({
+      productId: v.id("products"),
+      productName: v.string(),
+      productStatus: statusValidator,
+      quantity: v.number(),
+      unitName: v.string(),
+      packaging: v.boolean(),
+      yieldQuantity: v.number(),
+      yieldUnitName: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganization(ctx);
+    const rows = await ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("ingredientProductId", args.productId),
+      )
+      .take(MAX_GRAPH_PRODUCTS);
+    const usages = await Promise.all(
+      rows.map(async (row) => {
+        const [product, unit] = await Promise.all([
+          ctx.db.get("products", row.productId),
+          ctx.db.get("units", row.unitId),
+        ]);
+        if (product?.organizationId !== organizationId || !unit) return null;
+        const yieldUnit = await ctx.db.get(
+          "units",
+          product.recipeYield?.unitId ?? product.defaultUnitId,
+        );
+        return {
+          productId: product._id,
+          productName: product.name,
+          productStatus: product.status,
+          quantity: row.quantity,
+          unitName: unit.name,
+          packaging: row.packaging ?? false,
+          yieldQuantity: product.recipeYield?.quantity ?? 1,
+          yieldUnitName: yieldUnit?.name ?? "",
+        };
+      }),
+    );
+    return usages
+      .filter((usage) => usage !== null)
+      .sort((a, b) => a.productName.localeCompare(b.productName, "da"));
+  },
+});
+
 async function getCatalogSettingsRow(
   ctx: QueryCtx,
   organizationId: string,
