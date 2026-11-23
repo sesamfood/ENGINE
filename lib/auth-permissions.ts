@@ -120,7 +120,6 @@ export const permissionCatalog = [
     permissions: [
       { id: "expenses.create", label: "Registrere udgifter" },
       { id: "expenses.view", label: "Se udgifter" },
-      { id: "expenses.exportEconomic", label: "Oprette udgifter i e-conomic" },
       { id: "expenses.settings", label: "Administrere udgiftsindstillinger" },
     ],
   },
@@ -158,6 +157,13 @@ export const permissionCatalog = [
       { id: "dashboard.syncData", label: "Opdatere dashboarddata fra integrationer" },
       { id: "sales.viewAggregate", label: "Se aggregerede salgstal" },
       { id: "sales.viewDetail", label: "Se detaljerede salgstal" },
+    ],
+  },
+  {
+    group: "Økonomi",
+    permissions: [
+      { id: "finance.view", label: "Se Økonomi" },
+      { id: "finance.editBankBalance", label: "Redigere banksaldo" },
     ],
   },
   {
@@ -210,7 +216,7 @@ export const defaultRolePermissions: Record<
   manager: permissionIds.filter(
     (id) =>
       !id.endsWith(".settings") &&
-      id !== "expenses.exportEconomic" &&
+      !id.startsWith("finance.") &&
       id !== "integrations.manage" &&
       id !== "apiKeys.manage" &&
       id !== "locations.manage" &&
@@ -240,9 +246,10 @@ export const defaultRolePermissions: Record<
 export function permissionsForRole(
   role: string,
   configured?: readonly string[],
-) {
+): readonly string[] {
+  // Saved roles can still hold permissions that have since been removed.
   return (
-    configured ?? defaultRolePermissions[role as SystemOrganizationRole] ?? []
+    configured?.filter(isPermissionId) ?? defaultRolePermissions[role as SystemOrganizationRole] ?? []
   );
 }
 

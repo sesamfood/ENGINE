@@ -5,53 +5,46 @@ export const economicGuide: HelpGuide = {
   slug: "e-conomic",
   label: "e-conomic",
   summary:
-    "Hent bogførte omkostninger og budget til Månedsrapport, og opret udgifter som kladder i e-conomic.",
+    "Se kommende betalinger, betalinger sendt til banken og banksaldo under Økonomi.",
   appHref: "/administration/integrations/economic",
   appLinkLabel: "Åbn e-conomic-indstillinger",
   sections: [
     {
       id: "forbind",
-      title: "Forbind en aftale",
+      title: "Forbind e-conomic",
       steps: [
         "Åbn Administration → Integrationer → e-conomic, og aktivér integrationen. Det kræver adgang til alle lokationer.",
-        "Vælg Forbind aftale. Indsæt organisationens AppSecretToken og AgreementGrantToken fra e-conomic, og vælg Forbind e-conomic.",
-        "Brug Tilføj aftale, hvis kæden har flere aftaler. Nøglerne gemmes krypteret og vises ikke igen.",
+        "Indsæt organisationens AppSecretToken i Appnøgle og AgreementGrantToken i Aftalenøgle, og vælg Forbind e-conomic.",
+        "Nøglerne gemmes krypteret og vises ikke igen.",
+        "Med en Superuser-adgang vises aftalens navn, nummer og grundvaluta. Med en Bogholder-adgang vises beløbene i DKK.",
       ],
     },
     {
-      id: "koblinger",
-      title: "Kobl lokationer og konti",
+      id: "indstillinger",
+      title: "Vælg kassekladde og bankkonto",
       steps: [
-        "Vælg Redigér koblinger på aftalen.",
-        "Under Lokationer vælger du den afdeling eller dimension, der fordeler posteringer på lokationer. Vælg Hele aftalen til én lokation, hvis aftalen kun dækker én Lokation.",
-        "Under Konti og nøgletal vælger du konti og det nøgletal, hver konto indgår i: Nettoomsætning, Vareforbrug, Husleje, Forsyning eller Øvrige driftsomkostninger.",
-        "Markér kun Vareforbruget er lagerreguleret og godkendt, hvis kontiene indeholder lagerregulering. Vælg Gem koblinger.",
-      ],
-      bullets: [
-        "Posteringer uden en koblet dimensionsværdi fordeles ikke.",
-        "Mangler koblinger betyder, at aftalen endnu ikke kan bruges i rapporten.",
+        "Under Økonomi vælger du den kassekladde, hvor betalinger ligger, når de er eksporteret til banken.",
+        "Bankkonto er kontonummeret for banken i kontoplanen, normalt 5820. Vælg Gem indstillinger.",
       ],
     },
     {
-      id: "brug",
-      title: "Hvor bruges data",
+      id: "oekonomi",
+      title: "Brug Økonomi",
       bullets: [
-        "Månedsrapport henter bogførte beløb og budget med Opdatér e-conomic. Beløbene skal godkendes i rapporten. Omsætningen kommer fortsat fra salgsdata.",
-        "Udgift kan oprette en udgift som kladde i den kassekladde, der er valgt under Administration → Udgift.",
+        "Kommende betalinger viser bogførte leverandørfakturaer, som ikke er betalt endnu, sorteret efter forfaldsdato. e-conomic viser ikke, om en betaling allerede ligger klar i betalingsmodulet.",
+        "Sendt til banken viser posteringerne i den valgte kassekladde med bankkontoen som modkonto.",
+        "Banksaldo viser den bogførte saldo på bankkontoen. Vælg Indtast saldo for at gemme den aktuelle saldo fra banken.",
+        "Data hentes fra e-conomic, når siden åbnes, og når du vælger Opdatér.",
+        "Siden kræver adgangen Se Økonomi og adgang til alle lokationer. Indtastning af banksaldo kræver Redigere banksaldo.",
       ],
     },
     {
       id: "vedligehold",
       title: "Opdatér eller fjern",
       bullets: [
-        "Opdatér forbindelse udskifter nøglerne. En anden aftale skal tilføjes som en ny forbindelse.",
-        "Kontakten på aftalen deaktiverer den uden at slette koblinger.",
-        "Fjern aftale sletter nøglerne og aftalens konto- og lokationskoblinger.",
+        "Opdatér forbindelse udskifter nøglerne. Forbinder du en anden aftale, nulstilles kassekladde, bankkonto og den indtastede banksaldo. Det sker også, hvis nøglerne ikke giver adgang til aftalenummeret.",
+        "Fjern forbindelse sletter nøglerne og indstillingerne.",
       ],
     },
-  ],
-  relatedLinks: [
-    { href: "/help/dashboard/maanedsrapport", label: "Månedsrapport" },
-    { href: "/help/udgift/overblik", label: "Udgift" },
   ],
 };

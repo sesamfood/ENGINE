@@ -95,7 +95,7 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
     }),
   );
 
-  const visibleOrder = itemOrder.filter((id) => id !== "woltOrders" || integrations?.wolt);
+  const visibleOrder = itemOrder.filter((id) => (id !== "woltOrders" || integrations?.wolt) && (id !== "finance" || integrations?.economic));
 
   async function save() {
     setSaving(true);

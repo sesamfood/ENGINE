@@ -22,7 +22,7 @@ export const integrationRegistry = [
   {
     id: "economic",
     name: "e-conomic",
-    description: "Hent bogførte omkostninger og budget til månedsrapporten.",
+    description: "Se kommende betalinger, betalinger sendt til banken og banksaldo under Økonomi.",
     requiresAllLocations: true,
   },
   {

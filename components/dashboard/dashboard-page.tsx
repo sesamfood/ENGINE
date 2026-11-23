@@ -33,7 +33,6 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { canSyncDashboardData } from "@/lib/auth-permissions";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
-import { metricRegistry } from "@/lib/dashboard/registry";
 import { comparisonPeriodLabels, comparisonPeriods, DEFAULT_COMPARISON_PERIOD, rangePresets, type ComparisonPeriod, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
@@ -492,8 +491,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
                     Månedsrapport
                   </DropdownMenuItem>
                 ) : null}
-                {canSyncData || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
-                  && dashboard.widgets.some((widget) => widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].source === "economic")) ? (
+                {canSyncData ? (
                   <DropdownMenuItem disabled={updatingData} onClick={() => void updateDashboardData()}>
                     <RefreshCwIcon />
                     {updatingData ? "Opdaterer" : "Opdatér"}

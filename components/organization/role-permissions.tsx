@@ -310,7 +310,7 @@ export function RolePermissions() {
                       {group.group}
                     </TableCell>
                   </TableRow>
-                  {group.permissions.filter((permission) => permission.id !== "expenses.exportEconomic" || integrations?.economic).map((permission) => (
+                  {group.permissions.filter((permission) => !permission.id.startsWith("finance.") || integrations?.economic).map((permission) => (
                     <TableRow key={permission.id}>
                       <TableCell appearance="frozenLabel" className="min-w-48">
                         {permission.label}

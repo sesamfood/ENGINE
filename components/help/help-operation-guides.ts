@@ -316,17 +316,14 @@ export const operationFeatures: HelpFeature[] = [
             id: "budget",
             title: "Angiv budget og godkendte tal",
             steps: [
-              "Vælg Redigér budget, vælg Lokation, og angiv budgettet. Vælg Manuelt eller e-conomic som kilde, hvor valget vises. Angiv Kilde eller reference, og vælg Gem budget.",
+              "Vælg Redigér budget, vælg Lokation, og angiv budgettet. Angiv Kilde eller reference, og vælg Gem budget.",
               "Når måneden er afsluttet, vælger du Godkend månedstal og angiver månedens godkendte beløb med kilde. Hver godkendelse gemmes som en ny revision.",
-              "Opdatér data henter nye salg og vagter. Med e-conomic vælger du Opdatér e-conomic og derefter Godkend e-conomic.",
+              "Opdatér data henter nye salg og vagter.",
             ],
             bullets: [
               "Budget og godkendte tal kræver adgang til at redigere månedsbudgetter. Tomme felter betyder, at tallet mangler. 0 er et gyldigt beløb.",
             ],
           },
-        ],
-        relatedLinks: [
-          { integration: "economic", href: "/help/integrationer/e-conomic", label: "e-conomic" },
         ],
       },
     ],
@@ -670,14 +667,14 @@ export const operationFeatures: HelpFeature[] = [
     slug: "udgift",
     label: "Udgift",
     summary:
-      "Registrér udgifter med bilag, send dem til bogholderiet, og opret dem i e-conomic.",
+      "Registrér udgifter med bilag, og send dem til bogholderiet.",
     icon: WalletIcon,
     guides: [
       {
         slug: "overblik",
         label: "Overblik",
         summary:
-          "Registrér en udgift med bilag. Den sendes som e-mail og kan oprettes som kladde i e-conomic.",
+          "Registrér en udgift med bilag. Den sendes som e-mail.",
         appHref: "/expenses",
         appLinkLabel: "Åbn Udgift",
         sections: [
@@ -687,7 +684,6 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Åbn Administration → Udgift. Tilføj, omdøb, sortér eller slet kategorier.",
               "Angiv modtagere i Til, CC og BCC. Tomme felter slår e-mails fra.",
-              "Med e-conomic slår du Brug til udgifter til for aftalen og angiver Kassekladdenummer, Modkonto, Momskode ved 25 % moms og en udgiftskonto for hver kategori. Gem indstillinger.",
             ],
             bullets: [
               "Opsætningen kræver adgang til alle lokationer. Gemte udgifter beholder deres kategorinavn.",
@@ -700,7 +696,7 @@ export const operationFeatures: HelpFeature[] = [
               "Åbn Udgift → Opret udgift. Vælg Lokation og Kategori.",
               "Angiv Leverandør / modtager, Beløb ekskl. moms, Moms (25 % eller 0 %), Dato og Periode. Tilføj eventuelt en kommentar.",
               "Upload bilaget som PDF, JPG eller PNG på højst 10 MB.",
-              "Markér Opret også i e-conomic, hvis udgiften skal oprettes som kladde. Vælg Registrér udgift.",
+              "Vælg Registrér udgift.",
             ],
             screenshot: {
               src: "/help/screenshots/udgift.webp",
@@ -715,14 +711,9 @@ export const operationFeatures: HelpFeature[] = [
             id: "status",
             title: "Følg status",
             bullets: [
-              "Udgifter viser hver udgift med status for e-mail og e-conomic.",
-              "Fejler e-conomic, kan du åbne udgiften og vælge Prøv e-conomic igen. Kontrollér i e-conomic betyder, at udgiften muligvis er oprettet. Se efter, før du prøver igen.",
-              "Kladden skal kontrolleres og bogføres i e-conomic.",
+              "Udgifter viser hver udgift med status for e-mail.",
             ],
           },
-        ],
-        relatedLinks: [
-          { integration: "economic", href: "/help/integrationer/e-conomic", label: "e-conomic" },
         ],
       },
     ],

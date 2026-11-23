@@ -50,7 +50,7 @@ export async function isIntegrationEnabled(
   switch (integration) {
     case "workfeed": return legacyWorkfeedEnabled(ctx, organizationId);
     case "onlinepos": return legacyOnlinePosEnabled(ctx, organizationId);
-    case "economic": return legacyEconomicEnabled(ctx, organizationId);
+    case "economic": return legacyEconomicEnabled();
     case "wolt": return legacyWoltEnabled(ctx, organizationId);
     case "gssupply": return legacyGsSupplyEnabled();
     case "abcatering": return legacyAbCateringEnabled();

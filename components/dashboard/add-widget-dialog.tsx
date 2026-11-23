@@ -115,7 +115,7 @@ export function AddWidgetDialog({
   const convex = useConvex();
   const disabledFeatures = access?.disabledFeatures ?? [];
   const available = metrics.filter((metric) => metricSourceAvailable(metric.source, integrations) && metricFeaturesAvailable(metric.features, disabledFeatures)).filter(
-    (metric) => metric.source === "economic"
+    (metric) => metric.source === "monthlyReport"
       ? access?.granularity === "detail" && access.permissions.includes("dashboard.viewFinancials")
       : (!metric.sensitive || canViewSensitive) && (!metric.live || access?.granularity === "detail"),
   );
@@ -167,9 +167,9 @@ export function AddWidgetDialog({
   const livePreview = useLiveMetrics(livePreviewWidgets, scope, open && selectedMetricAvailable && step === 2 && !customMetricId && Boolean(definition.live));
   const livePreviewState = livePreview.byWidget.get(livePreviewWidget.key);
   const financialPreview = useFinancialMetrics(livePreviewWidgets, scope, range, now,
-    open && step === 2 && !customMetricId && definition.source === "economic");
+    open && step === 2 && !customMetricId && definition.source === "monthlyReport");
   const financialPreviewResult = financialPreview.get(livePreviewWidget.key);
-  const displayedPreview = !customMetricId && definition.source === "economic"
+  const displayedPreview = !customMetricId && definition.source === "monthlyReport"
     ? financialPreviewResult instanceof Error ? undefined : financialPreviewResult
     : previewResult;
   const salesSource = metricId === "woltCancellationRate"
@@ -180,7 +180,7 @@ export function AddWidgetDialog({
           : "onlinePos"
       );
   useEffect(() => {
-    if (!open || !selectedMetricAvailable || step !== 2 || (customMetricId && !customMetric) || (!customMetricId && (definition.live || definition.source === "economic"))) return;
+    if (!open || !selectedMetricAvailable || step !== 2 || (customMetricId && !customMetric) || (!customMetricId && (definition.live || definition.source === "monthlyReport"))) return;
     let active = true;
     const timer = window.setTimeout(() => {
       if (!active) return;
@@ -439,7 +439,7 @@ export function AddWidgetDialog({
                               <p className="font-medium">{metric.label}</p>
                               <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>
                               <p className="mt-1 text-xs text-muted-foreground">
-                                <span className="font-medium text-foreground">Datakilder:</span> {metric.source === "economic" ? "Månedsrapport" : metric.sourceTables.join(", ")}
+                                <span className="font-medium text-foreground">Datakilder:</span> {metric.source === "monthlyReport" ? "Månedsrapport" : metric.sourceTables.join(", ")}
                               </p>
                             </div>
                           </CommandItem>
@@ -644,7 +644,7 @@ export function AddWidgetDialog({
                 </ToggleGroup>
               )}
               {!customMetricId && definition.live ? <MetricSourceAttribution widget={livePreviewWidget} data={livePreviewState?.kind === "ready" ? livePreviewState.data : undefined} /> : null}
-              {!customMetricId && definition.source === "economic" ? <p className="text-sm text-muted-foreground">Denne måned. Økonomital hentes ved indlæsning og følger samme beregninger som månedsrapporten.</p> : null}
+              {!customMetricId && definition.source === "monthlyReport" ? <p className="text-sm text-muted-foreground">Denne måned. Økonomital følger samme beregninger som månedsrapporten.</p> : null}
             </div>
           ) : null}
 

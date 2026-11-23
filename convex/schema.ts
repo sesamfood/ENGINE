@@ -11,8 +11,7 @@ import { allergenValidator } from "./lib/allergens";
 import { foodSafetyPageValidator } from "./lib/foodSafetySettings";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
 import { storedFeatureIdValidator, unavailableDisplayValidator } from "./lib/features";
-import { expenseCategoryOptionValidator, expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
-import { economicCategoryValidator } from "./integrations/economic/lib/validators";
+import { expenseCategoryOptionValidator, expenseFields } from "./lib/expenseValidators";
 import {
   forecastProfileValidator,
   locationForecastValidator,
@@ -80,7 +79,8 @@ export default defineSchema({
     to: v.array(v.string()),
     cc: v.array(v.string()),
     bcc: v.array(v.string()),
-    economicMappings: v.array(expenseEconomicMappingValidator),
+    // Legacy e-conomic export settings. Drop after clearing them from existing rows.
+    economicMappings: v.optional(v.array(v.any())),
   }).index("by_organizationId", ["organizationId"]),
 
   expenses: defineTable(expenseFields)
@@ -633,7 +633,8 @@ export default defineSchema({
     utilities: v.optional(v.union(v.number(), v.null())),
     other: v.optional(v.union(v.number(), v.null())),
     guestScore: v.optional(v.union(v.number(), v.null())),
-    economicBudgetCategories: v.optional(v.array(economicCategoryValidator)),
+    // Legacy e-conomic budget sources. Drop after clearing them from existing rows.
+    economicBudgetCategories: v.optional(v.array(v.string())),
     sourceNote: v.optional(v.string()),
     revision: v.number(),
     updatedAt: v.number(),

@@ -19,6 +19,7 @@ import {
   LifeBuoyIcon,
   ReceiptTextIcon,
   WalletIcon,
+  LandmarkIcon,
   RefreshCwIcon,
   SettingsIcon,
   BriefcaseBusinessIcon,
@@ -154,6 +155,7 @@ const navigationIcons = {
   transfers: ArrowRightLeftIcon,
   invoices: ReceiptTextIcon,
   expenses: WalletIcon,
+  finance: LandmarkIcon,
   goodsReceipts: PackageCheckIcon,
   waste: Trash2Icon,
   foodSafety: ClipboardCheckIcon,
@@ -198,6 +200,7 @@ type AccessRuntime = {
 type AccessContextValue = AccessRuntime & {
   locations: LocationOption[];
   woltEnabled: boolean | undefined;
+  economicEnabled: boolean | undefined;
 };
 
 const AccessContext = createContext<AccessContextValue | null>(null);
@@ -372,16 +375,19 @@ function useAppNavigation() {
   const access = useAccess();
   const countLocked = useContext(FeatureLockContext);
   const canWolt = Boolean(access?.permissions.includes("sales.viewDetail"));
+  const canFinance = Boolean(access?.permissions.includes("finance.view"));
   const navigation = resolveAppNavigation({
     permissions: access?.permissions ?? [],
     kiosk: access?.kiosk ?? null,
     countLocked,
     woltEnabled: access?.woltEnabled === true,
+    // Økonomi is organization-wide, so location-restricted users cannot open it.
+    economicEnabled: access?.economicEnabled === true && access.locationScope.all,
     disabledFeatures: access?.disabledFeatures,
   });
   return {
     navigation,
-    ready: access !== null && (!canWolt || access.woltEnabled !== undefined),
+    ready: access !== null && (!canWolt || access.woltEnabled !== undefined) && (!canFinance || access.economicEnabled !== undefined),
   };
 }
 
@@ -406,6 +412,7 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
   );
   const integrations = useIntegrations();
   const woltEnabled = integrations?.wolt;
+  const economicEnabled = integrations?.economic;
 
   if (isLoading || (organization.data && runtime === undefined)) {
     return (
@@ -419,7 +426,7 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
   }
 
   const contextValue = runtime
-    ? { ...runtime, woltEnabled }
+    ? { ...runtime, woltEnabled, economicEnabled }
     : null;
   return (
     <AccessContext.Provider value={contextValue}>
@@ -434,6 +441,7 @@ function useCurrentFeatureState() {
   const integrations = useIntegrations();
   const provider = pathname === "/administration/menus" ? "onlinepos"
     : pathname === "/administration/wolt-orders" || pathname.startsWith("/wolt-orders") ? "wolt"
+    : pathname === "/finance" || pathname.startsWith("/finance/") ? "economic"
     : undefined;
   const woltSettings = pathname === "/administration/wolt-orders";
   const feature = woltSettings ? "woltOrders" : featureForPath(pathname);
@@ -1756,6 +1764,8 @@ export function AppShell({
     pathname === "/invoices" || pathname.startsWith("/invoices/");
   const showExpensesHeader =
     pathname === "/expenses" || pathname.startsWith("/expenses/");
+  const showFinanceHeader =
+    pathname === "/finance" || pathname.startsWith("/finance/");
   const showGoodsReceiptsHeader =
     pathname === "/goods-receipts" || pathname.startsWith("/goods-receipts/");
   const showDashboardHeader =
@@ -1777,6 +1787,7 @@ export function AppShell({
     showTransfersHeader ||
     showInvoicesHeader ||
     showExpensesHeader ||
+    showFinanceHeader ||
     showGoodsReceiptsHeader ||
     showDashboardHeader ||
     showManagerHeader ||

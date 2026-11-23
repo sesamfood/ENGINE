@@ -1,10 +1,10 @@
 import { sidebarItems, type SidebarItemId } from "./sidebar-navigation";
 
 // Manager is part of the Dashboard feature, not a switch of its own.
-// Prepplan is part of Bestilling.
+// Prepplan is part of Bestilling. Økonomi follows the e-conomic integration.
 export type FeatureId = Exclude<
   SidebarItemId,
-  "organization" | "manager" | "prepplan"
+  "organization" | "manager" | "prepplan" | "finance"
 >;
 
 export const featureLabels = {
@@ -41,7 +41,7 @@ const featurePaths = {
 
 export function featureForPath(pathname: string): FeatureId | undefined {
   for (const { id } of sidebarItems) {
-    if (id === "organization") continue;
+    if (id === "organization" || id === "finance") continue;
     if (id === "manager") {
       if (pathname.startsWith("/manager/staff-food")) return "staffFood";
       if (pathname === "/manager" || pathname.startsWith("/manager/")) return "dashboard";

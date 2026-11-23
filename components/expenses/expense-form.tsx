@@ -1,6 +1,5 @@
 "use client";
 
-import { useIntegrations } from "@/integrations/use-integrations";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "convex/react";
@@ -9,16 +8,13 @@ import { FileTextIcon, SaveIcon, UploadCloudIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { DatePicker, MonthPicker } from "@/components/date-picker";
 import { AppBottomBar } from "@/components/app-bottom-bar";
-import { usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
@@ -50,7 +46,6 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
-const MAX_ECONOMIC_ATTACHMENT_SIZE = 9_000_000;
 const vatOptions = [
   { value: 25, label: "25 %" },
   { value: 0, label: "0 %" },
@@ -70,8 +65,6 @@ export function ExpenseForm({
   const options = useQuery(api.expenses.getFormOptions, {});
   const createExpense = useMutation(api.expenses.create);
   const getUploadUrl = useMutation(api.expenses.getUploadUrl);
-  const integrations = useIntegrations();
-  const canExport = usePermission("expenses.exportEconomic") && integrations?.economic === true;
   const storedLocationId = useWasteLocation(organizationId);
   const locations =
     options?.organizationId === organizationId ? options.locations : undefined;
@@ -93,7 +86,6 @@ export function ExpenseForm({
   const [period, setPeriod] = useState(() => date.slice(0, 7));
   const [comment, setComment] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [sendToEconomic, setSendToEconomic] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -109,12 +101,6 @@ export function ExpenseForm({
       ? null
       : netAmount + Math.round((netAmount * vatRate) / 100);
   const category = categories.find((option) => option.id === categoryId);
-  const exportAvailable = Boolean(location?.economicAvailable && canExport);
-  const categoryMapped = Boolean(
-    categoryId && location?.economicCategoryIds.includes(categoryId),
-  );
-  const shouldExport = Boolean(integrations?.economic && location?.economicConfigured && sendToEconomic);
-  const exportValid = !shouldExport || (exportAvailable && categoryMapped);
   const amountValid =
     netAmount !== null && netAmount > 0 && netAmount <= 1_000_000_000;
   const periodValid = /^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(period);
@@ -125,17 +111,13 @@ export function ExpenseForm({
   } catch {
     /* The date input can be empty while editing. */
   }
-  const attachmentValid =
-    !shouldExport || !file || file.size <= MAX_ECONOMIC_ATTACHMENT_SIZE;
   const ready = Boolean(
     location &&
     category &&
     supplier.trim() &&
     amountValid &&
     dateValid &&
-    periodValid &&
-    attachmentValid &&
-    exportValid,
+    periodValid,
   );
 
   useEffect(() => {
@@ -181,14 +163,6 @@ export function ExpenseForm({
     }
     if (!periodValid)
       nextErrors.period = "Vælg en gyldig måned mellem 1900 og 2199.";
-    if (!attachmentValid) {
-      nextErrors.attachment =
-        "Bilag til e-conomic må højst fylde 9 MB. Vælg en mindre fil.";
-    }
-    if (!exportValid) {
-      nextErrors.economic =
-        "Udgiften kan ikke overføres med den valgte lokation og kategori. Kontrollér opsætningen, eller fjern markeringen ved e-conomic.";
-    }
     setErrors(nextErrors);
     if (
       Object.keys(nextErrors).length ||
@@ -232,22 +206,16 @@ export function ExpenseForm({
         period,
         comment: comment.trim(),
         ...(attachment ? { attachment } : {}),
-        sendToEconomic: shouldExport,
       });
       if (!mounted.current) return;
       setSupplier("");
       setAmount("");
       setComment("");
       setFile(null);
-      setSendToEconomic(false);
       setErrors({});
       requestId.current = null;
       uploaded.current = null;
-      toast.success(
-        shouldExport
-          ? "Udgiften er registreret. Se status for e-mail og e-conomic under Udgifter."
-          : "Udgiften er registreret. Se status for e-mail under Udgifter.",
-      );
+      toast.success("Udgiften er registreret. Se status for e-mail under Udgifter.");
     } catch (error) {
       if (mounted.current)
         toast.error(
@@ -311,22 +279,6 @@ export function ExpenseForm({
                     disabled={saving}
                     onValueChange={(value) => {
                       setRegistrationLocation(organizationId, value);
-                      const nextLocation = locations.find(
-                        (option) => option.id === value,
-                      );
-                      if (
-                        integrations?.economic && sendToEconomic &&
-                        (!nextLocation?.economicAvailable ||
-                          !categoryId ||
-                          !nextLocation.economicCategoryIds.includes(
-                            categoryId,
-                          ))
-                      ) {
-                        setSendToEconomic(false);
-                        toast.info(
-                          "Overførsel til e-conomic er slået fra. Den valgte lokation mangler opsætning til denne kategori.",
-                        );
-                      }
                     }}
                   />
                   <FieldError>{errors.location}</FieldError>
@@ -345,16 +297,6 @@ export function ExpenseForm({
                         (option) => option.id === value,
                       );
                       setCategoryId(next?.id ?? null);
-                      if (
-                        integrations?.economic && sendToEconomic &&
-                        (!next ||
-                          !location?.economicCategoryIds.includes(next.id))
-                      ) {
-                        setSendToEconomic(false);
-                        toast.info(
-                          "Overførsel til e-conomic er slået fra. Den valgte kategori mangler en konto i opsætningen.",
-                        );
-                      }
                     }}
                   >
                     <SelectTrigger
@@ -543,8 +485,7 @@ export function ExpenseForm({
                     <span>Træk fil hertil eller klik for at uploade</span>
                   </Button>
                   <FieldDescription id="expense-attachment-help">
-                    PDF, JPG eller PNG. Højst{" "}
-                    {shouldExport ? "9 MB til e-conomic" : "10 MB"}.
+                    PDF, JPG eller PNG. Højst 10 MB.
                   </FieldDescription>
                   <FieldError>{errors.attachment}</FieldError>
                 </Field>
@@ -628,38 +569,6 @@ export function ExpenseForm({
                   </TableBody>
                 </Table>
               </div>
-              {integrations?.economic && location?.economicConfigured && (exportAvailable || sendToEconomic) ? (
-                <FieldGroup>
-                  <Field
-                    orientation="horizontal"
-                    data-invalid={Boolean(errors.economic)}
-                  >
-                    <Checkbox
-                      id="expense-economic"
-                      checked={sendToEconomic}
-                      disabled={saving || (!categoryMapped && !sendToEconomic)}
-                      aria-invalid={Boolean(errors.economic)}
-                      onCheckedChange={(checked) => {
-                        setSendToEconomic(checked);
-                        setErrors((current) => ({ ...current, economic: "" }));
-                      }}
-                    />
-                    <FieldContent>
-                      <FieldLabel htmlFor="expense-economic">
-                        Opret også i e-conomic
-                      </FieldLabel>
-                      <FieldDescription>
-                        {!categoryId
-                          ? "Vælg en kategori for at oprette en kladde i e-conomic."
-                          : !categoryMapped
-                            ? "Den valgte kategori mangler en konto i udgiftsindstillingerne."
-                            : "Opretter udgiften som en kladde, der skal kontrolleres og bogføres i e-conomic."}
-                      </FieldDescription>
-                      <FieldError>{errors.economic}</FieldError>
-                    </FieldContent>
-                  </Field>
-                </FieldGroup>
-              ) : null}
             </CardContent>
           </Card>
         </div>

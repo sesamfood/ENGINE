@@ -2,15 +2,14 @@
 
 import { useIntegrations } from "@/integrations/use-integrations";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useAction, useMutation, type RequestForQueries } from "convex/react";
+import { useMutation, type RequestForQueries } from "convex/react";
 import { useQueries, useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
-import { ArrowLeftIcon, CheckIcon, RefreshCwIcon } from "lucide-react";
+import { ArrowLeftIcon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { dateKey } from "@/lib/date";
 import { previousKpiMonth, type MonthlyKpiCell, type MonthlyKpiRow } from "@/lib/dashboard/monthly-kpi";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
@@ -22,24 +21,19 @@ import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gat
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FieldSkeleton, RowsSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { MonthlyActualsDialog } from "./monthly-actuals-dialog";
 import { MonthlyBudgetDialog } from "./monthly-budget-dialog";
 import { useActiveOrganization } from "@/lib/active-organization";
 
 type MonthlyContext = FunctionReturnType<typeof api.monthlyKpi.getContext>;
-type ReportState = FunctionReturnType<typeof api.economicReports.getReportState>;
-type LiveReport = FunctionReturnType<typeof api.economicReports.getReport>;
-type ApprovalCandidate = LiveReport["approvals"][number];
+type Report = FunctionReturnType<typeof api.monthlyKpi.getReport>;
 const columns = [
   { key: "actual", label: "Faktisk" },
   { key: "budget", label: "Budget" },
@@ -87,153 +81,16 @@ function ReportCell({ cell, row, column, currency }: {
   );
 }
 
-const categoryLabels = { sales: "Nettoomsætning", cogs: "Vareforbrug", labour: "Løn", rent: "Husleje", utilities: "Forbrug", other: "Øvrige driftsomkostninger" };
-function candidateKey(candidate: ApprovalCandidate) { return `${candidate.kind}:${candidate.category}`; }
-function candidateAmount(candidate: ApprovalCandidate) {
-  return new Intl.NumberFormat("da-DK", { style: "currency", currency: candidate.currency }).format(candidate.amountMinor / 100);
-}
-
-function AccountingApprovalDialog({ candidates, month, locationId, now, revision }: {
-  candidates: ApprovalCandidate[]; month: string; locationId: Id<"locations">; now: number; revision: string;
+function ReportData({ report, month, locationName, timeZone }: {
+  report: Report; month: string; locationName: string; timeZone: string;
 }) {
-  const approve = useAction(api.economicReports.approve);
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [sourceNote, setSourceNote] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const chosen = candidates.filter((candidate) => selected.includes(candidateKey(candidate)));
-  const sourceError = !sourceNote.trim() || sourceNote.trim().length > 1000 ? "Angiv en kilde eller reference på højst 1.000 tegn." : null;
-
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitted(true);
-    if (saving || sourceError || !chosen.length) return;
-    if (!confirming) { setConfirming(true); return; }
-    setSaving(true);
-    try {
-      await approve({ month, locationId, now, expectedRevision: revision,
-        items: chosen.map(({ category, kind, fingerprint }) => ({ category, kind, fingerprint })), sourceNote });
-      toast.success("De valgte beløb er godkendt");
-      setOpen(false);
-    } catch (error) {
-      toast.error(getUserErrorMessage(error, "Beløbene kunne ikke godkendes. Opdatér rapporten, og prøv igen."));
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!saving) { setOpen(next); if (!next) setConfirming(false); } }}>
-      <DialogTrigger render={<Button variant="outline" className="min-h-11" />}><CheckIcon data-icon="inline-start" />Godkend e-conomic</DialogTrigger>
-      <DialogContent className="max-h-(--spacing-dialog-dynamic) overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
-        <DialogHeader>
-          <DialogTitle>Godkend beløb fra e-conomic</DialogTitle>
-          <DialogDescription>{candidates[0]?.locationName}, {new Date(`${month}-01T12:00:00Z`).toLocaleDateString("da-DK", { month: "long", year: "numeric", timeZone: "UTC" })}. Kontrollér beløbene mod de afsluttede regnskabs- og budgetrapporter.</DialogDescription>
-        </DialogHeader>
-        <form className="flex flex-col gap-5" noValidate onSubmit={(event) => void save(event)}>
-          {confirming ? (
-            <Alert>
-              <AlertTitle>Godkend de valgte beløb</AlertTitle>
-              <AlertDescription>
-                <ul className="flex list-disc flex-col gap-2 pl-5">{chosen.map((candidate) => <li key={candidateKey(candidate)}>{categoryLabels[candidate.category]}, {candidate.kind === "actual" ? "faktisk" : "budget"}: {candidateAmount(candidate)}</li>)}</ul>
-                <p className="whitespace-pre-wrap break-words">Kilde: {sourceNote.trim()}</p>
-                <p>Beløbene kontrolleres igen før godkendelse. Senere ændringer i regnskabet kræver en ny godkendelse.</p>
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <>
-              <FieldGroup>
-                {candidates.map((candidate) => {
-                  const key = candidateKey(candidate);
-                  return (
-                    <Field key={key} orientation="horizontal" appearance="panel" className="items-start">
-                      <Checkbox id={`economic-approval-${key}`} className="mt-1" checked={selected.includes(key)} disabled={saving}
-                        onCheckedChange={(checked) => setSelected((current) => checked ? [...current, key] : current.filter((value) => value !== key))} />
-                      <FieldContent>
-                        <FieldLabel htmlFor={`economic-approval-${key}`} className="min-h-11 flex-wrap">
-                          {categoryLabels[candidate.category]} · {candidate.kind === "actual" ? "Faktisk" : "Budget"} · {candidateAmount(candidate)}
-                        </FieldLabel>
-                        <p className="break-words text-sm text-muted-foreground">{candidate.source}</p>
-                      </FieldContent>
-                    </Field>
-                  );
-                })}
-                {submitted && !chosen.length ? <FieldError>Vælg mindst ét beløb.</FieldError> : null}
-                <Field data-invalid={submitted && Boolean(sourceError)}>
-                  <FieldLabel htmlFor="economic-approval-source">Kilde eller reference</FieldLabel>
-                  <Textarea id="economic-approval-source" value={sourceNote} maxLength={1000} onChange={(event) => setSourceNote(event.target.value)} disabled={saving}
-                    aria-invalid={submitted && Boolean(sourceError)} aria-describedby={submitted && sourceError ? "economic-approval-source-error" : undefined} />
-                  {submitted ? <FieldError id="economic-approval-source-error">{sourceError}</FieldError> : null}
-                </Field>
-              </FieldGroup>
-              <p className="text-sm text-muted-foreground">Godkend kun fuldstændige beløb. Vareforbrug skal være lagerreguleret, og løn skal omfatte alle arbejdsgiveromkostninger.</p>
-            </>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" className="min-h-11" disabled={saving} onClick={() => confirming ? setConfirming(false) : setOpen(false)}>{confirming ? "Redigér valg" : "Annullér"}</Button>
-            <Button type="submit" className="min-h-11" disabled={saving}>{saving ? <Spinner data-icon="inline-start" /> : null}{saving ? "Godkender" : confirming ? "Godkend valgte beløb" : "Kontrollér og godkend"}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-type LoadedReport = { version: number } & ({ kind: "ready"; data: LiveReport } | { kind: "error"; message: string });
-
-function ReportData({ state, month, locationId, locationName, now, timeZone, pendingReads }: {
-  state: ReportState; month: string; locationId: Id<"locations"> | null; locationName: string; now: number; timeZone: string;
-  pendingReads: RefObject<Map<string, Promise<LiveReport>>>;
-}) {
-  const integrations = useIntegrations();
-  const connected = Boolean(integrations?.economic && state.connected);
-  const getReport = useAction(api.economicReports.getReport);
-  const [requestedAt] = useState(now);
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const [loaded, setLoaded] = useState<LoadedReport | null>(null);
-  const current = connected && loaded?.version === refreshVersion ? loaded : null;
-  const loading = connected && current === null;
-  const result = current?.kind === "ready" ? current.data : null;
-  const report = result?.report ?? state.report;
-  const errors = current?.kind === "error" ? [current.message] : result?.errors ?? [];
-  const candidates = locationId ? result?.approvals.filter((candidate) => candidate.locationId === locationId && candidate.month === month && !candidate.approved) ?? [] : [];
-
-  useEffect(() => {
-    if (!connected) return;
-    let active = true;
-    const key = JSON.stringify([month, locationId, state.revision]);
-    let promise = pendingReads.current.get(key);
-    if (!promise) {
-      promise = getReport({ month, locationIds: locationId ? [locationId] : null, now: requestedAt, expectedRevision: state.revision });
-      pendingReads.current.set(key, promise);
-      void promise.finally(() => pendingReads.current.delete(key)).catch(() => {});
-    }
-    void promise.then(
-      (data) => { if (active) setLoaded({ version: refreshVersion, kind: "ready", data }); },
-      (error: unknown) => { if (active) setLoaded({ version: refreshVersion, kind: "error", message: getUserErrorMessage(error, "e-conomic kunne ikke indlæses. Prøv igen.") }); },
-    );
-    return () => { active = false; };
-  }, [getReport, locationId, month, pendingReads, refreshVersion, requestedAt, connected, state.revision]);
-
   return (
     <>
-      {connected ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-            {loading ? <><Spinner data-icon="inline-start" />Henter beløb fra e-conomic</> : result?.fetchedAt ? `e-conomic hentet ${new Date(result.fetchedAt).toLocaleString("da-DK", { dateStyle: "short", timeStyle: "short", timeZone })}` : "e-conomic er ikke indlæst"}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {state.canApprove && locationId && candidates.length ? <AccountingApprovalDialog key={refreshVersion} candidates={candidates} month={month} locationId={locationId} now={requestedAt} revision={state.revision} /> : null}
-            <Button variant="outline" className="min-h-11" disabled={loading} onClick={() => setRefreshVersion((version) => version + 1)}><RefreshCwIcon data-icon="inline-start" />Opdatér e-conomic</Button>
-          </div>
-        </div>
-      ) : integrations?.economic ? <p className="text-sm text-muted-foreground">e-conomic er ikke forbundet for de valgte lokationer.</p> : null}
-      {integrations?.economic && errors.length ? <Alert variant="destructive"><AlertTitle>e-conomic kunne ikke indlæses fuldstændigt</AlertTitle><AlertDescription><ul className="flex list-disc flex-col gap-1 pl-5">{errors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul><p>Opdatér e-conomic for at prøve igen.</p></AlertDescription></Alert> : null}
       <div className="flex flex-wrap justify-between gap-2 text-sm text-muted-foreground">
         <p>{report.through ? `Faktisk til og med ${new Date(`${report.through}T12:00:00Z`).toLocaleDateString("da-DK", { dateStyle: "long", timeZone: "UTC" })}.` : "Ingen afsluttede dage i den valgte måned."} Budgettet dækker hele måneden.</p>
         <p>{report.updatedAt === null ? "Ingen synkronisering registreret" : `Ældste synkronisering ${new Date(report.updatedAt).toLocaleString("da-DK", { dateStyle: "short", timeStyle: "short", timeZone })}`}</p>
       </div>
-      <div className="overflow-hidden rounded-xl border bg-card" aria-busy={loading}>
+      <div className="overflow-hidden rounded-xl border bg-card">
         <Table className="min-w-224">
           <TableCaption className="sr-only">Månedsrapport for {month}, {locationName}</TableCaption>
           <TableHeader><TableRow><TableHead className="min-w-48">KPI</TableHead>{columns.map((column) => <TableHead key={column.key} className="text-right">{column.label}</TableHead>)}</TableRow></TableHeader>
@@ -259,7 +116,6 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
   const [month, setMonth] = useState(() => previousKpiMonth(currentMonth));
   const [locationSelection, setLocationSelection] = useState<string>(context.locations.length === 1 ? context.locations[0].id : "all");
   const [syncing, setSyncing] = useState(false);
-  const pendingReads = useRef(new Map<string, Promise<LiveReport>>());
   const selectedLocation = context.locations.find((location) => location.id === locationSelection);
   const locationIds = selectedLocation ? [selectedLocation.id] : null;
   const validMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(month) && month >= "1900-01" && month <= currentMonth;
@@ -267,9 +123,9 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
   const hasLocations = context.locations.length > 0;
   // useQueries needs a stable object; a new one each render loops forever.
   const reportQueries = useMemo((): RequestForQueries => validMonth && hasLocations
-    ? { report: { query: api.economicReports.getReportState, args: { month, locationIds: selectedLocationId ? [selectedLocationId] : null, now } } } : {},
+    ? { report: { query: api.monthlyKpi.getReport, args: { month, locationIds: selectedLocationId ? [selectedLocationId] : null, now } } } : {},
   [validMonth, hasLocations, month, selectedLocationId, now]);
-  const states: Record<string, ReportState | Error | undefined> = useQueries(reportQueries);
+  const states: Record<string, Report | Error | undefined> = useQueries(reportQueries);
   const state = states.report;
   const requestSync = useMutation(api.monthlyKpi.requestSync);
 
@@ -321,7 +177,7 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
             </div>
           </div>
           {validMonth ? state instanceof Error ? <Alert variant="destructive"><AlertTitle>Rapporten kunne ikke indlæses</AlertTitle><AlertDescription>{getUserErrorMessage(state, "Kontrollér din adgang, og prøv igen.")}</AlertDescription></Alert>
-            : state ? <ReportData key={`${context.organizationId}:${month}:${selectedLocation?.id ?? "all"}:${state.revision}`} state={state} month={month} locationId={selectedLocation?.id ?? null} locationName={selectedLocation?.name ?? "alle tilgængelige lokationer"} now={now} timeZone={context.timeZone} pendingReads={pendingReads} />
+            : state ? <ReportData report={state} month={month} locationName={selectedLocation?.name ?? "alle tilgængelige lokationer"} timeZone={context.timeZone} />
               : <RowsSkeleton rows={8} rowClassName="h-16" /> : null}
         </>
       )}

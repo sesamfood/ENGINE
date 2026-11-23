@@ -8,6 +8,7 @@ export const sidebarItems = [
   { id: "transfers", label: "Transfer" },
   { id: "invoices", label: "Salg" },
   { id: "expenses", label: "Udgift" },
+  { id: "finance", label: "Økonomi" },
   { id: "goodsReceipts", label: "Varemodtagelse" },
   { id: "waste", label: "Waste" },
   { id: "foodSafety", label: "Food safety" },
@@ -40,6 +41,8 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
     missing.includes("invoices") && configured.includes("transfers");
   const addGoodsReceiptsAfterTransfers =
     missing.includes("goodsReceipts") && configured.includes("transfers");
+  const addFinanceAfterExpenses =
+    missing.includes("finance") && configured.includes("expenses");
   return [
     ...newlyAddedDashboard,
     ...uniqueConfigured.flatMap((id) => [
@@ -56,6 +59,9 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
       ...(id === "transfers" && addGoodsReceiptsAfterTransfers
         ? ["goodsReceipts" as const]
         : []),
+      ...(id === "expenses" && addFinanceAfterExpenses
+        ? ["finance" as const]
+        : []),
     ]),
     ...missing.filter(
       (id) =>
@@ -63,7 +69,8 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
         !(id === "manager" && addManagerAfterDashboard) &&
         !(id === "prepplan" && addPrepplanAfterOrdering) &&
         !(id === "invoices" && addInvoicesAfterTransfers) &&
-        !(id === "goodsReceipts" && addGoodsReceiptsAfterTransfers),
+        !(id === "goodsReceipts" && addGoodsReceiptsAfterTransfers) &&
+        !(id === "finance" && addFinanceAfterExpenses),
     ),
   ];
 }

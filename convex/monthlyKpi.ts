@@ -1,9 +1,8 @@
-import { isIntegrationEnabled } from "./integrations/state";
 import { ConvexError, v } from "convex/values";
 import { canSyncDashboardData, hasPermission } from "../lib/auth-permissions";
 import {
-  buildMonthlyKpiReport, economicBudgetComponents, kpiCell, kpiCutoff, kpiMonthEnd, kpiMonths, previousKpiMonth,
-  validateKpiMonth, type EconomicBudgetComponent, type MonthlyKpiInputs,
+  buildMonthlyKpiReport, kpiCell, labourSources, kpiCutoff, kpiMonthEnd, kpiMonths, previousKpiMonth,
+  validateKpiMonth, type MonthlyKpiInputs,
 } from "../lib/dashboard/monthly-kpi";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -13,7 +12,6 @@ import {
   requireLocationAccess, type OrganizationAuth,
 } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
-import { economicCategoryValidator } from "./integrations/economic/lib/validators";
 import { requireOrganizationLocation } from "./lib/locations";
 import { resolveLocationCurrency } from "./lib/masterData";
 import { rateLimiter } from "./lib/rateLimits";
@@ -24,6 +22,11 @@ import {
 import { resolveTimeZone } from "./lib/timeZone";
 import { queueFinancialRange, readFinancialMonths } from "./integrations/onlinepos/financial";
 import { queueLaborMonth, readLaborMonths } from "./integrations/workfeed/labor";
+import { dateKey, zonedStart } from "../lib/date";
+import { metricRegistry } from "../lib/dashboard/registry";
+import type { MetricResult } from "../lib/dashboard/types";
+import { resolveMetricParams } from "./lib/dashboardMetrics";
+import { keyedMetricResultValidator, metricRequestValidator, rangeValidator, scopeValidator } from "./lib/dashboardValidators";
 
 const locationIdsValidator = v.union(v.array(v.id("locations")), v.null());
 function requireMonth(month: string) {
@@ -57,16 +60,6 @@ export async function latestBudget(ctx: QueryCtx, organizationId: string, locati
     .withIndex("by_organizationId_and_locationId_and_month_and_revision", (q) =>
       q.eq("organizationId", organizationId).eq("locationId", locationId).eq("month", month))
     .order("desc").first();
-}
-
-async function readBudgetCategories(ctx: QueryCtx, organizationId: string, locationId: Id<"locations">, saved: EconomicBudgetComponent[] | undefined): Promise<EconomicBudgetComponent[]> {
-  if (!await isIntegrationEnabled(ctx, organizationId, "economic")) return [];
-  if (saved !== undefined) return saved;
-  const mapping = await ctx.db.query("economicLocationMappings")
-    .withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId)).unique();
-  const connection = mapping ? await ctx.db.get("economicConnections", mapping.connectionId) : null;
-  return connection?.organizationId === organizationId && connection.budgetSource === "economic"
-    ? [...economicBudgetComponents] : [];
 }
 
 function commonCutoff(month: string, now: number, timeZones: string[]) {
@@ -141,7 +134,6 @@ export async function readInputs(ctx: QueryCtx, args: { month: string; locationI
     });
     const budgetSource = budget ? `Manuelt budget: ${location.name}, ${month}, revision ${budget.revision}` : "Manuelt budget";
     const budgetCell = (value: number | null, monetary = true) => sourceCell(value, "Budget mangler", budget?.currency ?? location.currency, budgetSource, false, true, monetary);
-    const economicBudgetCategories = await readBudgetCategories(ctx, auth.organizationId, location.id, budget?.economicBudgetCategories);
     const amounts = {
       sales: budgetCell(budget?.sales ?? null), transactions: budgetCell(budget?.transactions ?? null, false),
       labour: budgetCell(budget?.labour ?? null), cogs: budgetCell(budget?.cogs ?? null),
@@ -149,12 +141,9 @@ export async function readInputs(ctx: QueryCtx, args: { month: string; locationI
       utilities: budgetCell(budget?.utilities ?? null), other: budgetCell(budget?.other ?? null),
       guestScore: budgetCell(budget?.guestScore ?? null, false),
     };
-    for (const category of economicBudgetCategories) {
-      amounts[category] = kpiCell(null, `${location.name}: Budget fra e-conomic skal hentes og godkendes`, false, "e-conomic");
-    }
     return {
       id: location.id, name: location.name, currency: location.currency, periods,
-      budget: amounts, economicBudgetCategories, labourConnected: labour.every((item) => item.connected),
+      budget: amounts, labourConnected: labour.every((item) => item.connected),
       salesConnected: sales.every((item) => item.connected),
       syncedAt: [...sales.map((item) => item.syncedAt), ...labour.map((item) => item.syncedAt)],
     };
@@ -162,7 +151,7 @@ export async function readInputs(ctx: QueryCtx, args: { month: string; locationI
   const syncedAt = entries.flatMap((entry) => entry.syncedAt).filter((value): value is number => value !== null);
   const inputs = {
     organizationId: auth.organizationId, month, through: commonCutoff(month, now, timeZones), currency,
-    periods: requests, locations: entries.map(({ id, name, currency, periods, budget, economicBudgetCategories, labourConnected, salesConnected }) => ({ id, name, currency, periods, budget, economicBudgetCategories, labourConnected, salesConnected })),
+    periods: requests, locations: entries.map(({ id, name, currency, periods, budget, labourConnected, salesConnected }) => ({ id, name, currency, periods, budget, labourConnected, salesConnected })),
     updatedAt: syncedAt.length ? Math.min(...syncedAt) : null,
   };
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(inputs)));
@@ -181,6 +170,88 @@ export const getReport = query({
   handler: async (ctx, args) => buildMonthlyKpiReport(await readInputs(ctx, args)),
 });
 
+// Financial dashboard widgets show one row of the monthly report for a whole calendar month.
+export const getWidgetMetrics = query({
+  args: { widgets: v.array(metricRequestValidator), scope: scopeValidator, range: rangeValidator, now: v.number() },
+  returns: v.array(keyedMetricResultValidator),
+  handler: async (ctx, args): Promise<Array<{ key: string; result: MetricResult }>> => {
+    const auth = await requireFinancialReportViewer(ctx);
+    if (args.widgets.length > 24 || new Set(args.widgets.map((widget) => widget.key)).size !== args.widgets.length) {
+      throw new ConvexError("Vælg højst 24 widgets med forskellige nøgler");
+    }
+    if (args.scope.locationIds && args.scope.locationIds.length > 200) throw new ConvexError("Vælg højst 200 lokationer");
+    const params = await resolveMetricParams(ctx, auth.organizationId, args.scope, { preset: "thisMonth" }, args.now, auth.locationScope);
+    if (params.scopeTruncated) throw new ConvexError("Vælg færre lokationer for at vise alle økonomital");
+    const locationIds = params.locations.map((location) => location.id).sort();
+    const groups = params.compare
+      ? params.comparisonGroups ?? params.locations.map((location) => ({ key: location.id, label: location.name, locationIds: [location.id] }))
+      : [{ key: "total", label: "Samlet", locationIds }];
+    const currentMonth = dateKey(args.now, params.timeZone).slice(0, 7);
+    const inputsByMonth = new Map<string, MonthlyKpiInputs>();
+    const results = [];
+    for (const widget of args.widgets) {
+      const empty = (message: string) => ({ key: widget.key, result: { unit: "percent" as const, series: [], emptyMessage: message } });
+      if (widget.metric.kind !== "builtin" || metricRegistry[widget.metric.id].source !== "monthlyReport") {
+        results.push(empty("Målingen er ikke en regnskabsmåling"));
+        continue;
+      }
+      if (widget.salesSource && widget.salesSource !== "onlinePos") {
+        results.push(empty("Økonomital bruger nettoomsætning fra POS som grundlag"));
+        continue;
+      }
+      const metricId = widget.metric.id;
+      const range = widget.range ? { preset: widget.range } : args.range;
+      let month: string | null = null;
+      if (range.preset === "thisMonth") month = currentMonth;
+      else if (range.preset === "custom" && range.from && range.to) {
+        try {
+          const requested = range.from.slice(0, 7);
+          if (range.from === `${requested}-01` && range.to === kpiMonthEnd(requested) && requested <= currentMonth) month = requested;
+        } catch { /* Invalid dates are reported as an unsupported period. */ }
+      }
+      if (!month) {
+        results.push(empty("Vælg Denne måned eller en hel kalendermåned for økonomital"));
+        continue;
+      }
+      let inputs = inputsByMonth.get(month);
+      if (!inputs) {
+        inputs = await readInputs(ctx, { month, locationIds, now: args.now });
+        inputsByMonth.set(month, inputs);
+      }
+      const report = buildMonthlyKpiReport(inputs);
+      const row = report.rows.find((candidate) => candidate.id === metricId);
+      if (!row || row.actual.value === null) {
+        results.push(empty(row?.actual.reason ?? "Økonomitallet mangler"));
+        continue;
+      }
+      const monthInputs = inputs;
+      const series = groups.flatMap((group) => {
+        const groupRow = buildMonthlyKpiReport({ ...monthInputs, locations: monthInputs.locations.filter((location) => group.locationIds.includes(location.id)) })
+          .rows.find((candidate) => candidate.id === metricId);
+        if (!groupRow || groupRow.actual.value === null) return [];
+        return [{ key: group.key, label: group.label, points: [{ t: zonedStart(`${monthInputs.month}-01`, params.timeZone), value: groupRow.actual.value }],
+          total: groupRow.actual.value, previousTotal: groupRow.lastMonth.value }];
+      });
+      const details = [...new Set([
+        report.through ? `Til og med ${report.through}` : "Ingen afsluttede dage",
+        row.actual.estimated ? "Estimat" : row.actual.status === "provisional" ? "Foreløbigt" : null,
+        row.actual.source, row.actual.reason,
+      ].filter((value): value is string => Boolean(value)))];
+      const skipped = metricId === "labourPercent" ? monthInputs.locations.flatMap((location) => {
+        const sources = labourSources(location);
+        return sources.length === 1 ? [`${location.name} mangler ${sources[0] === "OnlinePOS" ? "Workfeed" : "OnlinePOS"}`] : [];
+      }) : [];
+      results.push({ key: widget.key, result: {
+        unit: "percent" as const, series,
+        ...(skipped.length ? { truncated: true, warning: { title: "Lokationer er ikke medregnet", items: skipped } } : {}),
+        headlineTotal: row.actual.value, headlinePrevious: row.lastMonth.value, partialMessage: details.join(" · "),
+        ...(row.budget.value !== null && row.budget.value > 0 ? { target: row.budget.value } : {}),
+      } });
+    }
+    return results;
+  },
+});
+
 const budgetValues = {
   sales: nullableNumber, transactions: nullableNumber, labour: nullableNumber, cogs: nullableNumber,
   waste: nullableNumber, rent: nullableNumber, utilities: nullableNumber, other: nullableNumber, guestScore: nullableNumber,
@@ -188,7 +259,7 @@ const budgetValues = {
 
 export const getBudget = query({
   args: { month: v.string(), locationId: v.id("locations") },
-  returns: v.object({ ...budgetValues, economicBudgetCategories: v.array(economicCategoryValidator), sourceNote: v.string(), currency: v.string(), revision: v.number() }),
+  returns: v.object({ ...budgetValues, sourceNote: v.string(), currency: v.string(), revision: v.number() }),
   handler: async (ctx, args) => {
     const auth = await requireBudgetManager(ctx);
     requireMonth(args.month);
@@ -197,12 +268,11 @@ export const getBudget = query({
     const currency = await resolveLocationCurrency(ctx, auth.organizationId, location);
     const budget = await latestBudget(ctx, auth.organizationId, args.locationId, args.month);
     const sameCurrency = budget?.currency === currency;
-    const economicBudgetCategories = await readBudgetCategories(ctx, auth.organizationId, args.locationId, budget?.economicBudgetCategories);
     return { sales: sameCurrency ? budget.sales : null, transactions: budget?.transactions ?? null,
       labour: sameCurrency ? budget.labour : null, cogs: sameCurrency ? budget.cogs ?? null : null,
       waste: sameCurrency ? budget.waste ?? null : null, rent: sameCurrency ? budget.rent ?? null : null,
       utilities: sameCurrency ? budget.utilities ?? null : null, other: sameCurrency ? budget.other ?? null : null,
-      guestScore: budget?.guestScore ?? null, economicBudgetCategories, sourceNote: budget?.sourceNote ?? "", currency, revision: budget?.revision ?? 0 };
+      guestScore: budget?.guestScore ?? null, sourceNote: budget?.sourceNote ?? "", currency, revision: budget?.revision ?? 0 };
   },
 });
 
@@ -217,7 +287,7 @@ function requireRevision(value: number) {
 }
 
 export const saveBudget = mutation({
-  args: { month: v.string(), locationId: v.id("locations"), ...budgetValues, economicBudgetCategories: v.optional(v.array(economicCategoryValidator)),
+  args: { month: v.string(), locationId: v.id("locations"), ...budgetValues,
     sourceNote: v.string(), expectedRevision: v.number(), expectedCurrency: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -225,9 +295,6 @@ export const saveBudget = mutation({
     requireMonth(args.month);
     requireLocationAccess(auth, args.locationId);
     const location = await requireOrganizationLocation(ctx, auth.organizationId, args.locationId);
-    if (args.economicBudgetCategories !== undefined && (args.economicBudgetCategories.length > economicBudgetComponents.length || new Set(args.economicBudgetCategories).size !== args.economicBudgetCategories.length)) {
-      throw new ConvexError("Vælg hver budgetpost fra e-conomic én gang");
-    }
     for (const value of [args.sales, args.transactions, args.labour, args.cogs, args.waste, args.rent, args.utilities, args.other]) {
       if (value !== null && (!Number.isSafeInteger(value) || value < 0)) throw new ConvexError("Budgettal skal være positive heltal eller nul");
     }
@@ -242,9 +309,6 @@ export const saveBudget = mutation({
       organizationId: auth.organizationId, locationId: args.locationId, month: args.month, currency, sourceNote,
       sales: args.sales, transactions: args.transactions, labour: args.labour, cogs: args.cogs,
       waste: args.waste, rent: args.rent, utilities: args.utilities, other: args.other, guestScore: args.guestScore,
-      economicBudgetCategories: args.economicBudgetCategories !== undefined && await isIntegrationEnabled(ctx, auth.organizationId, "economic")
-        ? economicBudgetComponents.filter((category) => args.economicBudgetCategories?.includes(category))
-        : previous?.economicBudgetCategories,
       revision: args.expectedRevision + 1, updatedAt: Date.now(), updatedBy: auth.userId,
     });
     await recordAudit(ctx, auth, { action: "monthlyKpi.budgetSaved", entityTable: "monthlyKpiBudgets", entityId: id,

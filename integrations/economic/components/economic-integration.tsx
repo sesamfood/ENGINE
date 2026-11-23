@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
-import { PlusIcon, PlugIcon, Trash2Icon, UnplugIcon } from "lucide-react";
+import { PlugIcon, UnplugIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,942 +18,246 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useActiveOrganization } from "@/lib/active-organization";
 
-type Settings = FunctionReturnType<typeof api.economic.getSettings>;
-type Connection = Settings["connections"][number];
-type Catalog = FunctionReturnType<typeof api.economic.getCatalog>;
-type Category = Connection["accountMappings"][number]["category"];
-type AccountDraft = { accountNumber: number | null; category: Category | null };
+type Connection = NonNullable<FunctionReturnType<typeof api.economic.getSettings>["connection"]>;
+type Journal = FunctionReturnType<typeof api.economic.listJournals>[number];
 
-const categories = [
-  { value: "sales", label: "Nettoomsætning" },
-  { value: "cogs", label: "Vareforbrug" },
-  { value: "labour", label: "Løn" },
-  { value: "rent", label: "Husleje" },
-  { value: "utilities", label: "Forsyning" },
-  { value: "other", label: "Øvrige driftsomkostninger" },
-] satisfies Array<{ value: Category; label: string }>;
-
-function ConnectionForm({
-  organizationId,
-  connection,
-  onDone,
-  onCancel,
-}: {
+function ConnectionForm({ organizationId, reconnect, onDone }: {
   organizationId: string;
-  connection?: Connection;
-  onDone: () => void;
-  onCancel?: () => void;
+  reconnect: boolean;
+  onDone?: () => void;
 }) {
   const connect = useAction(api.economic.connect);
   const [appSecretToken, setAppSecretToken] = useState("");
-  const [token, setToken] = useState("");
+  const [agreementGrantToken, setAgreementGrantToken] = useState("");
   const [saving, setSaving] = useState(false);
+  const ready = Boolean(appSecretToken.trim() && agreementGrantToken.trim());
 
   async function save() {
-    if (!appSecretToken.trim() || !token.trim()) return;
+    if (!ready || saving) return;
     setSaving(true);
     try {
-      await connect({
-        expectedOrganizationId: organizationId,
-        appSecretToken: appSecretToken.trim(),
-        agreementGrantToken: token.trim(),
-        ...(connection ? { connectionId: connection.id } : {}),
-      });
+      await connect({ expectedOrganizationId: organizationId, appSecretToken, agreementGrantToken });
       setAppSecretToken("");
-      setToken("");
-      toast.success(
-        connection ? "Forbindelsen er opdateret" : "e-conomic er forbundet",
-      );
-      onDone();
+      setAgreementGrantToken("");
+      toast.success(reconnect ? "Forbindelsen er opdateret" : "e-conomic er forbundet");
+      onDone?.();
     } catch (error) {
-      toast.error(
-        getUserErrorMessage(error, "Aftalen kunne ikke forbindes. Prøv igen."),
-      );
+      toast.error(getUserErrorMessage(error, "e-conomic kunne ikke forbindes. Kontrollér nøglerne, og prøv igen."));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void save();
-      }}
-      className="flex flex-col gap-4"
-    >
+    <form className="flex flex-col gap-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <FieldGroup className="grid md:grid-cols-2">
         <Field data-disabled={saving}>
           <div className="flex items-center gap-1">
-            <FieldLabel
-              htmlFor={`economic-app-token-${connection?.id ?? "new"}`}
-            >
-              App-nøgle
-            </FieldLabel>
-            <HelpTooltip
-              label="e-conomic-app-nøgle"
-              content="Indsæt organisationens AppSecretToken fra appen i e-conomic. Aftalenøglen skal være udstedt til samme app. Begge nøgler gemmes krypteret for organisationens aftale og vises ikke igen."
-            />
+            <FieldLabel htmlFor="economic-app-token">Appnøgle</FieldLabel>
+            <HelpTooltip label="appnøgle" content="AppSecretToken fra jeres app i e-conomic. Nøglen gemmes krypteret og vises ikke igen." />
           </div>
-          <Input
-            id={`economic-app-token-${connection?.id ?? "new"}`}
-            type="password"
-            value={appSecretToken}
-            onChange={(event) => setAppSecretToken(event.target.value)}
-            autoComplete="off"
-            placeholder="AppSecretToken"
-            maxLength={1000}
-            required
-            disabled={saving}
-            className="h-11"
-          />
+          <Input id="economic-app-token" type="password" className="h-11" autoComplete="off" placeholder="AppSecretToken"
+            maxLength={1000} required disabled={saving} value={appSecretToken} onChange={(event) => setAppSecretToken(event.target.value)} />
         </Field>
         <Field data-disabled={saving}>
           <div className="flex items-center gap-1">
-            <FieldLabel htmlFor={`economic-token-${connection?.id ?? "new"}`}>
-              Aftalenøgle
-            </FieldLabel>
-            <HelpTooltip
-              label="e-conomic-aftalenøgle"
-              content={
-                connection
-                  ? `Indsæt organisationens AgreementGrantToken til aftale ${connection.agreementNumber}. En anden aftale skal tilføjes som en ny forbindelse. Nøglen gemmes krypteret og vises ikke igen.`
-                  : "Indsæt organisationens AgreementGrantToken fra godkendelsen af appens adgang til aftalen i e-conomic. Nøglen gemmes krypteret og vises ikke igen."
-              }
-            />
+            <FieldLabel htmlFor="economic-grant-token">Aftalenøgle</FieldLabel>
+            <HelpTooltip label="aftalenøgle" content="AgreementGrantToken, som e-conomic udsteder, når aftalen giver appen adgang. Nøglen gemmes krypteret og vises ikke igen." />
           </div>
-          <Input
-            id={`economic-token-${connection?.id ?? "new"}`}
-            type="password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            autoComplete="off"
-            placeholder="AgreementGrantToken"
-            maxLength={1000}
-            required
-            disabled={saving}
-            className="h-11"
-          />
+          <Input id="economic-grant-token" type="password" className="h-11" autoComplete="off" placeholder="AgreementGrantToken"
+            maxLength={1000} required disabled={saving} value={agreementGrantToken} onChange={(event) => setAgreementGrantToken(event.target.value)} />
         </Field>
       </FieldGroup>
       <div className="flex flex-wrap justify-end gap-3">
-        {onCancel ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={saving}
-            onClick={onCancel}
-          >
-            Annullér
-          </Button>
-        ) : null}
-        <Button
-          type="submit"
-          disabled={saving || !appSecretToken.trim() || !token.trim()}
-        >
-          {saving ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <PlugIcon data-icon="inline-start" />
-          )}
-          {connection ? "Opdatér forbindelse" : "Forbind e-conomic"}
+        {onDone ? <Button type="button" variant="outline" className="min-h-11" disabled={saving} onClick={onDone}>Annullér</Button> : null}
+        <Button type="submit" className="min-h-11" disabled={saving || !ready}>
+          {saving ? <Spinner data-icon="inline-start" /> : <PlugIcon data-icon="inline-start" />}
+          {reconnect ? "Opdatér forbindelse" : "Forbind e-conomic"}
         </Button>
       </div>
     </form>
   );
 }
 
-function MappingEditor({
-  connection,
-  catalog,
-  settings,
-  onDone,
-}: {
-  connection: Connection;
-  catalog: Catalog;
-  settings: Settings;
-  onDone: () => void;
-}) {
-  const saveMappings = useAction(api.economic.saveMappings);
-  const [revision] = useState(connection.revision);
-  const [dimensionNumber, setDimensionNumber] = useState(
-    connection.dimensionNumber,
-  );
-  const [locationMappings, setLocationMappings] = useState(
-    connection.locationMappings,
-  );
-  const [accountMappings, setAccountMappings] = useState<AccountDraft[]>(
-    connection.accountMappings,
-  );
-  const [cogsStockAdjusted, setCogsStockAdjusted] = useState(
-    connection.cogsStockAdjusted,
-  );
+function OptionsForm({ organizationId, connection }: { organizationId: string; connection: Connection }) {
+  const listJournals = useAction(api.economic.listJournals);
+  const saveOptions = useMutation(api.economic.saveOptions);
+  const [journals, setJournals] = useState<Journal[] | Error>();
+  const [journalNumber, setJournalNumber] = useState(connection.journalNumber === null ? "none" : String(connection.journalNumber));
+  const [bankAccountNumber, setBankAccountNumber] = useState(String(connection.bankAccountNumber));
   const [saving, setSaving] = useState(false);
+  const bankAccountValid = /^[1-9]\d{0,9}$/.test(bankAccountNumber.trim());
 
-  const dimensionOptions = [
-    { value: "agreement", label: "Hele aftalen til én lokation" },
-    ...catalog.dimensions.map((dimension) => ({
-      value: String(dimension.number),
-      label: dimension.name,
-    })),
-  ];
-  const dimensionValues = catalog.values.filter(
-    (value) => value.dimensionNumber === dimensionNumber,
-  );
-  const accountOptions = catalog.accounts
-    .filter((account) => account.type === 1)
-    .map((account) => ({
-      value: account.number,
-      label: `${account.number} · ${account.name}`,
-    }));
-  const otherConnections = settings.connections.filter(
-    (item) => item.id !== connection.id,
-  );
-  const usedBy = (locationId: Settings["locations"][number]["id"]) =>
-    otherConnections.find((item) =>
-      item.locationMappings.some(
-        (mapping) => mapping.locationId === locationId,
-      ),
+  useEffect(() => {
+    let active = true;
+    listJournals({}).then(
+      (result) => { if (active) setJournals(result); },
+      (error: unknown) => { if (active) setJournals(new Error(getUserErrorMessage(error, "Kassekladderne kunne ikke hentes."))); },
     );
+    return () => { active = false; };
+  }, [listJournals]);
+
+  const journalItems = [
+    { value: "none", label: "Ingen kassekladde" },
+    ...(Array.isArray(journals) ? journals : []).map((journal) => ({ value: String(journal.journalNumber), label: `${journal.journalNumber} · ${journal.name}` })),
+  ];
+  if (!journalItems.some((item) => item.value === journalNumber)) {
+    journalItems.push({ value: journalNumber, label: `Kassekladde ${journalNumber}` });
+  }
 
   async function save() {
-    const accounts: Connection["accountMappings"] = [];
-    for (const mapping of accountMappings) {
-      if (mapping.accountNumber === null || mapping.category === null) {
-        toast.error("Vælg konto og nøgletal på alle kontolinjer");
-        return;
-      }
-      accounts.push({
-        accountNumber: mapping.accountNumber,
-        category: mapping.category,
-      });
-    }
-    if (locationMappings.length === 0) {
-      toast.error("Kobl mindst én lokation til aftalen");
-      return;
-    }
+    if (!bankAccountValid || saving) return;
     setSaving(true);
     try {
-      await saveMappings({
-        connectionId: connection.id,
-        expectedRevision: revision,
-        dimensionNumber,
-        accountMappings: accounts,
-        locationMappings,
-        cogsStockAdjusted,
-      });
-      toast.success("Koblinger og beregningsgrundlag er gemt");
-      onDone();
+      await saveOptions({ expectedOrganizationId: organizationId, journalNumber: journalNumber === "none" ? null : Number(journalNumber), bankAccountNumber: Number(bankAccountNumber) });
+      toast.success("Indstillingerne er gemt");
     } catch (error) {
-      toast.error(
-        getUserErrorMessage(error, "Koblingerne kunne ikke gemmes. Prøv igen."),
-      );
+      toast.error(getUserErrorMessage(error, "Indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void save();
-      }}
-      className="flex flex-col gap-5"
-    >
-      <FieldSet disabled={saving}>
-        <FieldLegend>Lokationer</FieldLegend>
-        <FieldGroup>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel htmlFor={`economic-dimension-${connection.id}`}>
-                Fordeling på lokationer
-              </FieldLabel>
-              <HelpTooltip
-                label="fordeling på lokationer"
-                content="Brug aftalens afdeling eller dimension til at fordele posteringer mellem lokationer. Vælg hele aftalen, hvis den kun tilhører én lokation. Posteringer uden en koblet dimensionsværdi fordeles ikke automatisk."
-              />
-            </div>
-            <Select
-              items={dimensionOptions}
-              value={
-                dimensionNumber === null ? "agreement" : String(dimensionNumber)
-              }
-              onValueChange={(value) => {
-                if (value === null) return;
-                const next = value === "agreement" ? null : Number(value);
-                if (next !== dimensionNumber) {
-                  setDimensionNumber(next);
-                  setLocationMappings([]);
-                }
-              }}
-            >
-              <SelectTrigger
-                id={`economic-dimension-${connection.id}`}
-                className="h-11 w-full"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {dimensionOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-          {!catalog.dimensionsAvailable ? (
-            <Alert>
-              <AlertTitle>Dimensioner er ikke tilgængelige</AlertTitle>
-              <AlertDescription>
-                Aftalen kan kobles til én lokation. Fordeling mellem flere
-                lokationer kræver adgang til dimensioner i e-conomic.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {dimensionNumber === null ? (
-            <Field>
-              <FieldLabel htmlFor={`economic-location-${connection.id}`}>
-                Lokation
-              </FieldLabel>
-              <Select
-                items={settings.locations.map((location) => ({
-                  value: location.id,
-                  label: location.name,
-                }))}
-                value={locationMappings[0]?.locationId ?? null}
-                onValueChange={(value) => {
-                  const location = settings.locations.find(
-                    (item) => item.id === value,
-                  );
-                  if (location)
-                    setLocationMappings([
-                      { locationId: location.id, dimensionKey: null },
-                    ]);
-                }}
-              >
-                <SelectTrigger
-                  id={`economic-location-${connection.id}`}
-                  className="h-11 w-full"
-                >
-                  <SelectValue placeholder="Vælg lokation" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {settings.locations.map((location) => {
-                      const owner = usedBy(location.id);
-                      const wrongCurrency =
-                        location.currency !== connection.currency;
-                      return (
-                        <SelectItem
-                          key={location.id}
-                          value={location.id}
-                          disabled={Boolean(owner) || wrongCurrency}
-                        >
-                          {location.name}
-                          {owner
-                            ? ` · aftale ${owner.agreementNumber}`
-                            : wrongCurrency
-                              ? ` · ${location.currency}`
-                              : ""}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-          ) : (
-            <FieldGroup className="grid md:grid-cols-2">
-              {settings.locations.map((location) => {
-                const owner = usedBy(location.id);
-                const wrongCurrency = location.currency !== connection.currency;
-                const mapping = locationMappings.find(
-                  (item) => item.locationId === location.id,
-                );
-                const options = [
-                  {
-                    value: "unmapped",
-                    label: owner
-                      ? `Koblet til aftale ${owner.agreementNumber}`
-                      : wrongCurrency
-                        ? `Anden valuta · ${location.currency}`
-                        : "Ikke koblet",
-                  },
-                  ...dimensionValues.map((value) => ({
-                    value: String(value.number),
-                    label: `${value.number} · ${value.name}`,
-                  })),
-                ];
-                return (
-                  <Field
-                    key={location.id}
-                    data-disabled={Boolean(owner) || wrongCurrency}
-                  >
-                    <FieldLabel
-                      htmlFor={`economic-value-${connection.id}-${location.id}`}
-                    >
-                      {location.name}
-                    </FieldLabel>
-                    <Select
-                      items={options}
-                      value={
-                        mapping?.dimensionKey == null
-                          ? "unmapped"
-                          : String(mapping.dimensionKey)
-                      }
-                      disabled={Boolean(owner) || wrongCurrency}
-                      onValueChange={(value) => {
-                        if (value === null) return;
-                        setLocationMappings((current) => [
-                          ...current.filter(
-                            (item) => item.locationId !== location.id,
-                          ),
-                          ...(value === "unmapped"
-                            ? []
-                            : [
-                                {
-                                  locationId: location.id,
-                                  dimensionKey: Number(value),
-                                },
-                              ]),
-                        ]);
-                      }}
-                    >
-                      <SelectTrigger
-                        id={`economic-value-${connection.id}-${location.id}`}
-                        className="h-11 w-full"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {options.map((option) => (
-                            <SelectItem
-                              key={option.value}
-                              value={option.value}
-                              disabled={
-                                option.value !== "unmapped" &&
-                                locationMappings.some(
-                                  (item) =>
-                                    item.locationId !== location.id &&
-                                    item.dimensionKey === Number(option.value),
-                                )
-                              }
-                            >
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                );
-              })}
-            </FieldGroup>
-          )}
-        </FieldGroup>
-      </FieldSet>
-
-      <Separator />
-
-      <FieldSet disabled={saving}>
-        <FieldLegend>Konti og nøgletal</FieldLegend>
-        <FieldGroup>
-          {accountMappings.map((mapping, index) => (
-            <FieldGroup
-              key={index}
-              appearance="compact"
-              className="grid items-end sm:grid-cols-(--grid-cols-connection)"
-            >
-              <Field>
-                <FieldLabel
-                  htmlFor={`economic-account-${connection.id}-${index}`}
-                >
-                  Konto
-                </FieldLabel>
-                <Select
-                  items={accountOptions}
-                  value={mapping.accountNumber}
-                  onValueChange={(value) => {
-                    setAccountMappings((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, accountNumber: value }
-                          : item,
-                      ),
-                    );
-                  }}
-                >
-                  <SelectTrigger
-                    id={`economic-account-${connection.id}-${index}`}
-                    className="h-11 w-full"
-                  >
-                    <SelectValue placeholder="Vælg konto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {accountOptions.map((account) => (
-                        <SelectItem
-                          key={account.value}
-                          value={account.value}
-                          disabled={accountMappings.some(
-                            (item, itemIndex) =>
-                              itemIndex !== index &&
-                              item.accountNumber === account.value,
-                          )}
-                        >
-                          {account.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel
-                  htmlFor={`economic-category-${connection.id}-${index}`}
-                >
-                  Nøgletal
-                </FieldLabel>
-                <Select
-                  items={categories}
-                  value={mapping.category}
-                  onValueChange={(value) => {
-                    const category = categories.find(
-                      (item) => item.value === value,
-                    );
-                    if (category)
-                      setAccountMappings((current) =>
-                        current.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, category: category.value }
-                            : item,
-                        ),
-                      );
-                  }}
-                >
-                  <SelectTrigger
-                    id={`economic-category-${connection.id}-${index}`}
-                    className="h-11 w-full"
-                  >
-                    <SelectValue placeholder="Vælg nøgletal" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {categories.map((category) => (
-                        <SelectItem key={category.value} value={category.value}>
-                          {category.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-11"
-                aria-label={`Fjern kontolinje ${index + 1}`}
-                onClick={() =>
-                  setAccountMappings((current) =>
-                    current.filter((_, itemIndex) => itemIndex !== index),
-                  )
-                }
-              >
-                <Trash2Icon />
-              </Button>
-            </FieldGroup>
-          ))}
+    <form id="economic-options" className="flex flex-col gap-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      <FieldGroup className="grid md:grid-cols-2">
+        <Field data-disabled={saving}>
           <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={
-                accountMappings.length >= Math.min(200, accountOptions.length)
-              }
-              onClick={() =>
-                setAccountMappings((current) => [
-                  ...current,
-                  { accountNumber: null, category: null },
-                ])
-              }
-            >
-              <PlusIcon data-icon="inline-start" />
-              Tilføj konto
-            </Button>
-            <HelpTooltip
-              label="konti og nøgletal"
-              content="Hver konto kan indgå i ét nøgletal. Vælg Manuelt eller e-conomic for hvert budgettal i Månedsbudget. Budget fra e-conomic bruger disse konto- og lokationskoblinger. Rapportens omsætning hentes fortsat fra POS."
-            />
+            <FieldLabel htmlFor="economic-journal">Kassekladde</FieldLabel>
+            <HelpTooltip label="kassekladde" content="Kassekladden, hvor betalinger ligger, når de er eksporteret til banken. Økonomi viser posteringerne med bankkontoen som modkonto." />
           </div>
-        </FieldGroup>
-      </FieldSet>
-
-      <Separator />
-
-      <FieldSet disabled={saving}>
-        <FieldLegend>Beregningsgrundlag</FieldLegend>
-        <FieldGroup>
-          <Field orientation="horizontal">
-            <Checkbox
-              id={`economic-cogs-${connection.id}`}
-              checked={cogsStockAdjusted}
-              onCheckedChange={setCogsStockAdjusted}
-            />
-            <FieldLabel htmlFor={`economic-cogs-${connection.id}`}>
-              Vareforbruget er lagerreguleret og godkendt
-            </FieldLabel>
-            <HelpTooltip
-              label="vareforbrug"
-              content="Bekræft kun, når kontiene indeholder lagerregulering, og håndteringen af transfers er godkendt. Ellers kræver vareforbruget et manuelt godkendt beløb i månedsrapporten."
-            />
-          </Field>
-        </FieldGroup>
-      </FieldSet>
-      <div className="flex flex-wrap justify-end gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onDone}
-        >
-          Annullér
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Spinner data-icon="inline-start" /> : null}
-          Gem koblinger
+          {journals === undefined ? <Skeleton className="h-11 w-full" /> : (
+            <Select items={journalItems} value={journalNumber} disabled={saving} onValueChange={(value) => setJournalNumber(value ?? "none")}>
+              <SelectTrigger id="economic-journal" className="min-h-11 w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {journalItems.map((item) => <SelectItem key={item.value} value={item.value} className="min-h-11">{item.label}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          )}
+          {journals instanceof Error ? <FieldError>{journals.message}</FieldError> : null}
+        </Field>
+        <Field data-disabled={saving} data-invalid={!bankAccountValid}>
+          <div className="flex items-center gap-1">
+            <FieldLabel htmlFor="economic-bank-account">Bankkonto</FieldLabel>
+            <HelpTooltip label="bankkonto" content="Kontonummeret for banken i kontoplanen. Saldoen hentes fra kontoen, og den bruges som modkonto i kassekladden. Skifter du konto, fjernes den indtastede banksaldo." />
+          </div>
+          <Input id="economic-bank-account" className="h-11" inputMode="numeric" required disabled={saving}
+            value={bankAccountNumber} onChange={(event) => setBankAccountNumber(event.target.value)} aria-invalid={!bankAccountValid} />
+          {!bankAccountValid ? <FieldError>Angiv et kontonummer.</FieldError> : null}
+        </Field>
+      </FieldGroup>
+      <div className="flex justify-end">
+        <Button type="submit" className="min-h-11" disabled={saving || !bankAccountValid}>
+          {saving ? <Spinner data-icon="inline-start" /> : null}Gem indstillinger
         </Button>
       </div>
     </form>
   );
 }
 
-function AgreementCard({
-  connection,
-  settings,
-}: {
-  connection: Connection;
-  settings: Settings;
-}) {
-  const setEnabled = useMutation(api.economic.setEnabled);
+function ConnectedSettings({ organizationId, connection }: { organizationId: string; connection: Connection }) {
   const disconnect = useMutation(api.economic.disconnect);
-  const getCatalog = useAction(api.economic.getCatalog);
-  const [busy, setBusy] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [editor, setEditor] = useState<{
-    catalog: Catalog;
-    connection: Connection;
-  } | null>(null);
-
-  async function changeEnabled(enabled: boolean) {
-    setBusy(true);
-    try {
-      await setEnabled({
-        connectionId: connection.id,
-        enabled,
-        expectedRevision: connection.revision,
-      });
-      toast.success(
-        enabled ? "Aftalen er aktiveret" : "Aftalen er deaktiveret",
-      );
-    } catch (error) {
-      toast.error(
-        getUserErrorMessage(error, "Aftalen kunne ikke opdateres. Prøv igen."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [removing, setRemoving] = useState(false);
 
   async function remove() {
-    setBusy(true);
+    setRemoving(true);
     try {
-      await disconnect({
-        connectionId: connection.id,
-        expectedRevision: connection.revision,
-      });
-      toast.success("Forbindelsen til aftalen er fjernet");
+      await disconnect({ expectedOrganizationId: organizationId });
+      toast.success("Forbindelsen til e-conomic er fjernet");
     } catch (error) {
-      toast.error(
-        getUserErrorMessage(
-          error,
-          "Forbindelsen kunne ikke fjernes. Prøv igen.",
-        ),
-      );
+      toast.error(getUserErrorMessage(error, "Forbindelsen kunne ikke fjernes. Prøv igen."));
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function edit() {
-    if (connection.requiresReconnect) return;
-    setLoadingCatalog(true);
-    try {
-      const catalog = await getCatalog({ connectionId: connection.id });
-      setEditor({ catalog, connection });
-    } catch (error) {
-      toast.error(
-        getUserErrorMessage(
-          error,
-          "Konti og dimensioner kunne ikke hentes. Prøv igen.",
-        ),
-      );
-    } finally {
-      setLoadingCatalog(false);
+      setRemoving(false);
     }
   }
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{connection.name}</CardTitle>
-        <CardDescription>
-          Aftale {connection.agreementNumber} · {connection.currency}
-        </CardDescription>
-        <CardAction appearance="spaced" className="flex items-center">
-          <Badge variant="secondary">
-            {connection.requiresReconnect
-              ? "Forbind igen"
-              : connection.enabled
-                ? "Aktiv"
-                : "Deaktiveret"}
-          </Badge>
-          <Switch
-            aria-label={`Aktivér aftale ${connection.agreementNumber}`}
-            checked={connection.enabled && !connection.requiresReconnect}
-            disabled={
-              busy ||
-              reconnecting ||
-              loadingCatalog ||
-              editor !== null ||
-              connection.requiresReconnect
-            }
-            onCheckedChange={(enabled) => void changeEnabled(enabled)}
-          />
-        </CardAction>
-      </CardHeader>
-      <CardContent appearance="stacked" className="flex flex-col">
-        {connection.requiresReconnect && !reconnecting ? (
-          <Alert>
-            <AlertTitle>Organisationens adgangsnøgler mangler</AlertTitle>
-            <AlertDescription>
-              Vælg Opdatér forbindelse, og indtast organisationens app-nøgle og
-              aftalenøgle for at bruge aftalen igen.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        {editor && !connection.requiresReconnect ? (
-          <MappingEditor
-            connection={editor.connection}
-            catalog={editor.catalog}
-            settings={settings}
-            onDone={() => setEditor(null)}
-          />
-        ) : reconnecting ? (
-          <ConnectionForm
-            organizationId={settings.organizationId}
-            connection={connection}
-            onDone={() => setReconnecting(false)}
-            onCancel={() => setReconnecting(false)}
-          />
+    <div className="flex flex-col gap-5">
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>{connection.companyName}</CardTitle>
+          <CardDescription>{connection.agreementNumber === null ? connection.currency : `Aftale ${connection.agreementNumber} · ${connection.currency}`}</CardDescription>
+        </CardHeader>
+        {reconnecting ? (
+          <CardContent>
+            <ConnectionForm organizationId={organizationId} reconnect onDone={() => setReconnecting(false)} />
+          </CardContent>
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge variant="secondary">
-              {connection.locationMappings.length} lokationer
-            </Badge>
-            <Badge variant="secondary">
-              {connection.accountMappings.length} konti
-            </Badge>
-            {connection.locationMappings.length === 0 ||
-            connection.accountMappings.length === 0 ? (
-              <Badge variant="outline">Mangler koblinger</Badge>
-            ) : null}
-          </div>
+          <CardFooter appearance="spaced" className="flex-wrap justify-end">
+            <AlertDialog>
+              <AlertDialogTrigger render={<Button variant="outline" className="min-h-11" disabled={removing} />}>
+                <UnplugIcon data-icon="inline-start" />Fjern forbindelse
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Fjern forbindelsen til e-conomic?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Nøglerne, valget af kassekladde og den indtastede banksaldo slettes. Økonomi kan ikke længere hente data fra e-conomic.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={removing}>Behold forbindelse</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" disabled={removing} onClick={() => void remove()}>Fjern forbindelse</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <Button variant="outline" className="min-h-11" onClick={() => setReconnecting(true)}>Opdatér forbindelse</Button>
+          </CardFooter>
         )}
-      </CardContent>
-      {(!editor || connection.requiresReconnect) && !reconnecting ? (
-        <CardFooter appearance="spaced" className="flex-wrap justify-end">
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <Button variant="outline" disabled={busy || loadingCatalog} />
-              }
-            >
-              <UnplugIcon data-icon="inline-start" />
-              Fjern aftale
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Fjern aftale {connection.agreementNumber}?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  Begge adgangsnøgler og aftalens konto- og lokationskoblinger
-                  slettes. Rapporten kan ikke længere hente beløb fra aftalen.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={busy}>
-                  Behold aftale
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  variant="destructive"
-                  disabled={busy}
-                  onClick={() => void remove()}
-                >
-                  Fjern aftale
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <Button
-            variant="outline"
-            disabled={busy || loadingCatalog}
-            onClick={() => setReconnecting(true)}
-          >
-            Opdatér forbindelse
-          </Button>
-          <Button
-            disabled={busy || loadingCatalog || connection.requiresReconnect}
-            onClick={() => void edit()}
-          >
-            {loadingCatalog ? <Spinner data-icon="inline-start" /> : null}
-            Redigér koblinger
-          </Button>
-        </CardFooter>
-      ) : null}
-    </Card>
+      </Card>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>Økonomi</CardTitle>
+          <CardDescription>Vælg kassekladden med betalinger, der er sendt til banken, og bankkontoen.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OptionsForm key={`${connection.connectedAt}:${connection.journalNumber}:${connection.bankAccountNumber}`} organizationId={organizationId} connection={connection} />
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
 export function EconomicIntegration() {
   const { data: session, isPending } = authClient.useSession();
   const organizationId = useActiveOrganization().data?.id;
-  if (isPending || !organizationId) {
-    return <Skeleton className="h-72 w-full max-w-6xl" />;
-  }
-  return (
-    <OrganizationIntegration
-      key={`${organizationId}:${session?.user.id}`}
-      organizationId={organizationId}
-    />
-  );
+  if (isPending || !organizationId) return <Skeleton className="h-72 w-full max-w-6xl" />;
+  return <OrganizationIntegration key={`${organizationId}:${session?.user.id}`} organizationId={organizationId} />;
 }
 
-function OrganizationIntegration({
-  organizationId,
-}: {
-  organizationId: string;
-}) {
+function OrganizationIntegration({ organizationId }: { organizationId: string }) {
   const access = useAccess();
-  const canManage = usePermission("integrations.manage");
-  const canManageEconomic = canManage && access?.locationScope.all === true;
-  const settings = useQuery(
-    api.economic.getSettings,
-    canManageEconomic ? {} : "skip",
-  );
-  const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState("all");
+  const canManage = usePermission("integrations.manage") && access?.locationScope.all === true;
+  const settings = useQuery(api.economic.getSettings, canManage ? {} : "skip");
 
-  if (
-    !access ||
-    (canManageEconomic &&
-      (!settings || settings.organizationId !== organizationId))
-  )
+  if (!access || (canManage && (!settings || settings.organizationId !== organizationId))) {
     return <Skeleton className="h-72 w-full max-w-6xl" />;
-  if (!canManageEconomic || !settings) return null;
-
-  const connected = settings.connections.length > 0;
-  const needsAttention = (connection: (typeof settings.connections)[number]) => connection.requiresReconnect || connection.locationMappings.length === 0 || connection.accountMappings.length === 0;
-  const attentionCount = settings.connections.filter(needsAttention).length;
-  const visibleConnections = settings.connections.filter((connection) => filter !== "attention" || needsAttention(connection));
+  }
+  if (!canManage || !settings) return null;
+  if (settings.connection) return <ConnectedSettings organizationId={organizationId} connection={settings.connection} />;
   return (
-    <div className="flex flex-col gap-5">
-      {connected ? <ToggleGroup variant="outline" value={[filter]} onValueChange={(values) => { if (values[0]) setFilter(values[0]); }} aria-label="e-conomic-aftaler">
-        <ToggleGroupItem value="all" className="min-h-11">Alle aftaler</ToggleGroupItem>
-        <ToggleGroupItem value="attention" className="min-h-11">Kræver handling ({attentionCount})</ToggleGroupItem>
-      </ToggleGroup> : null}
-      {connected && visibleConnections.length === 0 ? <p className="text-sm text-muted-foreground">Ingen aftaler kræver handling.</p> : null}
-      {visibleConnections.map((connection) => (
-        <AgreementCard
-          key={connection.id}
-          connection={connection}
-          settings={settings}
-        />
-      ))}
-      {!connected || adding ? (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>
-              {connected ? "Tilføj aftale" : "Forbind aftale"}
-            </CardTitle>
-            <CardDescription>
-              {connected
-                ? "Forbind en ekstra aftale med organisationens app-nøgle og aftalenøgle."
-                : "Forbind kædens aftale med organisationens app-nøgle og aftalenøgle. Kobl derefter afdelinger eller dimensioner til lokationerne."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ConnectionForm
-              organizationId={organizationId}
-              onDone={() => setAdding(false)}
-              onCancel={connected ? () => setAdding(false) : undefined}
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <div>
-          <Button variant="outline" onClick={() => setAdding(true)}>
-            <PlusIcon data-icon="inline-start" />
-            Tilføj aftale
-          </Button>
-        </div>
-      )}
-    </div>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Forbind e-conomic</CardTitle>
+        <CardDescription>Indtast organisationens appnøgle og aftalenøgle fra e-conomic.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ConnectionForm organizationId={organizationId} reconnect={false} />
+      </CardContent>
+    </Card>
   );
 }

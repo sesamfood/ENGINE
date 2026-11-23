@@ -1,288 +1,167 @@
-import { ConvexError, v, type Infer } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
-import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
-import schema from "../../schema";
-import { ensureOrganizationCredentialKey, encryptCredential } from "../credentials";
+import type { Doc } from "../../_generated/dataModel";
+import { action, internalMutation, mutation, query, type ActionCtx, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { decryptCredential, encryptCredential, ensureOrganizationCredentialKey } from "../credentials";
 import { requireIntegrationEnabled } from "../state";
 import { recordAudit } from "../../lib/audit";
 import { requireAllLocationAccess, requireHumanPrincipal, requireIntegrationManager } from "../../lib/auth";
-import { getEconomicCatalog, getEconomicSelf, type EconomicCredentials } from "./lib/api";
-import { decryptEconomicCredentials } from "./lib/crypto";
-import { economicLocationMappingValidator, economicMappingFields } from "./lib/validators";
-import { requireOrganizationLocation } from "../../lib/locations";
-import { resolveLocationCurrency } from "../../lib/masterData";
+import { DEFAULT_CURRENCY } from "../../../lib/dashboard/types";
+import { getEconomicSelf, listEconomicJournals, type EconomicCredentials } from "./lib/api";
 
-const MAX_CONNECTIONS = 200;
-const MAX_LOCATIONS = 200;
-const MAX_ACCOUNTS = 200;
-const catalogValidator = v.object({
-  accounts: v.array(v.object({ number: v.number(), name: v.string(), type: v.number() })),
-  dimensions: v.array(v.object({ number: v.number(), name: v.string() })),
-  values: v.array(v.object({ dimensionNumber: v.number(), number: v.number(), name: v.string() })),
-  dimensionsAvailable: v.boolean(),
-});
-const connectionArgs = { connectionId: v.id("economicConnections"), expectedRevision: v.number() };
-const mappingsArgs = { ...connectionArgs, ...v.object(economicMappingFields).omit("budgetSource").fields, locationMappings: v.array(economicLocationMappingValidator) };
+export const DEFAULT_BANK_ACCOUNT_NUMBER = 5820;
 
-async function requireManager(ctx: QueryCtx | MutationCtx) {
+async function requireManager(ctx: QueryCtx | MutationCtx | ActionCtx) {
   const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
   requireAllLocationAccess(auth);
   await requireIntegrationEnabled(ctx, auth.organizationId, "economic");
   return auth;
 }
 
-async function requireConnection(ctx: QueryCtx | MutationCtx, connectionId: Id<"economicConnections">) {
-  const auth = await requireManager(ctx);
-  const connection = await ctx.db.get("economicConnections", connectionId);
-  if (!connection || connection.organizationId !== auth.organizationId) {
-    throw new ConvexError("e-conomic-aftalen blev ikke fundet");
-  }
-  return { auth, connection };
+export function economicSettingsFor(ctx: QueryCtx | MutationCtx, organizationId: string) {
+  return ctx.db.query("economicSettings").withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId)).unique();
 }
 
-function requireRevision(actual: number, expected: number) {
-  if (!Number.isSafeInteger(expected) || actual !== expected) {
-    throw new ConvexError("e-conomic-opsætningen er ændret. Indlæs den igen, før du gemmer");
-  }
+function requireAccountNumber(value: number, label: string) {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647) throw new ConvexError(`${label} skal være et positivt heltal`);
+  return value;
 }
 
 export const getSettings = query({
   args: {},
   returns: v.object({
     organizationId: v.string(),
-    configured: v.boolean(),
-    connections: v.array(v.object({
-      id: v.id("economicConnections"), agreementNumber: v.number(), name: v.string(),
-      currency: v.string(), enabled: v.boolean(), revision: v.number(),
-      requiresReconnect: v.boolean(),
-      ...economicMappingFields, locationMappings: v.array(economicLocationMappingValidator),
+    connection: v.union(v.null(), v.object({
+      agreementNumber: v.union(v.number(), v.null()), companyName: v.string(), currency: v.string(), connectedAt: v.number(),
+      journalNumber: v.union(v.number(), v.null()), bankAccountNumber: v.number(),
     })),
-    locations: v.array(v.object({ id: v.id("locations"), name: v.string(), currency: v.string() })),
   }),
   handler: async (ctx) => {
     const auth = await requireManager(ctx);
-    const [connections, locations] = await Promise.all([
-      ctx.db.query("economicConnections").withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId)).take(MAX_CONNECTIONS + 1),
-      ctx.db.query("locations").withIndex("by_organizationId_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId)).take(MAX_LOCATIONS + 1),
-    ]);
-    if (connections.length > MAX_CONNECTIONS || locations.length > MAX_LOCATIONS) {
-      throw new ConvexError("e-conomic-opsætningen understøtter højst 200 aftaler og lokationer");
-    }
+    const settings = await economicSettingsFor(ctx, auth.organizationId);
     return {
       organizationId: auth.organizationId,
-      configured: true,
-      connections: await Promise.all(connections.map(async (connection) => {
-        const mappings = await ctx.db.query("economicLocationMappings").withIndex("by_connectionId", (q) => q.eq("connectionId", connection._id)).take(MAX_LOCATIONS + 1);
-        if (mappings.length > MAX_LOCATIONS) throw new ConvexError("Aftalen har for mange lokationskoblinger");
-        return {
-          id: connection._id, agreementNumber: connection.agreementNumber, name: connection.name,
-          currency: connection.currency, enabled: connection.enabled, revision: connection.revision,
-          requiresReconnect: !connection.encryptedAppSecretToken,
-          dimensionNumber: connection.dimensionNumber, budgetSource: connection.budgetSource,
-          cogsStockAdjusted: connection.cogsStockAdjusted, accountMappings: connection.accountMappings,
-          locationMappings: mappings.map(({ locationId, dimensionKey }) => ({ locationId, dimensionKey })),
-        };
-      })),
-      locations: await Promise.all(locations.map(async (location) => ({
-        id: location._id, name: location.name, currency: await resolveLocationCurrency(ctx, auth.organizationId, location),
-      }))),
+      connection: settings && {
+        agreementNumber: settings.agreementNumber, companyName: settings.companyName, currency: settings.currency, connectedAt: settings.connectedAt,
+        journalNumber: settings.journalNumber, bankAccountNumber: settings.bankAccountNumber,
+      },
     };
-  },
-});
-
-export const getPrivateConnection = internalQuery({
-  args: { connectionId: v.id("economicConnections") },
-  returns: schema.doc("economicConnections"),
-  handler: async (ctx, args) => (await requireConnection(ctx, args.connectionId)).connection,
-});
-
-export const getCredentials = internalMutation({
-  args: { organizationId: v.string(), connectionId: v.id("economicConnections") },
-  returns: v.object({ appSecretToken: v.string(), agreementGrantToken: v.string() }),
-  handler: async (ctx, { organizationId, connectionId }) => {
-    await requireIntegrationEnabled(ctx, organizationId, "economic");
-    const connection = await ctx.db.get("economicConnections", connectionId);
-    if (!connection || connection.organizationId !== organizationId) throw new ConvexError("e-conomic-aftalen blev ikke fundet");
-    const key = await ensureOrganizationCredentialKey(ctx, organizationId);
-    const credentials = await decryptEconomicCredentials(connection, key);
-    if (!connection.encryptedToken.startsWith("v3.") || !connection.encryptedAppSecretToken?.startsWith("v3.")) {
-      await ctx.db.patch(connectionId, {
-        encryptedToken: await encryptCredential(credentials.agreementGrantToken, organizationId, key),
-        encryptedAppSecretToken: await encryptCredential(credentials.appSecretToken, organizationId, key),
-      });
-    }
-    return credentials;
   },
 });
 
 export const saveConnection = internalMutation({
   args: {
-    organizationId: v.string(), connectionId: v.optional(v.id("economicConnections")),
-    expectedRevision: v.union(v.number(), v.null()), agreementNumber: v.number(),
-    name: v.string(), currency: v.string(), encryptedToken: v.string(), encryptedAppSecretToken: v.string(),
+    organizationId: v.string(), encryptedAppSecretToken: v.string(), encryptedAgreementGrantToken: v.string(),
+    agreementNumber: v.union(v.number(), v.null()), companyName: v.string(), currency: v.string(),
   },
-  returns: v.id("economicConnections"),
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireManager(ctx);
-    if (auth.organizationId !== args.organizationId) throw new ConvexError("Organisationen er ændret. Opret forbindelsen igen");
-    const duplicate = await ctx.db.query("economicConnections")
-      .withIndex("by_organizationId_and_agreementNumber", (q) => q.eq("organizationId", auth.organizationId).eq("agreementNumber", args.agreementNumber)).unique();
+    if (auth.organizationId !== args.organizationId) throw new ConvexError("Organisationen er ændret. Forbind e-conomic igen");
+    const current = await economicSettingsFor(ctx, auth.organizationId);
     const now = Date.now();
-    let id: Id<"economicConnections">;
-    if (args.connectionId) {
-      const { connection } = await requireConnection(ctx, args.connectionId);
-      requireRevision(connection.revision, args.expectedRevision ?? -1);
-      if (connection.agreementNumber !== args.agreementNumber || (duplicate && duplicate._id !== connection._id)) {
-        throw new ConvexError("Nøglen tilhører en anden aftale. Tilføj den som en ny aftale");
-      }
-      if (connection.currency !== args.currency) throw new ConvexError("Aftalens valuta er ændret. Kontrollér lokationskoblingerne, før aftalen tilsluttes igen");
-      id = connection._id;
-      await ctx.db.patch("economicConnections", id, {
-        encryptedToken: args.encryptedToken, encryptedAppSecretToken: args.encryptedAppSecretToken, name: args.name, enabled: true,
-        revision: connection.revision + 1, updatedAt: now,
+    const { organizationId, ...connection } = args;
+    // Journal and balance belong to the agreement, so a different agreement starts over.
+    // Without an agreement number the keys may belong to another agreement, so keep nothing.
+    const sameAgreement = args.agreementNumber !== null && current?.agreementNumber === args.agreementNumber;
+    const id = current
+      ? (await ctx.db.patch("economicSettings", current._id, {
+        ...connection, updatedAt: now,
+        ...(sameAgreement ? {} : { journalNumber: null, bankAccountNumber: DEFAULT_BANK_ACCOUNT_NUMBER, manualBankBalance: undefined, connectedAt: now }),
+      }), current._id)
+      : await ctx.db.insert("economicSettings", {
+        organizationId, ...connection, journalNumber: null, bankAccountNumber: DEFAULT_BANK_ACCOUNT_NUMBER, connectedAt: now, updatedAt: now,
       });
-    } else {
-      if (duplicate) throw new ConvexError("Aftalen er allerede forbundet");
-      const existing = await ctx.db.query("economicConnections").withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId)).take(MAX_CONNECTIONS);
-      if (existing.length >= MAX_CONNECTIONS) throw new ConvexError("Organisationen har allerede 200 aftaler");
-      id = await ctx.db.insert("economicConnections", {
-        organizationId: auth.organizationId, agreementNumber: args.agreementNumber,
-        name: args.name, currency: args.currency, encryptedToken: args.encryptedToken, encryptedAppSecretToken: args.encryptedAppSecretToken,
-        enabled: true, dimensionNumber: null, budgetSource: "manual", cogsStockAdjusted: false,
-        accountMappings: [], revision: 1, connectedAt: now, updatedAt: now,
-      });
-    }
-    await recordAudit(ctx, auth, { action: "economic.connected", entityTable: "economicConnections", entityId: id, summary: `e-conomic-aftale ${args.agreementNumber} er forbundet` });
-    return id;
+    await recordAudit(ctx, auth, { action: "economic.connected", entityTable: "economicSettings", entityId: id, summary: args.agreementNumber === null ? "e-conomic er forbundet" : `e-conomic-aftale ${args.agreementNumber} er forbundet` });
+    return null;
   },
 });
 
 export const connect = action({
-  args: { expectedOrganizationId: v.string(), appSecretToken: v.string(), agreementGrantToken: v.string(), connectionId: v.optional(v.id("economicConnections")) },
-  returns: v.id("economicConnections"),
-  handler: async (ctx, args): Promise<Id<"economicConnections">> => {
-    const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
-    requireAllLocationAccess(auth);
-    if (auth.organizationId !== args.expectedOrganizationId) throw new ConvexError("Organisationen er ændret. Opret forbindelsen igen");
-    await requireIntegrationEnabled(ctx, auth.organizationId, "economic");
-    const grant = args.agreementGrantToken.trim();
-    const appSecretToken = args.appSecretToken.trim();
-    if (!appSecretToken || appSecretToken.length > 1000) throw new ConvexError("Indtast en gyldig e-conomic-appnøgle");
-    if (!grant || grant.length > 1000) throw new ConvexError("Indtast en gyldig e-conomic-aftalenøgle");
-    const current = args.connectionId ? await ctx.runQuery(internal.economic.getPrivateConnection, { connectionId: args.connectionId }) : null;
-    const credentials: EconomicCredentials = { appSecretToken, agreementGrantToken: grant };
+  args: { expectedOrganizationId: v.string(), appSecretToken: v.string(), agreementGrantToken: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const auth = await requireManager(ctx);
+    if (auth.organizationId !== args.expectedOrganizationId) throw new ConvexError("Organisationen er ændret. Forbind e-conomic igen");
+    const credentials = { appSecretToken: args.appSecretToken.trim(), agreementGrantToken: args.agreementGrantToken.trim() };
+    if (!credentials.appSecretToken || credentials.appSecretToken.length > 1000) throw new ConvexError("Indtast en gyldig appnøgle");
+    if (!credentials.agreementGrantToken || credentials.agreementGrantToken.length > 1000) throw new ConvexError("Indtast en gyldig aftalenøgle");
     const self = await getEconomicSelf(credentials);
     const key = await ctx.runMutation(internal.integrations.credentials.ensureKey, { organizationId: auth.organizationId });
-    const [encryptedToken, encryptedAppSecretToken] = await Promise.all([
-      encryptCredential(grant, auth.organizationId, key), encryptCredential(appSecretToken, auth.organizationId, key),
+    const [encryptedAppSecretToken, encryptedAgreementGrantToken] = await Promise.all([
+      encryptCredential(credentials.appSecretToken, auth.organizationId, key),
+      encryptCredential(credentials.agreementGrantToken, auth.organizationId, key),
     ]);
-    return ctx.runMutation(internal.economic.saveConnection, {
-      organizationId: auth.organizationId, connectionId: args.connectionId,
-      expectedRevision: current?.revision ?? null, agreementNumber: self.agreementNumber,
-      name: self.name, currency: self.currency, encryptedToken, encryptedAppSecretToken,
+    await ctx.runMutation(internal.economic.saveConnection, {
+      organizationId: auth.organizationId, encryptedAppSecretToken, encryptedAgreementGrantToken,
+      ...(self ?? { agreementNumber: null, companyName: "e-conomic", currency: DEFAULT_CURRENCY }),
     });
+    return null;
   },
 });
 
-export const setEnabled = mutation({
-  args: { ...connectionArgs, enabled: v.boolean() }, returns: v.null(),
+function requireExpectedOrganization(organizationId: string, expected: string) {
+  if (organizationId !== expected) throw new ConvexError("Organisationen er ændret. Indlæs siden igen");
+}
+
+export const saveOptions = mutation({
+  args: { expectedOrganizationId: v.string(), journalNumber: v.union(v.number(), v.null()), bankAccountNumber: v.number() },
+  returns: v.null(),
   handler: async (ctx, args) => {
-    const { auth, connection } = await requireConnection(ctx, args.connectionId);
-    requireRevision(connection.revision, args.expectedRevision);
-    if (args.enabled && !connection.encryptedAppSecretToken) throw new ConvexError("Forbind e-conomic igen med organisationens appnøgle og aftalenøgle");
-    if (connection.enabled === args.enabled) return null;
-    await ctx.db.patch("economicConnections", connection._id, { enabled: args.enabled, revision: connection.revision + 1, updatedAt: Date.now() });
-    await recordAudit(ctx, auth, { action: "economic.enabledChanged", entityTable: "economicConnections", entityId: connection._id, summary: `e-conomic-aftale ${connection.agreementNumber} er ${args.enabled ? "aktiveret" : "deaktiveret"}` });
+    const auth = await requireManager(ctx);
+    requireExpectedOrganization(auth.organizationId, args.expectedOrganizationId);
+    const settings = await economicSettingsFor(ctx, auth.organizationId);
+    if (!settings) throw new ConvexError("Forbind e-conomic først");
+    const journalNumber = args.journalNumber === null ? null : requireAccountNumber(args.journalNumber, "Kassekladden");
+    const bankAccountNumber = requireAccountNumber(args.bankAccountNumber, "Bankkontoen");
+    // A manual balance belongs to the account it was entered for.
+    await ctx.db.patch("economicSettings", settings._id, {
+      journalNumber, bankAccountNumber, updatedAt: Date.now(),
+      ...(bankAccountNumber !== settings.bankAccountNumber ? { manualBankBalance: undefined } : {}),
+    });
+    await recordAudit(ctx, auth, { action: "economic.optionsSaved", entityTable: "economicSettings", entityId: settings._id, summary: "e-conomic-indstillingerne for Økonomi er gemt" });
     return null;
   },
 });
 
 export const disconnect = mutation({
-  args: connectionArgs, returns: v.null(),
+  args: { expectedOrganizationId: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
-    const { auth, connection } = await requireConnection(ctx, args.connectionId);
-    requireRevision(connection.revision, args.expectedRevision);
-    const mappings = await ctx.db.query("economicLocationMappings").withIndex("by_connectionId", (q) => q.eq("connectionId", connection._id)).take(MAX_LOCATIONS + 1);
-    if (mappings.length > MAX_LOCATIONS) throw new ConvexError("Aftalen har for mange lokationskoblinger");
-    for (const mapping of mappings) await ctx.db.delete("economicLocationMappings", mapping._id);
-    await ctx.db.delete("economicConnections", connection._id);
-    await recordAudit(ctx, auth, { action: "economic.disconnected", entityTable: "economicConnections", entityId: connection._id, summary: `e-conomic-aftale ${connection.agreementNumber} er afbrudt` });
+    const auth = await requireManager(ctx);
+    requireExpectedOrganization(auth.organizationId, args.expectedOrganizationId);
+    const settings = await economicSettingsFor(ctx, auth.organizationId);
+    if (!settings) return null;
+    await ctx.db.delete("economicSettings", settings._id);
+    await recordAudit(ctx, auth, { action: "economic.disconnected", entityTable: "economicSettings", entityId: settings._id, summary: "Forbindelsen til e-conomic er fjernet" });
     return null;
   },
 });
 
-export const getCatalog = action({
-  args: { connectionId: v.id("economicConnections") }, returns: catalogValidator,
-  handler: async (ctx, args): Promise<Infer<typeof catalogValidator>> => {
-    const before = await ctx.runQuery(internal.economic.getPrivateConnection, args);
-    const catalog = await getEconomicCatalog(await ctx.runMutation(internal.economic.getCredentials, { organizationId: before.organizationId, connectionId: before._id }));
-    const after = await ctx.runQuery(internal.economic.getPrivateConnection, args);
-    requireRevision(after.revision, before.revision);
-    return catalog;
+export async function decryptEconomicCredentials(settings: Doc<"economicSettings">, key: string | null): Promise<EconomicCredentials> {
+  const [appSecretToken, agreementGrantToken] = await Promise.all([
+    decryptCredential(settings.encryptedAppSecretToken, settings.organizationId, key),
+    decryptCredential(settings.encryptedAgreementGrantToken, settings.organizationId, key),
+  ]);
+  return { appSecretToken, agreementGrantToken };
+}
+
+export const getManagerCredentials = internalMutation({
+  args: {},
+  returns: v.object({ appSecretToken: v.string(), agreementGrantToken: v.string() }),
+  handler: async (ctx) => {
+    const auth = await requireManager(ctx);
+    const settings = await economicSettingsFor(ctx, auth.organizationId);
+    if (!settings) throw new ConvexError("Forbind e-conomic først");
+    return decryptEconomicCredentials(settings, await ensureOrganizationCredentialKey(ctx, auth.organizationId));
   },
 });
 
-export const saveMappingsInternal = internalMutation({
-  args: mappingsArgs, returns: v.null(),
-  handler: async (ctx, args) => {
-    const { auth, connection } = await requireConnection(ctx, args.connectionId);
-    requireRevision(connection.revision, args.expectedRevision);
-    if (args.accountMappings.length > MAX_ACCOUNTS || args.locationMappings.length > MAX_LOCATIONS) {
-      throw new ConvexError("Vælg højst 200 konti og 200 lokationer");
-    }
-    const locations = new Set(args.locationMappings.map((mapping) => mapping.locationId));
-    const dimensions = new Set(args.locationMappings.map((mapping) => mapping.dimensionKey));
-    const accounts = new Set(args.accountMappings.map((mapping) => mapping.accountNumber));
-    if (locations.size !== args.locationMappings.length || dimensions.size !== args.locationMappings.length || accounts.size !== args.accountMappings.length) {
-      throw new ConvexError("En lokation, afdeling eller konto må kun tilknyttes én gang");
-    }
-    if (args.dimensionNumber === null && (args.locationMappings.length !== 1 || args.locationMappings.some((mapping) => mapping.dimensionKey !== null))) {
-      throw new ConvexError("En hel aftale kan kun knyttes til én lokation");
-    }
-    if (args.dimensionNumber !== null && args.locationMappings.some((mapping) => mapping.dimensionKey === null)) {
-      throw new ConvexError("Vælg en afdeling for hver lokation");
-    }
-    for (const mapping of args.locationMappings) {
-      const location = await requireOrganizationLocation(ctx, auth.organizationId, mapping.locationId);
-      if (await resolveLocationCurrency(ctx, auth.organizationId, location) !== connection.currency) {
-        throw new ConvexError(`${location.name}: Lokationens valuta skal svare til aftalens grundvaluta`);
-      }
-      const current = await ctx.db.query("economicLocationMappings").withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", mapping.locationId)).unique();
-      if (current && current.connectionId !== connection._id) throw new ConvexError(`${location.name} er allerede knyttet til en anden e-conomic-aftale`);
-    }
-    const old = await ctx.db.query("economicLocationMappings").withIndex("by_connectionId", (q) => q.eq("connectionId", connection._id)).take(MAX_LOCATIONS + 1);
-    if (old.length > MAX_LOCATIONS) throw new ConvexError("Aftalen har for mange lokationskoblinger");
-    for (const mapping of old) await ctx.db.delete("economicLocationMappings", mapping._id);
-    for (const mapping of args.locationMappings) await ctx.db.insert("economicLocationMappings", { ...mapping, organizationId: auth.organizationId, connectionId: connection._id });
-    await ctx.db.patch("economicConnections", connection._id, {
-      dimensionNumber: args.dimensionNumber,
-      cogsStockAdjusted: args.cogsStockAdjusted, accountMappings: args.accountMappings,
-      revision: connection.revision + 1, updatedAt: Date.now(),
-    });
-    await recordAudit(ctx, auth, { action: "economic.mappingsSaved", entityTable: "economicConnections", entityId: connection._id, summary: `Konto- og lokationskoblinger for e-conomic-aftale ${connection.agreementNumber} er gemt` });
-    return null;
-  },
-});
-
-export const saveMappings = action({
-  args: mappingsArgs, returns: v.null(),
-  handler: async (ctx, args): Promise<null> => {
-    const before = await ctx.runQuery(internal.economic.getPrivateConnection, { connectionId: args.connectionId });
-    requireRevision(before.revision, args.expectedRevision);
-    const catalog = await getEconomicCatalog(await ctx.runMutation(internal.economic.getCredentials, { organizationId: before.organizationId, connectionId: before._id }));
-    for (const mapping of args.accountMappings) {
-      const account = catalog.accounts.find((item) => item.number === mapping.accountNumber);
-      if (!account || account.type !== 1) throw new ConvexError("Vælg en gyldig driftskonto fra aftalens kontoplan");
-    }
-    if (args.dimensionNumber !== null) {
-      if (!catalog.dimensionsAvailable || !catalog.dimensions.some((item) => item.number === args.dimensionNumber)) throw new ConvexError("Den valgte dimension er ikke tilgængelig på aftalen");
-      for (const mapping of args.locationMappings) {
-        if (!catalog.values.some((value) => value.dimensionNumber === args.dimensionNumber && value.number === mapping.dimensionKey)) {
-          throw new ConvexError("Den valgte afdeling findes ikke i aftalens dimension");
-        }
-      }
-    }
-    return ctx.runMutation(internal.economic.saveMappingsInternal, args);
+export const listJournals = action({
+  args: {},
+  returns: v.array(v.object({ journalNumber: v.number(), name: v.string() })),
+  handler: async (ctx): Promise<Array<{ journalNumber: number; name: string }>> => {
+    const credentials: EconomicCredentials = await ctx.runMutation(internal.economic.getManagerCredentials, {});
+    return listEconomicJournals(credentials);
   },
 });
