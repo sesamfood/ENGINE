@@ -7,6 +7,7 @@ import {
   ArrowRightLeftIcon,
   CheckIcon,
   ChefHatIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -37,6 +38,14 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -52,7 +61,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { addDays, dateTimeFormatter, parseDateKey } from "@/lib/date";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { formatStockQuantity } from "@/lib/unit-system";
+import { formatStockQuantity, unitNameFor } from "@/lib/unit-system";
 
 type Plan = NonNullable<
   NonNullable<FunctionReturnType<typeof api.prepPlans.get>>["plan"]
@@ -95,6 +104,14 @@ function stepPlanDate(date: string, orderWindows: number[], step: 1 | -1) {
 
 function roundedNow() {
   return Math.floor(Date.now() / 300_000) * 300_000;
+}
+
+// A default-unit amount in the product's chosen unit, else the largest unit it fills.
+function itemQuantity(item: Item, value: number) {
+  const unit = item.units.find((row) => row.unitId === item.displayUnitId);
+  if (!unit) return formatStockQuantity(value, item.unitName, item.units);
+  const converted = value / unit.factorToDefault;
+  return `${quantityFormatter.format(converted)} ${unitNameFor(unit, converted)}`;
 }
 
 function itemKey(item: Item) {
@@ -432,11 +449,65 @@ function Stores({ item }: { item: Item }) {
       {item.stores.map((store) => (
         <li key={store.locationId}>
           <Badge variant="secondary">
-            {store.locationName} · {formatStockQuantity(store.quantity, item.unitName, item.units)}
+            {store.locationName} · {itemQuantity(item, store.quantity)}
           </Badge>
         </li>
       ))}
     </ul>
+  );
+}
+
+function TotalQuantity({ item, large }: { item: Item; large?: boolean }) {
+  const setDisplayUnit = useMutation(api.prepPlans.setDisplayUnit);
+  const label = itemQuantity(item, item.total);
+  const text = (
+    <span
+      className={`${large ? "text-2xl" : "text-xl"} font-semibold tabular-nums`}
+    >
+      {label}
+    </span>
+  );
+  if (!item.units.length) return text;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            className="-mr-2.5 h-auto min-h-11"
+            aria-label={`${label}. Vælg enhed for ${item.productName}`}
+          />
+        }
+      >
+        {text}
+        <ChevronDownIcon data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuLabel>Vis mængde i</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={item.displayUnitId ?? "auto"}
+          onValueChange={(value) => {
+            const unit = item.units.find((row) => row.unitId === value);
+            setDisplayUnit({
+              productId: item.productId,
+              unitId: unit?.unitId ?? null,
+            }).catch((error) =>
+              toast.error(
+                getUserErrorMessage(error, "Enheden kunne ikke gemmes"),
+              ),
+            );
+          }}
+        >
+          <DropdownMenuRadioItem value="auto">Automatisk</DropdownMenuRadioItem>
+          {item.units.map((unit) => (
+            <DropdownMenuRadioItem key={unit.unitId} value={unit.unitId}>
+              {unit.name}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -500,9 +571,7 @@ function OverviewItem({
                   {item.productName}
                 </span>
               </button>
-              <span className="text-xl font-semibold tabular-nums">
-                {formatStockQuantity(item.total, item.unitName, item.units)}
-              </span>
+              <TotalQuantity item={item} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <LeadTime hours={item.leadTimeHours} />
@@ -537,9 +606,7 @@ function StepItem({
         </CardDescription>
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-2xl font-semibold">
           <h2>{item.productName}</h2>
-          <span className="tabular-nums">
-            {formatStockQuantity(item.total, item.unitName, item.units)}
-          </span>
+          <TotalQuantity item={item} large />
         </div>
       </CardHeader>
       <CardContent>

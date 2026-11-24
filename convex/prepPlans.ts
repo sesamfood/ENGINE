@@ -45,14 +45,18 @@ const itemValidator = v.object({
   productName: v.string(),
   unitId: v.id("units"),
   unitName: v.string(),
-  // The product's larger custom units, used to show the total in the largest one.
+  // Units the total can be shown in, including the default; empty when the
+  // total isn't in the default unit.
   units: v.array(
     v.object({
+      unitId: v.id("units"),
       name: v.string(),
       pluralName: v.optional(v.string()),
       factorToDefault: v.number(),
     }),
   ),
+  // Null shows the largest unit the total fills.
+  displayUnitId: v.union(v.id("units"), v.null()),
   total: v.number(),
   stores: v.array(
     v.object({
@@ -279,27 +283,31 @@ async function buildItems(
   };
   const unitName = async (id: Id<"units">, fallback: string) =>
     (await getUnit(id))?.name ?? fallback;
-  // Units larger than the default, only for totals summed in the default unit.
-  const largerUnits = async (item: Item) => {
-    if (item.unitId !== item.product.defaultUnitId) return [];
+  // Units the total can be shown in, only for totals summed in the default unit.
+  const displayUnits = async (item: Item) => {
+    const { product } = item;
+    if (item.unitId !== product.defaultUnitId) return [];
     const rows = await ctx.db
       .query("productUnits")
       .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", item.product._id),
+        q.eq("organizationId", organizationId).eq("productId", product._id),
       )
       .take(MAX_PRODUCT_UNITS);
     const units = [];
-    for (const row of rows) {
-      if (row.factorToDefault <= 1) continue;
+    for (const row of [
+      { unitId: product.defaultUnitId, factorToDefault: 1 },
+      ...rows.filter((row) => row.unitId !== product.defaultUnitId),
+    ]) {
       const unit = await getUnit(row.unitId);
-      if (!unit) continue;
+      if (!unit || !(row.factorToDefault > 0)) continue;
       units.push({
+        unitId: row.unitId,
         name: unit.name,
         pluralName: unit.pluralName,
         factorToDefault: row.factorToDefault,
       });
     }
-    return units;
+    return units.length > 1 ? units : [];
   };
 
   type Item = {
@@ -394,12 +402,16 @@ async function buildItems(
   const result = [];
   for (const item of ordered) {
     const { product } = item;
+    const units = await displayUnits(item);
     result.push({
       productId: product._id,
       productName: product.name,
       unitId: item.unitId,
       unitName: item.unitName,
-      units: await largerUnits(item),
+      units,
+      displayUnitId:
+        units.find((unit) => unit.unitId === product.prepDisplayUnitId)
+          ?.unitId ?? null,
       total: normalizeStock(item.total),
       stores: [...item.stores]
         .map(([locationId, store]) => ({
@@ -544,6 +556,43 @@ export const setChecked = mutation({
       checkedAt: Date.now(),
       checkedBy: auth.userIdentifier,
       checkedByName: auth.userName,
+    });
+    return null;
+  },
+});
+
+// Remembers which unit the Prepplan shows a product's total in, for the whole organization.
+export const setDisplayUnit = mutation({
+  args: {
+    productId: v.id("products"),
+    unitId: v.union(v.id("units"), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requirePermission(
+      ctx,
+      "prepplan.use",
+      PAGE,
+    );
+    const product = await ctx.db.get("products", args.productId);
+    if (product?.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (args.unitId && args.unitId !== product.defaultUnitId) {
+      const unitId = args.unitId;
+      const row = await ctx.db
+        .query("productUnits")
+        .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", product._id)
+            .eq("unitId", unitId),
+        )
+        .unique();
+      if (!row) throw new ConvexError("Enheden findes ikke på produktet");
+    }
+    await ctx.db.patch("products", product._id, {
+      prepDisplayUnitId: args.unitId ?? undefined,
     });
     return null;
   },
