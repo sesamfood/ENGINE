@@ -38,6 +38,8 @@ const accountValidator = v.object({
   locationId: v.id("locations"),
   locationName: v.string(),
   activeSessionCount: v.number(),
+  // Null means the organization's kiosk pages.
+  pages: v.union(v.object({ enabledPages: v.array(v.string()), homePage: v.string() }), v.null()),
 });
 
 type Member = {
@@ -119,6 +121,15 @@ async function requireKioskAccountManager(ctx: QueryCtx | MutationCtx) {
     throw new ConvexError("Du har ikke adgang til at administrere roller");
   }
   return auth;
+}
+
+function getAccountPages(ctx: QueryCtx | MutationCtx, organizationId: string, userId: string) {
+  return ctx.db
+    .query("kioskAccountPages")
+    .withIndex("by_organizationId_and_userId", (q) =>
+      q.eq("organizationId", organizationId).eq("userId", userId),
+    )
+    .unique();
 }
 
 async function requireKioskMember(
@@ -245,7 +256,7 @@ export const listAccounts = query({
     for (const member of members) {
       if (!member.kioskLocationId) continue;
       const locationId = member.kioskLocationId as Id<"locations">;
-      const [user, location, activeSessionCount] = await Promise.all([
+      const [user, location, activeSessionCount, pages] = await Promise.all([
         adapter.findOne<User>({
           model: "user",
           where: [{ field: "id", value: member.userId }],
@@ -258,6 +269,7 @@ export const listAccounts = query({
             { field: "expiresAt", value: Date.now(), operator: "gt" },
           ],
         }),
+        getAccountPages(ctx, organizationId, member.userId),
       ]);
       if (!user?.username || !location || location.organizationId !== organizationId) {
         continue;
@@ -271,6 +283,7 @@ export const listAccounts = query({
         locationId,
         locationName: location.name,
         activeSessionCount,
+        pages: pages && { enabledPages: pages.enabledPages, homePage: pages.homePage },
       });
     }
     return result;
@@ -359,6 +372,8 @@ export const updateAccount = mutation({
     memberId: v.string(),
     name: v.string(),
     locationId: v.id("locations"),
+    role: roleValidator,
+    pages: v.union(v.object({ enabledPages: v.array(v.string()), homePage: v.string() }), v.null()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -368,6 +383,19 @@ export const updateAccount = mutation({
     await requireLocation(ctx, organizationId, args.locationId);
     const name = args.name.trim();
     if (!name) throw new ConvexError("Navn er påkrævet");
+    if (args.pages) validateSettings(args.pages.enabledPages, args.pages.homePage, null);
+    const current = await getAccountPages(ctx, organizationId, member.userId);
+    if (!args.pages) {
+      if (current) await ctx.db.delete("kioskAccountPages", current._id);
+    } else if (current) {
+      await ctx.db.patch("kioskAccountPages", current._id, args.pages);
+    } else {
+      await ctx.db.insert("kioskAccountPages", {
+        organizationId,
+        userId: member.userId,
+        ...args.pages,
+      });
+    }
     const adapter = getDatabaseAdapter(ctx);
     await Promise.all([
       adapter.update({
@@ -378,7 +406,7 @@ export const updateAccount = mutation({
       adapter.update({
         model: "member",
         where: [{ field: "id", value: member.id }],
-        update: { kioskLocationId: args.locationId },
+        update: { kioskLocationId: args.locationId, role: args.role },
       }),
     ]);
     return null;
@@ -457,6 +485,8 @@ export const deleteAccount = mutation({
     if (locationAccess) {
       await ctx.db.delete("memberLocationAccess", locationAccess._id);
     }
+    const pages = await getAccountPages(ctx, organizationId, member.userId);
+    if (pages) await ctx.db.delete("kioskAccountPages", pages._id);
     await adapter.delete({
       model: "user",
       where: [{ field: "id", value: member.userId }],

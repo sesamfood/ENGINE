@@ -90,21 +90,71 @@ const roles = Object.keys(roleLabels) as SystemOrganizationRole[];
 type Account = NonNullable<ReturnType<typeof useQuery<typeof api.kiosk.listAccounts>>>[number];
 
 
+type KioskPage = (typeof kioskDestinations)[number];
+type AccountPages = { enabledPages: string[]; homePage: string };
+
 function AccountDialog({
   account,
   locations,
+  pages,
+  defaultPages,
   onClose,
 }: {
   account: Account | null;
   locations: { id: Id<"locations">; name: string }[];
+  pages: KioskPage[];
+  defaultPages: AccountPages | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(account)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-(--spacing-viewport-inset) flex-col sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Redigér kioskkonto</DialogTitle>
+          <DialogDescription>Skift kontoens navn, lokation, rolle og sider.</DialogDescription>
+        </DialogHeader>
+        {account ? (
+          <AccountForm
+            key={account.memberId}
+            account={account}
+            locations={locations}
+            pages={pages}
+            defaultPages={defaultPages}
+            onClose={onClose}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AccountForm({
+  account,
+  locations,
+  pages,
+  defaultPages,
+  onClose,
+}: {
+  account: Account;
+  locations: { id: Id<"locations">; name: string }[];
+  pages: KioskPage[];
+  defaultPages: AccountPages | null;
   onClose: () => void;
 }) {
   const updateAccount = useMutation(api.kiosk.updateAccount);
   const [pending, setPending] = useState(false);
+  const [role, setRole] = useState<SystemOrganizationRole>(account.role);
+  const [ownPages, setOwnPages] = useState(account.pages !== null);
+  const initial = account.pages ?? defaultPages;
+  const [enabledPages, setEnabledPages] = useState<string[]>(initial?.enabledPages ?? []);
+  const [homePage, setHomePage] = useState(initial?.homePage ?? "");
+  const features = [...new Set(pages.map((page) => page.feature))];
+  const homeItems = pages
+    .filter((page) => enabledPages.includes(page.id))
+    .map((page) => ({ value: page.id, label: page.label }));
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!account) return;
     const form = new FormData(event.currentTarget);
     setPending(true);
     try {
@@ -112,6 +162,8 @@ function AccountDialog({
         memberId: account.memberId,
         name: String(form.get("name")),
         locationId: String(form.get("locationId")) as Id<"locations">,
+        role,
+        pages: ownPages ? { enabledPages, homePage } : null,
       });
       toast.success("Kioskkontoen er opdateret");
       onClose();
@@ -123,35 +175,83 @@ function AccountDialog({
   }
 
   return (
-    <Dialog open={Boolean(account)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Redigér kioskkonto</DialogTitle>
-          <DialogDescription>Skift kontoens navn eller faste lokation.</DialogDescription>
-        </DialogHeader>
-        {account ? (
-          <form onSubmit={submit} className="flex flex-col gap-4">
-            <FieldGroup>
+    <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
+        <FieldGroup>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="edit-kiosk-name">Navn</FieldLabel>
+              <Input id="edit-kiosk-name" name="name" defaultValue={account.name} required />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edit-kiosk-location">Lokation</FieldLabel>
+              <Select name="locationId" defaultValue={account.locationId} items={locations.map((location) => ({ value: location.id, label: location.name }))}>
+                <SelectTrigger id="edit-kiosk-location" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edit-kiosk-role">Normal rolle</FieldLabel>
+              <Select items={roles.map((item) => ({ value: item, label: roleLabels[item] }))} value={role} onValueChange={(value) => value && setRole(value)}>
+                <SelectTrigger id="edit-kiosk-role" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{roles.map((item) => <SelectItem key={item} value={item}>{roleLabels[item]}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <FieldSeparator />
+          <SettingsSwitchField
+            label="Egne sider"
+            checked={ownPages}
+            onCheckedChange={setOwnPages}
+            help={{ label: "Egne sider", content: "Kontoen bruger sine egne sider og startside i stedet for organisationens kioskopsætning. PIN-kode, dashboards og inaktivitet følger stadig kioskopsætningen." }}
+          />
+          {ownPages ? (
+            <>
+              <FieldSet>
+                <FieldLegend variant="label">Aktiverede sider</FieldLegend>
+                <div data-slot="checkbox-group" className="grid gap-4 md:grid-cols-2">
+                  {features.map((feature) => (
+                    <FieldSet key={feature} appearance="outline">
+                      <FieldLegend variant="label">{featureLabels[feature]}</FieldLegend>
+                      {pages
+                        .filter((page) => page.feature === feature)
+                        .map((page) => (
+                          <Field key={page.id} orientation="horizontal">
+                            <Checkbox
+                              id={`account-page-${page.id}`}
+                              checked={enabledPages.includes(page.id)}
+                              onCheckedChange={(checked) => {
+                                setEnabledPages(
+                                  checked
+                                    ? [...enabledPages, page.id]
+                                    : enabledPages.filter((id) => id !== page.id),
+                                );
+                                if (homePage === page.id && !checked) setHomePage("");
+                              }}
+                            />
+                            <FieldLabel htmlFor={`account-page-${page.id}`}>{page.label}</FieldLabel>
+                          </Field>
+                        ))}
+                    </FieldSet>
+                  ))}
+                </div>
+              </FieldSet>
               <Field>
-                <FieldLabel htmlFor="edit-kiosk-name">Navn</FieldLabel>
-                <Input id="edit-kiosk-name" name="name" defaultValue={account.name} required />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="edit-kiosk-location">Lokation</FieldLabel>
-                <Select name="locationId" defaultValue={account.locationId} items={locations.map((location) => ({ value: location.id, label: location.name }))}>
-                  <SelectTrigger id="edit-kiosk-location" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent>
+                <FieldLabel htmlFor="edit-kiosk-home">Startside</FieldLabel>
+                <Select items={homeItems} value={homePage || null} onValueChange={(value) => setHomePage(value ?? "")} disabled={!homeItems.length}>
+                  <SelectTrigger id="edit-kiosk-home" className="w-full"><SelectValue placeholder="Vælg startside" /></SelectTrigger>
+                  <SelectContent><SelectGroup>{homeItems.map((page) => <SelectItem key={page.value} value={page.value}>{page.label}</SelectItem>)}</SelectGroup></SelectContent>
                 </Select>
               </Field>
-            </FieldGroup>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>Annullér</Button>
-              <Button type="submit" disabled={pending}>{pending ? <Spinner data-icon="inline-start" /> : null}Gem ændringer</Button>
-            </DialogFooter>
-          </form>
-        ) : null}
-      </DialogContent>
-    </Dialog>
+            </>
+          ) : null}
+        </FieldGroup>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>Annullér</Button>
+        <Button type="submit" disabled={pending || (ownPages && !homePage)}>{pending ? <Spinner data-icon="inline-start" /> : null}Gem ændringer</Button>
+      </DialogFooter>
+    </form>
   );
 }
 
@@ -638,7 +738,7 @@ export function KioskSettings() {
         <CardContent appearance="compact" className="flex flex-col">
           {availableAccounts.length ? availableAccounts.map((account) => (
             <div key={account.memberId} className="flex flex-col gap-4 rounded-xl border p-4 lg:flex-row lg:items-center">
-              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{account.name}</p><Badge>Kiosk</Badge><Badge variant="secondary">{roleLabels[account.role]}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{account.username} · {account.locationName} · {account.activeSessionCount} aktive sessioner</p></div>
+              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{account.name}</p><Badge>Kiosk</Badge><Badge variant="secondary">{roleLabels[account.role]}</Badge>{account.pages ? <Badge variant="outline">Egne sider</Badge> : null}</div><p className="mt-1 text-sm text-muted-foreground">{account.username} · {account.locationName} · {account.activeSessionCount} aktive sessioner</p></div>
               <div className="flex flex-wrap gap-2">
                 {canManageKioskLocations ? <Button type="button" variant="outline" onClick={() => setEditing(account)}><PencilIcon data-icon="inline-start" />Redigér</Button> : null}
                 <Button type="button" variant="outline" onClick={() => setPasswordAccount(account)}><KeyRoundIcon data-icon="inline-start" />Skift adgangskode</Button>
@@ -649,7 +749,7 @@ export function KioskSettings() {
           )) : <div className="flex min-h-36 flex-col items-center justify-center gap-2 text-center"><MonitorCogIcon className="size-6 text-muted-foreground" /><p className="font-medium">Ingen kioskkonti endnu</p><p className="text-sm text-muted-foreground">Gem opsætningen og opret den første konto ovenfor.</p></div>}
         </CardContent>
       </Card>
-      <AccountDialog account={editing} locations={availableLocations} onClose={() => setEditing(null)} />
+      <AccountDialog account={editing} locations={availableLocations} pages={visiblePages} defaultPages={settings ?? null} onClose={() => setEditing(null)} />
       <PasswordDialog account={passwordAccount} onClose={() => setPasswordAccount(null)} />
       </> : null}
     </div>

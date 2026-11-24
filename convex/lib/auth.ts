@@ -524,12 +524,7 @@ export async function requireKioskDestination(
 ) {
   if (!auth.isKioskAccount || !auth.kioskModeEnabled) return false;
   if (!("db" in ctx)) throw new ConvexError("Du har ikke adgang");
-  const settings = await ctx.db
-    .query("kioskSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", auth.organizationId),
-    )
-    .unique();
+  const settings = await getKioskSettings(ctx, auth);
   const pages = Array.isArray(page) ? page : [page];
   if (
     pages.some(
@@ -576,6 +571,30 @@ export async function requireKioskDestination(
     }
   }
   return true;
+}
+
+/** Organization kiosk settings with the kiosk account's own pages applied. */
+export async function getKioskSettings(
+  ctx: QueryCtx | MutationCtx,
+  auth: { organizationId: string; userId: string | null },
+) {
+  const settings = await ctx.db
+    .query("kioskSettings")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", auth.organizationId),
+    )
+    .unique();
+  const userId = auth.userId;
+  if (!settings || !userId) return settings;
+  const own = await ctx.db
+    .query("kioskAccountPages")
+    .withIndex("by_organizationId_and_userId", (q) =>
+      q.eq("organizationId", auth.organizationId).eq("userId", userId),
+    )
+    .unique();
+  return own
+    ? { ...settings, enabledPages: own.enabledPages, homePage: own.homePage }
+    : settings;
 }
 
 export async function kioskPinOpen(
