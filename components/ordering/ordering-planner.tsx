@@ -200,6 +200,7 @@ function Planner({
   >({});
   const [exporting, setExporting] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [placed, setPlaced] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [dismissedExistingKey, setDismissedExistingKey] = useState<
     string | null
@@ -216,7 +217,7 @@ function Planner({
   const [catalogInputs, setCatalogInputs] = useState<Record<string, string>>(
     {},
   );
-  const busy = exporting || placing;
+  const busy = exporting || placing || placed;
   const submitting = useRef(false);
   const restoredDraftFor = useRef<string | null>(null);
   const draftAppliedFor = useRef<string | null>(null);
@@ -508,7 +509,7 @@ function Planner({
         ? (editOrder?.planDate ?? NO_PLAN_DATE)
         : (planDays[0] ?? NO_PLAN_DATE);
   const existingWindowOrder =
-    internalSupplier && planDate !== NO_PLAN_DATE
+    !placing && !placed && internalSupplier && planDate !== NO_PLAN_DATE
       ? (windowOrderByDate.get(planDate) ?? null)
       : null;
   const existingWindowKey =
@@ -914,6 +915,7 @@ function Planner({
           planDate: planDate === NO_PLAN_DATE ? null : planDate,
         });
         if (!mounted.current) return;
+        setPlaced(true);
         setConfirming(false);
         toast.success("Bestillingen er opdateret");
         router.push("/ordering/history");
@@ -946,6 +948,7 @@ function Planner({
       });
       if (draftUserId) clearOrderingDraft(organizationId, draftUserId, locationId);
       if (!mounted.current) return;
+      setPlaced(true);
       setOrderingLocation(organizationId, locationId);
       setConfirming(false);
       toast.success(
