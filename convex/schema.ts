@@ -1498,6 +1498,8 @@ export default defineSchema({
     allowExtraOrders: v.optional(v.boolean()),
     // How many upcoming prep days an order can be for. Missing means PREP_DAY_CHOICES.
     planDayChoices: v.optional(v.number()),
+    // Prepplan delivery order of the ordering locations. Missing ones go last by name.
+    deliveryLocationOrder: v.optional(v.array(v.id("locations"))),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 

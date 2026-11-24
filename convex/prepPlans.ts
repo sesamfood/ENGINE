@@ -90,6 +90,7 @@ export const get = query({
           locationId: v.id("locations"),
           locationName: v.string(),
           orderWindowWeekdays: v.array(v.number()),
+          deliveryLocationOrder: v.array(v.id("locations")),
         }),
       ),
       plan: v.union(
@@ -101,6 +102,7 @@ export const get = query({
           orders: v.array(
             v.object({
               id: v.id("orders"),
+              locationId: v.id("locations"),
               locationName: v.string(),
               createdByName: v.string(),
               createdAt: v.number(),
@@ -138,6 +140,7 @@ export const get = query({
                   locationId: row.locationId,
                   locationName: location.name,
                   orderWindowWeekdays: row.orderWindowWeekdays ?? [],
+                  deliveryLocationOrder: row.deliveryLocationOrder ?? [],
                 }
               : null;
           }),
@@ -189,6 +192,7 @@ export const get = query({
         orders: await Promise.all(
           orders.map(async (order) => ({
             id: order._id,
+            locationId: order.locationId,
             locationName:
               (await ctx.db.get("locations", order.locationId))?.name ??
               order.locationName,
@@ -593,6 +597,42 @@ export const setDisplayUnit = mutation({
     }
     await ctx.db.patch("products", product._id, {
       prepDisplayUnitId: args.unitId ?? undefined,
+    });
+    return null;
+  },
+});
+
+// Remembers the order the supplier's deliveries are packed in, for future prep days.
+export const setDeliveryOrder = mutation({
+  args: {
+    locationId: v.id("locations"),
+    locationIds: v.array(v.id("locations")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "prepplan.use", PAGE);
+    requireLocationAccess(auth, args.locationId);
+    const { organizationId } = auth;
+    const supplier = await getInternalSupplier(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    if (!supplier || supplier.active === false) {
+      throw new ConvexError("Prepplanen er ikke længere tilgængelig");
+    }
+    const ids = [...new Set(args.locationIds)];
+    if (ids.length > MAX_SUPPLIERS) {
+      throw new ConvexError("Der er for mange lokationer");
+    }
+    for (const id of ids) {
+      const location = await ctx.db.get("locations", id);
+      if (location?.organizationId !== organizationId) {
+        throw new ConvexError("Lokationen blev ikke fundet");
+      }
+    }
+    await ctx.db.patch("internalSuppliers", supplier._id, {
+      deliveryLocationOrder: ids,
     });
     return null;
   },

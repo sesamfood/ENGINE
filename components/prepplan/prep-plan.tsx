@@ -1,5 +1,20 @@
 "use client";
 
+import {
+  closestCorners,
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import type { FunctionReturnType } from "convex/server";
@@ -14,6 +29,7 @@ import {
   ListChecksIcon,
   MessageSquareIcon,
   TriangleAlertIcon,
+  TruckIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
@@ -31,6 +47,15 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  SortableListRow,
+  sortableListInstructions,
+} from "@/components/organization/sortable-list-row";
 import {
   Empty,
   EmptyDescription,
@@ -67,6 +92,9 @@ type Plan = NonNullable<
   NonNullable<FunctionReturnType<typeof api.prepPlans.get>>["plan"]
 >;
 type Item = Plan["items"][number];
+type Supplier = NonNullable<
+  FunctionReturnType<typeof api.prepPlans.get>
+>["suppliers"][number];
 
 // Small scaled amounts such as 0,004 kg must not round to 0.
 const quantityFormatter = new Intl.NumberFormat("da-DK", {
@@ -121,7 +149,9 @@ function itemKey(item: Item) {
 export function PrepPlan() {
   const [locationId, setLocationId] = useState<Id<"locations"> | null>(null);
   const [date, setDate] = useState<string | null>(null);
-  const [mode, setMode] = useState<"overview" | "steps">("overview");
+  const [mode, setMode] = useState<"overview" | "steps" | "delivery">(
+    "overview",
+  );
   const [step, setStep] = useState(0);
   // Refreshed so a kiosk left open moves to the next prep day after midnight.
   const [now, setNow] = useState(() => roundedNow());
@@ -291,7 +321,13 @@ export function PrepPlan() {
             value={[mode]}
             onValueChange={(values) => {
               const next = values[0];
-              if (next === "overview" || next === "steps") setMode(next);
+              if (
+                next === "overview" ||
+                next === "steps" ||
+                next === "delivery"
+              ) {
+                setMode(next);
+              }
             }}
             variant="outline"
             size="lg"
@@ -302,6 +338,9 @@ export function PrepPlan() {
             </ToggleGroupItem>
             <ToggleGroupItem value="steps" className="min-h-11 flex-1">
               Trin for trin
+            </ToggleGroupItem>
+            <ToggleGroupItem value="delivery" className="min-h-11 flex-1">
+              Levering
             </ToggleGroupItem>
           </ToggleGroup>
         ) : null}
@@ -366,6 +405,8 @@ export function PrepPlan() {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+      ) : mode === "delivery" ? (
+        <DeliveryList plan={plan} supplier={supplier} />
       ) : mode === "overview" ? (
         <ol className="flex flex-col gap-3">
           {items.map((item, index) => (
@@ -683,5 +724,171 @@ function StepItem({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// Ordering locations in the remembered packing order; new ones go last by name.
+function DeliveryList({ plan, supplier }: { plan: Plan; supplier: Supplier }) {
+  const setDeliveryOrder = useMutation(api.prepPlans.setDeliveryOrder);
+  // Shown until the saved order arrives from the server.
+  const [localOrder, setLocalOrder] = useState<Id<"locations">[] | null>(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    // Press and hold on touch so swiping still scrolls the page.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+  const saved = localOrder ?? supplier.deliveryLocationOrder;
+  const rank = new Map(saved.map((id, index) => [id, index]));
+  const locations = [
+    ...new Map(
+      plan.orders.map((order) => [order.locationId, order.locationName]),
+    ),
+  ]
+    .map(([locationId, locationName]) => ({ locationId, locationName }))
+    .sort(
+      (a, b) =>
+        (rank.get(a.locationId) ?? Infinity) -
+          (rank.get(b.locationId) ?? Infinity) ||
+        a.locationName.localeCompare(b.locationName, "da"),
+    );
+  const ids = locations.map((row) => row.locationId);
+  const name = (id: unknown) =>
+    locations.find((row) => row.locationId === id)?.locationName ??
+    "Lokationen";
+
+  async function move(from: number, to: number) {
+    const next = arrayMove(ids, from, to);
+    // Keep the slots of locations without orders on this prep day.
+    const visible = new Set(ids);
+    const full = [...saved, ...ids.filter((id) => !rank.has(id))];
+    let index = 0;
+    const order = full.map((id) => (visible.has(id) ? next[index++] : id));
+    setLocalOrder(order);
+    try {
+      await setDeliveryOrder({
+        locationId: plan.locationId,
+        locationIds: order,
+      });
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Rækkefølgen kunne ikke gemmes"));
+    } finally {
+      setLocalOrder(null);
+    }
+  }
+
+  return (
+    <DndContext
+      accessibility={{
+        screenReaderInstructions: sortableListInstructions,
+        announcements: {
+          onDragStart: ({ active }) => `${name(active.id)} er valgt.`,
+          onDragOver: ({ over }) =>
+            over
+              ? `Flyttes til plads ${ids.indexOf(over.id as Id<"locations">) + 1}.`
+              : undefined,
+          onDragEnd: ({ active }) => `${name(active.id)} er placeret.`,
+          onDragCancel: ({ active }) =>
+            `Flytning af ${name(active.id)} blev annulleret.`,
+        },
+      }}
+      collisionDetection={closestCorners}
+      sensors={sensors}
+      onDragEnd={({ active, over }) => {
+        if (!over || active.id === over.id) return;
+        const from = ids.indexOf(active.id as Id<"locations">);
+        const to = ids.indexOf(over.id as Id<"locations">);
+        if (from >= 0 && to >= 0) void move(from, to);
+      }}
+    >
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <ol className="flex flex-col gap-2" aria-label="Leveringsrækkefølge">
+          {locations.map((location, index) => {
+            const lines = plan.items.flatMap((item) => {
+              const store = item.stores.find(
+                (row) => row.locationId === location.locationId,
+              );
+              return store ? [{ item, quantity: store.quantity }] : [];
+            });
+            const comments = plan.orders.filter(
+              (order) =>
+                order.locationId === location.locationId && order.comment,
+            );
+            return (
+              <SortableListRow
+                key={location.locationId}
+                id={location.locationId}
+                label={location.locationName}
+                position={index + 1}
+                roleDescription="lokation, der kan flyttes"
+                className="flex-wrap"
+              >
+                <Collapsible className="contents">
+                  <CollapsibleTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="lg"
+                        className="group min-h-12 min-w-0 flex-1 justify-start text-left"
+                      />
+                    }
+                  >
+                    <TruckIcon
+                      data-icon="inline-start"
+                      className="text-muted-foreground"
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {location.locationName}
+                    </span>
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      {lines.length}{" "}
+                      {lines.length === 1 ? "produkt" : "produkter"}
+                    </span>
+                    <ChevronDownIcon
+                      data-icon="inline-end"
+                      className="text-muted-foreground transition-transform group-data-panel-open:rotate-180"
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="basis-full">
+                    <div className="flex flex-col gap-2 px-2 pb-2">
+                      {comments.map((order) => (
+                        <p
+                          key={order.id}
+                          className="flex gap-2 text-sm wrap-anywhere whitespace-pre-line text-muted-foreground"
+                        >
+                          <MessageSquareIcon
+                            aria-hidden="true"
+                            className="mt-0.5 size-4 shrink-0"
+                          />
+                          {order.comment}
+                        </p>
+                      ))}
+                      <ul className="divide-y rounded-lg border">
+                        {lines.map(({ item, quantity }) => (
+                          <li
+                            key={itemKey(item)}
+                            className="flex min-h-11 items-center justify-between gap-4 px-3 py-2"
+                          >
+                            <span>{item.productName}</span>
+                            <span className="font-medium tabular-nums">
+                              {itemQuantity(item, quantity)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </SortableListRow>
+            );
+          })}
+        </ol>
+      </SortableContext>
+    </DndContext>
   );
 }
