@@ -2252,56 +2252,58 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             </CardHeader>
             <CardContent>
               <FieldGroup>
-                <Field data-invalid={Boolean(errors.prepLeadTimeHours)}>
-                  <div className="flex items-center gap-1">
-                    <FieldLabel htmlFor="product-prep-lead-time">
-                      Forberedelsestid
-                    </FieldLabel>
-                    <HelpTooltip
-                      label="Forberedelsestid"
-                      content="Hvor lang tid produktet tager, fx at marinere eller køle ned. Produkter med lang forberedelsestid kommer først i Prepplan."
-                    />
-                  </div>
-                  <InputGroup className="h-11 max-w-48">
-                    <InputGroupInput
-                      id="product-prep-lead-time"
-                      type="text"
-                      inputMode="decimal"
-                      value={prepLeadTimeHours}
-                      onChange={(event) =>
-                        setPrepLeadTimeHours(event.target.value)
-                      }
-                      aria-invalid={Boolean(errors.prepLeadTimeHours)}
-                    />
-                    <InputGroupAddon align="inline-end">timer</InputGroupAddon>
-                  </InputGroup>
-                  <FieldError>{errors.prepLeadTimeHours}</FieldError>
-                </Field>
-                <Field data-invalid={Boolean(errors.prepCutoffPercent)}>
-                  <div className="flex items-center gap-1">
-                    <FieldLabel htmlFor="product-prep-cutoff">
-                      Svind ved prep
-                    </FieldLabel>
-                    <HelpTooltip
-                      label="Svind ved prep"
-                      content="Hvor meget af den bestilte mængde der skæres fra, fx skræl og afpuds. Med 20 % giver 10 kg bestilt 8 kg færdigt produkt. Leverandører med svind slået til foreslår så den ekstra mængde."
-                    />
-                  </div>
-                  <InputGroup className="h-11 max-w-48">
-                    <InputGroupInput
-                      id="product-prep-cutoff"
-                      type="text"
-                      inputMode="decimal"
-                      value={prepCutoffPercent}
-                      onChange={(event) =>
-                        setPrepCutoffPercent(event.target.value)
-                      }
-                      aria-invalid={Boolean(errors.prepCutoffPercent)}
-                    />
-                    <InputGroupAddon align="inline-end">%</InputGroupAddon>
-                  </InputGroup>
-                  <FieldError>{errors.prepCutoffPercent}</FieldError>
-                </Field>
+                <div className="flex flex-wrap gap-x-6 gap-y-7">
+                  <Field className="w-48" data-invalid={Boolean(errors.prepLeadTimeHours)}>
+                    <div className="flex items-center gap-1">
+                      <FieldLabel htmlFor="product-prep-lead-time">
+                        Forberedelsestid
+                      </FieldLabel>
+                      <HelpTooltip
+                        label="Forberedelsestid"
+                        content="Hvor lang tid produktet tager, fx at marinere eller køle ned. Produkter med lang forberedelsestid kommer først i Prepplan."
+                      />
+                    </div>
+                    <InputGroup className="h-11">
+                      <InputGroupInput
+                        id="product-prep-lead-time"
+                        type="text"
+                        inputMode="decimal"
+                        value={prepLeadTimeHours}
+                        onChange={(event) =>
+                          setPrepLeadTimeHours(event.target.value)
+                        }
+                        aria-invalid={Boolean(errors.prepLeadTimeHours)}
+                      />
+                      <InputGroupAddon align="inline-end">timer</InputGroupAddon>
+                    </InputGroup>
+                    <FieldError>{errors.prepLeadTimeHours}</FieldError>
+                  </Field>
+                  <Field className="w-48" data-invalid={Boolean(errors.prepCutoffPercent)}>
+                    <div className="flex items-center gap-1">
+                      <FieldLabel htmlFor="product-prep-cutoff">
+                        Svind ved prep
+                      </FieldLabel>
+                      <HelpTooltip
+                        label="Svind ved prep"
+                        content="Hvor meget af den bestilte mængde der skæres fra, fx skræl og afpuds. Med 20 % giver 10 kg bestilt 8 kg færdigt produkt. Leverandører med svind slået til foreslår så den ekstra mængde."
+                      />
+                    </div>
+                    <InputGroup className="h-11">
+                      <InputGroupInput
+                        id="product-prep-cutoff"
+                        type="text"
+                        inputMode="decimal"
+                        value={prepCutoffPercent}
+                        onChange={(event) =>
+                          setPrepCutoffPercent(event.target.value)
+                        }
+                        aria-invalid={Boolean(errors.prepCutoffPercent)}
+                      />
+                      <InputGroupAddon align="inline-end">%</InputGroupAddon>
+                    </InputGroup>
+                    <FieldError>{errors.prepCutoffPercent}</FieldError>
+                  </Field>
+                </div>
                 <Field>
                   <FieldLabel htmlFor="product-prep-method">
                     Fremgangsmåde
