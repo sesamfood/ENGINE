@@ -49,7 +49,11 @@ import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { canOrderFrom, getInternalSupplier } from "./internalOrders";
-import { PREP_DAY_CHOICES, prepDaysAfter } from "../lib/prep-days";
+import {
+  MAX_PREP_DAY_CHOICES,
+  PREP_DAY_CHOICES,
+  prepDaysAfter,
+} from "../lib/prep-days";
 import {
   forecastSettings,
   forecastSettingsFields,
@@ -470,6 +474,7 @@ export const listOperationalConsumption = query({
 });
 
 const MAX_COMMENT_LENGTH = 500;
+const MAX_WINDOW_ORDERS = 500;
 
 const orderInputValidator = v.object({
   locationId: v.id("locations"),
@@ -585,6 +590,105 @@ async function requirePlanDate(
   }
   return planDate;
 }
+
+async function findInternalWindowOrder(
+  ctx: QueryCtx,
+  args: {
+    organizationId: string;
+    locationId: Id<"locations">;
+    fulfillingLocationId: Id<"locations">;
+    planDate: string;
+    excludeOrderId?: Id<"orders">;
+  },
+) {
+  const orders = await ctx.db
+    .query("orders")
+    .withIndex("by_org_fulfillingLocation_planDate", (q) =>
+      q
+        .eq("organizationId", args.organizationId)
+        .eq("fulfillingLocationId", args.fulfillingLocationId)
+        .eq("planDate", args.planDate),
+    )
+    .take(MAX_WINDOW_ORDERS);
+  return (
+    orders.find(
+      (order) =>
+        order.locationId === args.locationId &&
+        order.fulfillmentStatus !== "cancelled" &&
+        order._id !== args.excludeOrderId,
+    ) ?? null
+  );
+}
+
+async function requireNoInternalWindowOrder(
+  ctx: MutationCtx,
+  args: {
+    organizationId: string;
+    locationId: Id<"locations">;
+    fulfillingLocationId: Id<"locations">;
+    planDate: string;
+    excludeOrderId?: Id<"orders">;
+  },
+) {
+  const existing = await findInternalWindowOrder(ctx, args);
+  if (!existing) return;
+  throw new ConvexError(
+    existing.fulfillmentStatus === "open"
+      ? "Der findes allerede en bestilling for dette bestillingsvindue. Redigér den eksisterende bestilling i stedet."
+      : "Der findes allerede en bestilling for dette bestillingsvindue.",
+  );
+}
+
+export const listInternalWindowOrders = query({
+  args: {
+    locationId: v.id("locations"),
+    fulfillingLocationId: v.id("locations"),
+    planDates: v.array(v.string()),
+  },
+  returns: v.array(
+    v.object({
+      id: v.id("orders"),
+      planDate: v.string(),
+      fulfillmentStatus: v.union(v.literal("open"), v.literal("transferred")),
+      createdAt: v.number(),
+      createdByName: v.string(),
+      itemCount: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const auth = await requirePlanner(ctx, args.locationId);
+    const dates = [...new Set(args.planDates)].slice(
+      0,
+      MAX_PREP_DAY_CHOICES + 2,
+    );
+    const matches = await Promise.all(
+      dates.map((planDate) =>
+        findInternalWindowOrder(ctx, {
+          organizationId: auth.organizationId,
+          locationId: args.locationId,
+          fulfillingLocationId: args.fulfillingLocationId,
+          planDate,
+        }),
+      ),
+    );
+    return matches.flatMap((order) =>
+      order?.planDate &&
+      (order.fulfillmentStatus === "open" ||
+        order.fulfillmentStatus === "transferred")
+        ? [
+            {
+              id: order._id,
+              planDate: order.planDate,
+              fulfillmentStatus: order.fulfillmentStatus,
+              createdAt: order.createdAt,
+              createdByName: order.createdByName,
+              itemCount: order.itemCount,
+            },
+          ]
+        : [],
+    );
+  },
+});
 
 export const listInternalSuppliers = query({
   args: { locationId: v.id("locations") },
@@ -910,6 +1014,14 @@ export const placeOrder = mutation({
             args.planDate,
           )
         : undefined;
+    if (fulfillingLocationId && planDate) {
+      await requireNoInternalWindowOrder(ctx, {
+        organizationId: auth.organizationId,
+        locationId: args.locationId,
+        fulfillingLocationId,
+        planDate,
+      });
+    }
     // AB Catering orders go to its API instead of by e-mail, unless turned off.
     const sendsToApi =
       catalogProvider === "abcatering" &&
@@ -1174,6 +1286,15 @@ export const updateInternalOrder = mutation({
     if (planDate === null) {
       requireExtraOrderAllowed({ orderWindows, allowExtraOrders });
     }
+    if (typeof planDate === "string" && planDate !== order.planDate) {
+      await requireNoInternalWindowOrder(ctx, {
+        organizationId: auth.organizationId,
+        locationId: order.locationId,
+        fulfillingLocationId: order.fulfillingLocationId,
+        planDate,
+        excludeOrderId: order._id,
+      });
+    }
     const existing = await ctx.db
       .query("orderLines")
       .withIndex("by_organizationId_and_orderId", (q) =>
@@ -1255,6 +1376,15 @@ export const reopenInternalOrder = mutation({
     }
     requireLocationAccess(auth, order.locationId);
     if (order.fulfillmentStatus !== "cancelled") return null;
+    if (order.planDate) {
+      await requireNoInternalWindowOrder(ctx, {
+        organizationId: auth.organizationId,
+        locationId: order.locationId,
+        fulfillingLocationId: order.fulfillingLocationId,
+        planDate: order.planDate,
+        excludeOrderId: order._id,
+      });
+    }
     await ctx.db.patch("orders", order._id, { fulfillmentStatus: "open" });
     await recordAudit(ctx, auth, {
       action: "ordering.reopen",
