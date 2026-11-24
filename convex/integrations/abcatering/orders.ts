@@ -6,7 +6,7 @@ import {
   internalMutation,
   internalQuery,
 } from "../../_generated/server";
-import { orderInputValidator } from "../../ordering";
+import { orderInputValidator, requireDeliveryDate } from "../../ordering";
 import { requireExternalDelivery } from "../../lib/testOrganizations";
 import { requireIntegrationEnabled } from "../state";
 import { withAccessToken } from "./api";
@@ -54,14 +54,16 @@ export const check = action({
       internal.ordering.prepareAbCateringOrder,
       order,
     );
+    await requireExternalDelivery(ctx, payload.organizationId);
     await requireIntegrationEnabled(ctx, payload.organizationId, "abcatering");
+    const date = requireDeliveryDate(deliveryDate);
     const result = await withAccessToken(
       ctx,
       payload.organizationId,
       (accessToken) =>
         placeOrder(accessToken, {
           lines: abLines(payload.lines),
-          deliveryDate,
+          deliveryDate: date,
           ignoreWarnings: [],
           testOrder: true,
         }),
@@ -125,11 +127,12 @@ export const complete = internalMutation({
     }
     // Recorded even if the integration was disabled meanwhile, so the order is never sent twice.
     await ctx.db.patch("orders", order._id, {
-      supplierOrder: args.failureMessage
+      supplierOrder: args.failureMessage !== undefined
         ? {
             ...order.supplierOrder,
             status: "failed",
-            failureMessage: args.failureMessage,
+            failureMessage:
+              args.failureMessage || "Bestillingen kunne ikke sendes til AB Catering",
           }
         : {
             ...order.supplierOrder,

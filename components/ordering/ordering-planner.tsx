@@ -87,6 +87,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
 import { addDays } from "@/lib/date";
+import { DatePicker } from "@/components/date-picker";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
@@ -213,7 +214,8 @@ function Planner({
   // null until the user has chosen, so it starts from tomorrow.
   const [deliveryDateInput, setDeliveryDateInput] = useState<string | null>(null);
   // AB Catering's check of the order; its warnings must be accepted before placing.
-  const [supplierCheck, setSupplierCheck] = useState<{
+  const [checkedOrder, setCheckedOrder] = useState<{
+    key: string;
     errors: { key: string; message: string }[];
     warnings: { key: string; message: string }[];
   } | null>(null);
@@ -386,8 +388,13 @@ function Planner({
     canPlan && locationId ? { locationId, asOf } : "skip",
   );
   const context = useLastDefined(liveContext, canPlan ? locationId : null);
+  // A chosen date that has passed falls back to tomorrow.
   const deliveryDate =
-    deliveryDateInput ?? (context ? addDays(context.today, 1) : "");
+    deliveryDateInput && (!context || deliveryDateInput >= context.today)
+      ? deliveryDateInput
+      : context
+        ? addDays(context.today, 1)
+        : "";
   const products = useCompleteCatalog(
     api.ordering.listProducts,
     canPlan && locationId ? { locationId } : "skip",
@@ -722,6 +729,15 @@ function Planner({
     productName: row.name,
     quantity: row.quantity ?? 0,
   }));
+  // A check only counts for the exact order and date it was made for.
+  const supplierCheckKey = JSON.stringify([
+    supplier?.id,
+    deliveryDate,
+    orderLines,
+    catalogLines,
+  ]);
+  const supplierCheck =
+    sendsToApi && checkedOrder?.key === supplierCheckKey ? checkedOrder : null;
   const missingPrices = planned.some((row) => row.productNumber && !row.catalogItem);
   const visible = searchProducts(rows, search, (row) => ({
     name: row.name,
@@ -948,16 +964,20 @@ function Planner({
       if (sendsToApi && supplier) {
         let check = supplierCheck;
         if (!check) {
-          check = await checkAbOrder({
-            locationId,
-            supplierId: supplier.id,
-            lines: orderLines,
-            catalogLines,
-            deliveryDate,
-          });
+          const key = supplierCheckKey;
+          check = {
+            key,
+            ...(await checkAbOrder({
+              locationId,
+              supplierId: supplier.id,
+              lines: orderLines,
+              catalogLines,
+              deliveryDate,
+            })),
+          };
           if (!mounted.current) return;
           if (check.errors.length || check.warnings.length) {
-            setSupplierCheck(check);
+            setCheckedOrder(check);
             return;
           }
         }
@@ -1714,7 +1734,7 @@ function Planner({
             onOpenChange={(open) => {
               if (submitting.current) return;
               setConfirming(open);
-              setSupplierCheck(null);
+              setCheckedOrder(null);
             }}
           >
             <AlertDialogContent>
@@ -1755,17 +1775,12 @@ function Planner({
                   <FieldLabel htmlFor="ordering-delivery-date">
                     Leveringsdato
                   </FieldLabel>
-                  <Input
+                  <DatePicker
                     id="ordering-delivery-date"
-                    type="date"
-                    className="h-11"
                     value={deliveryDate}
                     min={context?.today}
                     required
-                    onChange={(event) => {
-                      setDeliveryDateInput(event.target.value);
-                      setSupplierCheck(null);
-                    }}
+                    onValueChange={setDeliveryDateInput}
                     disabled={placing}
                   />
                 </Field>
@@ -1827,7 +1842,8 @@ function Planner({
                   {placing ? <Spinner data-icon="inline-start" /> : null}
                   {editing
                     ? "Gem ændringer"
-                    : supplierCheck?.warnings.length
+                    : supplierCheck?.warnings.length &&
+                        !supplierCheck.errors.length
                       ? "Acceptér og afgiv"
                       : "Afgiv bestilling"}
                 </AlertDialogAction>

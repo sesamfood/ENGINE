@@ -298,7 +298,11 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
           ) : null}
           {order.supplierOrder?.orderNumbers?.length ? (
             <div>
-              <dt className="text-muted-foreground">Ordrenummer hos leverandør</dt>
+              <dt className="text-muted-foreground">
+                {order.supplierOrder.orderNumbers.length > 1
+                  ? "Ordrenumre hos leverandør"
+                  : "Ordrenummer hos leverandør"}
+              </dt>
               <dd>{order.supplierOrder.orderNumbers.join(", ")}</dd>
             </div>
           ) : null}

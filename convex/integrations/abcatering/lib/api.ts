@@ -31,6 +31,8 @@ function amount(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const NO_RESPONSE = "AB Catering svarede ikke. Prøv igen om lidt";
+
 async function request(path: string, init: RequestInit) {
   try {
     return await fetch(`${BASE_URL}/${path}`, {
@@ -39,7 +41,7 @@ async function request(path: string, init: RequestInit) {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
-    throw new ConvexError("AB Catering svarede ikke. Prøv igen om lidt");
+    throw new ConvexError(NO_RESPONSE);
   }
 }
 
@@ -318,13 +320,13 @@ export function parseProductNumber(productNumber: string) {
 export type AbOrderMessage = { key: string; message: string };
 
 // Danish text for AB's error and warning keys. AB's own messages are in English.
-const MESSAGE_TEXT: Record<string, string> = {
+const ERROR_TEXT: Record<string, string> = {
   InvalidRequest: "En linje er ugyldig",
   DuplicateProduct: "Varen er med flere gange i samme enhed",
   InvalidDeliveryDate:
     "Leveringsdatoen er lukket, eller bestillingsfristen er overskredet",
   NotAvailable: "Varen findes ikke i jeres sortiment",
-  UnitMisMatch: "Kontrollér enheden",
+  UnitMisMatch: "Varen kan ikke bestilles i denne enhed",
   HighAmount: "Mængden er for stor",
   BlockedFromOrdering: "Varen kan ikke leveres på leveringsdatoen",
   OrderingNotAllowed: "AB Catering-brugeren må ikke afgive bestillinger",
@@ -332,6 +334,10 @@ const MESSAGE_TEXT: Record<string, string> = {
   UnknownDepartment: "AB Catering-afdelingen findes ikke længere",
   LineNotAdded: "En linje kunne ikke tilføjes",
   OrderNotPlaced: "Bestillingen kunne ikke afgives",
+};
+
+const WARNING_TEXT: Record<string, string> = {
+  UnitMisMatch: "Kontrollér enheden. Mængden svarer til indholdet i én enhed",
   Date: "Varen leveres senere i en separat ordre",
   HighPrice: "Linjeprisen er over 12.500 kr.",
   LowAmount: "Mængden er mindre end den mindste pakning",
@@ -339,7 +345,16 @@ const MESSAGE_TEXT: Record<string, string> = {
   PriceChanged: "Prisen er en anden på den senere leveringsdag",
 };
 
-function parseMessages(value: unknown): AbOrderMessage[] {
+// AB's message names the later day, the last unit or the minimum amount.
+const KEEP_AB_DETAIL = new Set(["Date", "LastOrderedUnit", "LowAmount"]);
+// AB asks for the RequestId when these keep happening.
+const NEEDS_REQUEST_ID = new Set(["LineNotAdded", "OrderNotPlaced"]);
+
+function parseMessages(
+  value: unknown,
+  texts: Record<string, string>,
+  requestId: string | null,
+): AbOrderMessage[] {
   return (Array.isArray(value) ? value : []).flatMap((row) => {
     if (!row || typeof row !== "object") return [];
     const record = row as Record<string, unknown>;
@@ -348,7 +363,14 @@ function parseMessages(value: unknown): AbOrderMessage[] {
     const product = text(record.productDescription) || text(record.productId);
     const unit = text(record.unit);
     const subject = product ? `${product}${unit ? ` (${unit})` : ""}: ` : "";
-    const detail = MESSAGE_TEXT[key] ?? text(record.message);
+    const abMessage = text(record.message);
+    let detail = texts[key] ?? (abMessage || key);
+    if (texts[key] && abMessage && KEEP_AB_DETAIL.has(key)) {
+      detail += ` (AB Catering: ${abMessage})`;
+    }
+    if (requestId && NEEDS_REQUEST_ID.has(key)) {
+      detail += `. Kontakt AB Catering med RequestId ${requestId}`;
+    }
     return [{ key, message: `${subject}${detail}`.slice(0, 500) }];
   });
 }
@@ -368,12 +390,23 @@ export async function placeOrder(
     testOrder: boolean;
   },
 ): Promise<AbPlaceOrderResult> {
-  const response = await authorizedRequest("placeorder", accessToken, {
-    lines: order.lines,
-    deliveryDate: order.deliveryDate,
-    ignoreWarnings: order.ignoreWarnings.map((key) => ({ key })),
-    testOrder: order.testOrder,
-  });
+  let response: Response;
+  try {
+    response = await authorizedRequest("placeorder", accessToken, {
+      lines: order.lines,
+      deliveryDate: order.deliveryDate,
+      ignoreWarnings: order.ignoreWarnings.map((key) => ({ key })),
+      testOrder: order.testOrder,
+    });
+  } catch (error) {
+    // AB may have placed the order before the connection failed.
+    if (!order.testOrder && error instanceof ConvexError && error.data === NO_RESPONSE) {
+      throw new ConvexError(
+        "AB Catering svarede ikke i tide. Kontrollér hos AB Catering, om bestillingen blev modtaget, før du bestiller igen",
+      );
+    }
+    throw error;
+  }
   const requestId = response.headers.get("requestid");
   const body = await response.text();
   let data: Record<string, unknown> = {};
@@ -385,17 +418,22 @@ export async function placeOrder(
   } catch {
     // Handled by the status checks below.
   }
-  const errors = parseMessages(data.errors);
-  const warnings = parseMessages(data.warnings);
+  const errors = parseMessages(data.errors, ERROR_TEXT, requestId);
+  const warnings = parseMessages(data.warnings, WARNING_TEXT, requestId);
+  if (response.status !== 200) {
+    console.log(`AB Catering placeorder status ${response.status} (RequestId ${requestId})`);
+  }
   if (response.status === 200) {
     const orderNumbers = (Array.isArray(data.orderNumbers) ? data.orderNumbers : [])
       .filter((value): value is number => Number.isInteger(value));
     return { status: "placed", orderNumbers };
   }
-  if (response.status === 202) {
-    return warnings.length || !order.testOrder
-      ? { status: "warnings", warnings }
-      : { status: "placed", orderNumbers: [] };
+  if (response.status === 202 && warnings.length) {
+    return { status: "warnings", warnings };
+  }
+  // A valid test order comes back as 202 with empty lists.
+  if (response.status === 202 && order.testOrder && Array.isArray(data.warnings)) {
+    return { status: "placed", orderNumbers: [] };
   }
   if (response.status === 400 && errors.length) {
     return { status: "errors", errors, warnings };

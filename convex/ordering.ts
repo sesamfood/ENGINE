@@ -993,7 +993,7 @@ function historySummary(order: Doc<"orders">) {
   };
 }
 
-function requireDeliveryDate(value: string | undefined) {
+export function requireDeliveryDate(value: string | undefined) {
   const today = dateKey(Date.now(), DEFAULT_TIME_ZONE);
   try {
     if (value && parseDateKey(value) && value >= today) {
@@ -1079,6 +1079,12 @@ export const placeOrder = mutation({
     } catch {
       throw new ConvexError("Datoen er ugyldig");
     }
+    // The dialog checked the order with AB; sending turned off since then.
+    if (args.deliveryDate !== undefined && !sendsToApi) {
+      throw new ConvexError(
+        "Bestillingen sendes ikke længere til AB Catering. Opdatér siden og prøv igen",
+      );
+    }
     const deliveryDate = sendsToApi
       ? requireDeliveryDate(args.deliveryDate)
       : undefined;
@@ -1114,7 +1120,11 @@ export const placeOrder = mutation({
               status: "pending" as const,
               deliveryDate,
               acceptedWarnings: [
-                ...new Set(args.acceptedWarnings ?? []),
+                ...new Set(
+                  (args.acceptedWarnings ?? [])
+                    .map((key) => key.trim())
+                    .filter((key) => key && key.length <= 64),
+                ),
               ].slice(0, 20),
             },
           }
