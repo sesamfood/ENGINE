@@ -97,6 +97,7 @@ const productValidator = v.object({
     v.object({ id: v.id("units"), name: v.string(), factor: v.number() }),
   ),
   hasIngredients: v.boolean(),
+  prepCutoffPercent: v.union(v.number(), v.null()),
   stock: v.union(v.number(), v.null()),
   lastCountedAt: v.union(v.number(), v.null()),
 });
@@ -188,6 +189,7 @@ export const listProducts = query({
                 : [],
             ),
             hasIngredients: ingredient !== null,
+            prepCutoffPercent: product.prepCutoffPercent ?? null,
             stock: stock?.quantity ?? null,
             lastCountedAt: stock?.lastCountedAt ?? null,
           };

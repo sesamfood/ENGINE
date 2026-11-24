@@ -324,6 +324,15 @@ function prepLeadTimeError(value: string) {
     : "Angiv en forberedelsestid mellem 0 og 336 timer";
 }
 
+function prepCutoffError(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return undefined;
+  const percent = Number(normalized);
+  return Number.isFinite(percent) && percent >= 0 && percent < 100
+    ? undefined
+    : "Angiv et svind fra 0 til under 100 %";
+}
+
 function parseMaxTemperature(value: string) {
   const normalized = value.trim();
   return normalized ? Number(normalized.replace(",", ".")) : null;
@@ -534,6 +543,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
   const [prepLeadTimeHours, setPrepLeadTimeHours] = useState("");
   const [prepMethod, setPrepMethod] = useState("");
+  const [prepCutoffPercent, setPrepCutoffPercent] = useState("");
   const [salesPrice, setSalesPrice] = useState("");
   const [productAllergens, setProductAllergens] = useState<AllergenId[]>([]);
   const [expiryValue, setExpiryValue] = useState("");
@@ -608,6 +618,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       product.prepLeadTimeHours?.toString().replace(".", ",") ?? "",
     );
     setPrepMethod(product.prepMethod ?? "");
+    setPrepCutoffPercent(
+      product.prepCutoffPercent?.toString().replace(".", ",") ?? "",
+    );
     setSalesPrice(
       product.salesPrice === null
         ? ""
@@ -1170,6 +1183,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     }
     const leadTimeError = prepLeadTimeError(prepLeadTimeHours);
     if (leadTimeError) nextErrors.prepLeadTimeHours = leadTimeError;
+    const cutoffError = prepCutoffError(prepCutoffPercent);
+    if (cutoffError) nextErrors.prepCutoffPercent = cutoffError;
     if (salesPrice.trim() && !SALES_PRICE_INPUT.test(salesPrice.trim())) {
       nextErrors.salesPrice = "Angiv et beløb med højst to decimaler";
     }
@@ -1334,6 +1349,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               ? Number(prepLeadTimeHours.trim().replace(",", "."))
               : null,
             prepMethod: prepMethod.trim() || null,
+            prepCutoffPercent: prepCutoffPercent.trim()
+              ? Number(prepCutoffPercent.trim().replace(",", "."))
+              : null,
             salesPrice: parseSalesPrice(salesPrice),
             allergens: productAllergens,
             expiry: expiryValue.trim()
@@ -1360,6 +1378,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               ? Number(prepLeadTimeHours.trim().replace(",", "."))
               : null,
             prepMethod: prepMethod.trim() || null,
+            prepCutoffPercent: prepCutoffPercent.trim()
+              ? Number(prepCutoffPercent.trim().replace(",", "."))
+              : null,
             salesPrice: parseSalesPrice(salesPrice),
             allergens: productAllergens,
             expiry: expiryValue.trim()
@@ -2255,6 +2276,31 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     <InputGroupAddon align="inline-end">timer</InputGroupAddon>
                   </InputGroup>
                   <FieldError>{errors.prepLeadTimeHours}</FieldError>
+                </Field>
+                <Field data-invalid={Boolean(errors.prepCutoffPercent)}>
+                  <div className="flex items-center gap-1">
+                    <FieldLabel htmlFor="product-prep-cutoff">
+                      Svind ved prep
+                    </FieldLabel>
+                    <HelpTooltip
+                      label="Svind ved prep"
+                      content="Hvor meget af den bestilte mængde der skæres fra, fx skræl og afpuds. Med 20 % giver 10 kg bestilt 8 kg færdigt produkt. Leverandører med svind slået til foreslår så den ekstra mængde."
+                    />
+                  </div>
+                  <InputGroup className="h-11 max-w-48">
+                    <InputGroupInput
+                      id="product-prep-cutoff"
+                      type="text"
+                      inputMode="decimal"
+                      value={prepCutoffPercent}
+                      onChange={(event) =>
+                        setPrepCutoffPercent(event.target.value)
+                      }
+                      aria-invalid={Boolean(errors.prepCutoffPercent)}
+                    />
+                    <InputGroupAddon align="inline-end">%</InputGroupAddon>
+                  </InputGroup>
+                  <FieldError>{errors.prepCutoffPercent}</FieldError>
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="product-prep-method">

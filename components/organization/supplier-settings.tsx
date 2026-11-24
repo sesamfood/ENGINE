@@ -53,7 +53,9 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { FormCardSkeleton } from "@/components/page-skeletons";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -77,6 +79,7 @@ type Draft = {
   name: string;
   email: string;
   forecast: ForecastSettingsDraft;
+  applyPrepCutoff: boolean;
 };
 
 export function SupplierSettings() {
@@ -105,6 +108,7 @@ export function SupplierSettings() {
           bufferPercent: DEFAULT_BUFFER_PERCENT,
         },
       ),
+      applyPrepCutoff: supplier?.applyPrepCutoff ?? false,
     });
   }
 
@@ -117,6 +121,7 @@ export function SupplierSettings() {
       name: draft.name,
       email: draft.email.trim() || null,
       ...forecast,
+      applyPrepCutoff: draft.applyPrepCutoff,
     };
     try {
       if (draft.supplier) {
@@ -308,6 +313,25 @@ export function SupplierSettings() {
                   disabled={saving}
                 />
               ) : null}
+              <Field orientation="horizontal">
+                <Switch
+                  id="supplier-prep-cutoff"
+                  checked={draft?.applyPrepCutoff ?? false}
+                  disabled={saving}
+                  onCheckedChange={(applyPrepCutoff) =>
+                    setDraft((current) =>
+                      current ? { ...current, applyPrepCutoff } : current,
+                    )
+                  }
+                />
+                <FieldLabel htmlFor="supplier-prep-cutoff" appearance="regular">
+                  Læg svind ved prep til forslag
+                </FieldLabel>
+                <HelpTooltip
+                  label="Svind ved prep"
+                  content="Forslag bliver større med hvert produkts svind ved prep. Brug det for leverandører, der leverer råvarer til prep."
+                />
+              </Field>
               {error ? <FieldError>{error}</FieldError> : null}
             </FieldGroup>
             <DialogFooter>
