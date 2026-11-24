@@ -3,7 +3,8 @@
 import { PasswordInput } from "@/components/ui/password-input";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { KeyRoundIcon, LayoutDashboardIcon, LogOutIcon, MonitorCogIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { KeyRoundIcon, LayoutDashboardIcon, LogOutIcon, MonitorCogIcon, PencilIcon, PlusIcon, RotateCcwIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
@@ -111,7 +112,7 @@ function AccountDialog({
       <DialogContent className="flex max-h-(--spacing-viewport-inset) flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Redigér kioskkonto</DialogTitle>
-          <DialogDescription>Skift kontoens navn, lokation, rolle og sider.</DialogDescription>
+          <DialogDescription>Skift kontoens navn, lokation, rolle og sider. Ændrede sider er markeret.</DialogDescription>
         </DialogHeader>
         {account ? (
           <AccountForm
@@ -144,14 +145,23 @@ function AccountForm({
   const updateAccount = useMutation(api.kiosk.updateAccount);
   const [pending, setPending] = useState(false);
   const [role, setRole] = useState<SystemOrganizationRole>(account.role);
-  const [ownPages, setOwnPages] = useState(account.pages !== null);
-  const initial = account.pages ?? defaultPages;
-  const [enabledPages, setEnabledPages] = useState<string[]>(initial?.enabledPages ?? []);
-  const [homePage, setHomePage] = useState(initial?.homePage ?? "");
+  const [enabledPages, setEnabledPages] = useState<string[]>(
+    (account.pages ?? defaultPages)?.enabledPages ?? [],
+  );
+  const [homePage, setHomePage] = useState((account.pages ?? defaultPages)?.homePage ?? "");
+  const changes = pageChanges(pages, { enabledPages, homePage }, defaultPages);
+  const changeCount = changes.added.length + changes.removed.length + (changes.homePage ? 1 : 0);
+  const changed = changeCount > 0;
   const features = [...new Set(pages.map((page) => page.feature))];
   const homeItems = pages
     .filter((page) => enabledPages.includes(page.id))
     .map((page) => ({ value: page.id, label: page.label }));
+  const defaultHomeLabel = pages.find((page) => page.id === defaultPages?.homePage)?.label;
+
+  function reset() {
+    setEnabledPages(defaultPages?.enabledPages ?? []);
+    setHomePage(defaultPages?.homePage ?? "");
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -163,7 +173,8 @@ function AccountForm({
         name: String(form.get("name")),
         locationId: String(form.get("locationId")) as Id<"locations">,
         role,
-        pages: ownPages ? { enabledPages, homePage } : null,
+        // Pages matching the default follow later changes to the kiosk setup.
+        pages: changed || !defaultPages ? { enabledPages, homePage } : null,
       });
       toast.success("Kioskkontoen er opdateret");
       onClose();
@@ -199,60 +210,94 @@ function AccountForm({
             </Field>
           </div>
           <FieldSeparator />
-          <SettingsSwitchField
-            label="Egne sider"
-            checked={ownPages}
-            onCheckedChange={setOwnPages}
-            help={{ label: "Egne sider", content: "Kontoen bruger sine egne sider og startside i stedet for organisationens kioskopsætning. PIN-kode, dashboards og inaktivitet følger stadig kioskopsætningen." }}
-          />
-          {ownPages ? (
-            <>
-              <FieldSet>
-                <FieldLegend variant="label">Aktiverede sider</FieldLegend>
-                <div data-slot="checkbox-group" className="grid gap-4 md:grid-cols-2">
-                  {features.map((feature) => (
-                    <FieldSet key={feature} appearance="outline">
-                      <FieldLegend variant="label">{featureLabels[feature]}</FieldLegend>
-                      {pages
-                        .filter((page) => page.feature === feature)
-                        .map((page) => (
-                          <Field key={page.id} orientation="horizontal">
-                            <Checkbox
-                              id={`account-page-${page.id}`}
-                              checked={enabledPages.includes(page.id)}
-                              onCheckedChange={(checked) => {
-                                setEnabledPages(
-                                  checked
-                                    ? [...enabledPages, page.id]
-                                    : enabledPages.filter((id) => id !== page.id),
-                                );
-                                if (homePage === page.id && !checked) setHomePage("");
-                              }}
-                            />
-                            <FieldLabel htmlFor={`account-page-${page.id}`}>{page.label}</FieldLabel>
-                          </Field>
-                        ))}
-                    </FieldSet>
-                  ))}
-                </div>
-              </FieldSet>
-              <Field>
-                <FieldLabel htmlFor="edit-kiosk-home">Startside</FieldLabel>
-                <Select items={homeItems} value={homePage || null} onValueChange={(value) => setHomePage(value ?? "")} disabled={!homeItems.length}>
-                  <SelectTrigger id="edit-kiosk-home" className="w-full"><SelectValue placeholder="Vælg startside" /></SelectTrigger>
-                  <SelectContent><SelectGroup>{homeItems.map((page) => <SelectItem key={page.value} value={page.value}>{page.label}</SelectItem>)}</SelectGroup></SelectContent>
-                </Select>
-              </Field>
-            </>
-          ) : null}
+          <FieldSet>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
+                <FieldLegend variant="label" className="mb-0">Aktiverede sider</FieldLegend>
+                <HelpTooltip label="Aktiverede sider" content="Sider og startside følger kioskopsætningen, indtil du ændrer dem her. PIN-kode, dashboards og inaktivitet følger altid kioskopsætningen." />
+              </div>
+              <Button type="button" variant="outline" className="min-h-11" onClick={reset} disabled={!changed}>
+                <RotateCcwIcon data-icon="inline-start" />
+                Nulstil til standard
+              </Button>
+            </div>
+            <FieldDescription>
+              {changed
+                ? `${changeCount} ${changeCount === 1 ? "ændring" : "ændringer"} fra kioskopsætningen.`
+                : "Følger kioskopsætningen."}
+            </FieldDescription>
+            <div data-slot="checkbox-group" className="grid gap-4 md:grid-cols-2">
+              {features.map((feature) => (
+                <FieldSet key={feature} appearance="outline">
+                  <FieldLegend variant="label">{featureLabels[feature]}</FieldLegend>
+                  {pages
+                    .filter((page) => page.feature === feature)
+                    .map((page) => (
+                      <Field key={page.id} orientation="horizontal">
+                        <Checkbox
+                          id={`account-page-${page.id}`}
+                          checked={enabledPages.includes(page.id)}
+                          onCheckedChange={(checked) => {
+                            setEnabledPages(
+                              checked
+                                ? [...enabledPages, page.id]
+                                : enabledPages.filter((id) => id !== page.id),
+                            );
+                            if (homePage === page.id && !checked) setHomePage("");
+                          }}
+                        />
+                        <FieldLabel htmlFor={`account-page-${page.id}`}>{page.label}</FieldLabel>
+                        {changes.added.includes(page) ? <Badge variant="secondary" className="ml-auto">Tilføjet</Badge> : null}
+                        {changes.removed.includes(page) ? <Badge variant="outline" className="ml-auto">Fjernet</Badge> : null}
+                      </Field>
+                    ))}
+                </FieldSet>
+              ))}
+            </div>
+          </FieldSet>
+          <Field>
+            <FieldLabel htmlFor="edit-kiosk-home">Startside</FieldLabel>
+            <Select items={homeItems} value={homePage || null} onValueChange={(value) => setHomePage(value ?? "")} disabled={!homeItems.length}>
+              <SelectTrigger id="edit-kiosk-home" className="w-full"><SelectValue placeholder="Vælg startside" /></SelectTrigger>
+              <SelectContent><SelectGroup>{homeItems.map((page) => <SelectItem key={page.value} value={page.value}>{page.label}</SelectItem>)}</SelectGroup></SelectContent>
+            </Select>
+            {changes.homePage && defaultHomeLabel ? <FieldDescription>Standard: {defaultHomeLabel}</FieldDescription> : null}
+          </Field>
         </FieldGroup>
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>Annullér</Button>
-        <Button type="submit" disabled={pending || (ownPages && !homePage)}>{pending ? <Spinner data-icon="inline-start" /> : null}Gem ændringer</Button>
+        <Button type="submit" disabled={pending || !homePage}>{pending ? <Spinner data-icon="inline-start" /> : null}Gem ændringer</Button>
       </DialogFooter>
     </form>
   );
+}
+
+function PageChangeSummary({ changes }: { changes: ReturnType<typeof pageChanges> }) {
+  const parts = [
+    changes.added.length ? `Tilføjet: ${changes.added.map((page) => page.label).join(", ")}` : null,
+    changes.removed.length ? `Fjernet: ${changes.removed.map((page) => page.label).join(", ")}` : null,
+    changes.homePage ? `Startside: ${changes.homePage.label}` : null,
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return (
+    <p className="mt-2 text-sm">
+      <Badge variant="outline" className="mr-2">Egne sider</Badge>
+      {parts.join(" · ")}
+    </p>
+  );
+}
+
+/** Visible pages and start page that differ from the organization's kiosk setup. */
+function pageChanges(pages: KioskPage[], own: AccountPages, defaults: AccountPages | null) {
+  const base = defaults?.enabledPages ?? [];
+  return {
+    added: pages.filter((page) => own.enabledPages.includes(page.id) && !base.includes(page.id)),
+    removed: pages.filter((page) => !own.enabledPages.includes(page.id) && base.includes(page.id)),
+    homePage: own.homePage !== defaults?.homePage
+      ? pages.find((page) => page.id === own.homePage)
+      : undefined,
+  };
 }
 
 function PasswordDialog({ account, onClose }: { account: Account | null; onClose: () => void }) {
@@ -464,6 +509,10 @@ export function KioskSettings() {
     api.kiosk.listAccounts,
     canManageAccounts ? {} : "skip",
   );
+  const defaultPages = useQuery(
+    api.kiosk.getDefaultPages,
+    canManageAccounts ? {} : "skip",
+  );
   const memberLocationAccess = useQuery(
     api.access.listMemberLocationAccess,
     canManageAccounts ? {} : "skip",
@@ -537,7 +586,7 @@ export function KioskSettings() {
 
   if (
     (canManageSettings && (settings === undefined || dashboardOptions === undefined)) ||
-    (canManageAccounts && (accounts === undefined || locations === undefined))
+    (canManageAccounts && (accounts === undefined || locations === undefined || defaultPages === undefined))
   ) {
     return <div className="flex flex-col gap-5"><FormCardSkeleton /><FormCardSkeleton /></div>;
   }
@@ -738,7 +787,7 @@ export function KioskSettings() {
         <CardContent appearance="compact" className="flex flex-col">
           {availableAccounts.length ? availableAccounts.map((account) => (
             <div key={account.memberId} className="flex flex-col gap-4 rounded-xl border p-4 lg:flex-row lg:items-center">
-              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{account.name}</p><Badge>Kiosk</Badge><Badge variant="secondary">{roleLabels[account.role]}</Badge>{account.pages ? <Badge variant="outline">Egne sider</Badge> : null}</div><p className="mt-1 text-sm text-muted-foreground">{account.username} · {account.locationName} · {account.activeSessionCount} aktive sessioner</p></div>
+              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{account.name}</p><Badge>Kiosk</Badge><Badge variant="secondary">{roleLabels[account.role]}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{account.username} · {account.locationName} · {account.activeSessionCount} aktive sessioner</p>{account.pages ? <PageChangeSummary changes={pageChanges(visiblePages, account.pages, defaultPages ?? null)} /> : null}</div>
               <div className="flex flex-wrap gap-2">
                 {canManageKioskLocations ? <Button type="button" variant="outline" onClick={() => setEditing(account)}><PencilIcon data-icon="inline-start" />Redigér</Button> : null}
                 <Button type="button" variant="outline" onClick={() => setPasswordAccount(account)}><KeyRoundIcon data-icon="inline-start" />Skift adgangskode</Button>
@@ -749,7 +798,7 @@ export function KioskSettings() {
           )) : <div className="flex min-h-36 flex-col items-center justify-center gap-2 text-center"><MonitorCogIcon className="size-6 text-muted-foreground" /><p className="font-medium">Ingen kioskkonti endnu</p><p className="text-sm text-muted-foreground">Gem opsætningen og opret den første konto ovenfor.</p></div>}
         </CardContent>
       </Card>
-      <AccountDialog account={editing} locations={availableLocations} pages={visiblePages} defaultPages={settings ?? null} onClose={() => setEditing(null)} />
+      <AccountDialog account={editing} locations={availableLocations} pages={visiblePages} defaultPages={defaultPages ?? null} onClose={() => setEditing(null)} />
       <PasswordDialog account={passwordAccount} onClose={() => setPasswordAccount(null)} />
       </> : null}
     </div>

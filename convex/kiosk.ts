@@ -290,6 +290,20 @@ export const listAccounts = query({
   },
 });
 
+/** The organization's kiosk pages, which accounts without their own pages use. */
+export const getDefaultPages = query({
+  args: {},
+  returns: v.union(v.object({ enabledPages: v.array(v.string()), homePage: v.string() }), v.null()),
+  handler: async (ctx) => {
+    const { organizationId } = await requireKioskAccountManager(ctx);
+    const settings = await ctx.db
+      .query("kioskSettings")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+      .unique();
+    return settings && { enabledPages: settings.enabledPages, homePage: settings.homePage };
+  },
+});
+
 export const createAccount = mutation({
   args: {
     name: v.string(),
