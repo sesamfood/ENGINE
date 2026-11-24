@@ -31,7 +31,6 @@ import {
   TriangleAlertIcon,
   TruckIcon,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AppBottomBar } from "@/components/app-bottom-bar";
@@ -47,6 +46,12 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import {
   Collapsible,
   CollapsibleContent,
@@ -81,7 +86,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
+import { authClient } from "@/lib/auth-client";
 import type { Id } from "@/convex/_generated/dataModel";
 import { addDays, dateTimeFormatter, parseDateKey } from "@/lib/date";
 import { useLastDefined } from "@/lib/use-last-defined";
@@ -92,6 +114,7 @@ type Plan = NonNullable<
   NonNullable<FunctionReturnType<typeof api.prepPlans.get>>["plan"]
 >;
 type Item = Plan["items"][number];
+type Store = Item["stores"][number];
 type Supplier = NonNullable<
   FunctionReturnType<typeof api.prepPlans.get>
 >["suppliers"][number];
@@ -168,6 +191,7 @@ export function PrepPlan() {
   const data = useLastDefined(live, `${locationId}:${date}`);
   const setChecked = useMutation(api.prepPlans.setChecked);
   const [pending, setPending] = useState<Set<string>>(new Set());
+  const [creating, setCreating] = useState(false);
   const kiosk = useKiosk();
   const canManageTransfers = usePermission("transfers.manage");
   // Same rule as the transfer page's order tab.
@@ -210,6 +234,13 @@ export function PrepPlan() {
   const items = plan.items;
   const doneCount = items.filter((item) => item.checked).length;
   const allDone = items.length > 0 && doneCount === items.length;
+  const allPacked =
+    items.length > 0 &&
+    items.every((item) => item.stores.every((store) => store.packed));
+  const hasOpenOrders = plan.orders.some((order) => !order.transferred);
+  const showDelivery = allDone && mode !== "delivery";
+  const showCreate =
+    mode === "delivery" && allPacked && hasOpenOrders && canTransfer;
   const storeCount = new Set(plan.orders.map((order) => order.locationName))
     .size;
   const currentStep = Math.min(step, Math.max(items.length - 1, 0));
@@ -406,7 +437,24 @@ export function PrepPlan() {
           </EmptyHeader>
         </Empty>
       ) : mode === "delivery" ? (
-        <DeliveryList plan={plan} supplier={supplier} />
+        <>
+          {plan.orders.length && !hasOpenOrders ? (
+            <Alert>
+              <CheckIcon />
+              <AlertTitle>Transfers er oprettet</AlertTitle>
+              <AlertDescription>
+                Alle bestillinger for prepdagen er sendt som transfers.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <DeliveryList plan={plan} supplier={supplier} />
+          {creating ? (
+            <CreateTransfersDialog
+              plan={plan}
+              onClose={() => setCreating(false)}
+            />
+          ) : null}
+        </>
       ) : mode === "overview" ? (
         <ol className="flex flex-col gap-3">
           {items.map((item, index) => (
@@ -440,14 +488,23 @@ export function PrepPlan() {
       )}
 
       {bottomBar(
-        items.length && (mode === "steps" || (allDone && canTransfer)) ? (
+        items.length && (mode === "steps" || showDelivery || showCreate) ? (
           <>
-            {allDone && canTransfer ? (
+            {showDelivery ? (
               <Button
                 size="lg"
                 className="min-h-14"
-                render={<Link href="/transfers/orders" />}
-                nativeButton={false}
+                onClick={() => setMode("delivery")}
+              >
+                <TruckIcon data-icon="inline-start" />
+                Gå til levering
+              </Button>
+            ) : null}
+            {showCreate ? (
+              <Button
+                size="lg"
+                className="min-h-14"
+                onClick={() => setCreating(true)}
               >
                 <ArrowRightLeftIcon data-icon="inline-start" />
                 Opret transfers
@@ -732,6 +789,14 @@ function DeliveryList({ plan, supplier }: { plan: Plan; supplier: Supplier }) {
   const setDeliveryOrder = useMutation(api.prepPlans.setDeliveryOrder);
   // Shown until the saved order arrives from the server.
   const [localOrder, setLocalOrder] = useState<Id<"locations">[] | null>(null);
+  const [open, setOpen] = useState<ReadonlySet<Id<"locations">>>(new Set());
+  const setOpenFor = (id: Id<"locations">, next: boolean) =>
+    setOpen((current) => {
+      const copy = new Set(current);
+      if (next) copy.add(id);
+      else copy.delete(id);
+      return copy;
+    });
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     // Press and hold on touch so swiping still scrolls the page.
@@ -812,8 +877,9 @@ function DeliveryList({ plan, supplier }: { plan: Plan; supplier: Supplier }) {
               const store = item.stores.find(
                 (row) => row.locationId === location.locationId,
               );
-              return store ? [{ item, quantity: store.quantity }] : [];
+              return store ? [{ item, store }] : [];
             });
+            const done = lines.every(({ store }) => store.packed);
             const comments = plan.orders.filter(
               (order) =>
                 order.locationId === location.locationId && order.comment,
@@ -825,16 +891,20 @@ function DeliveryList({ plan, supplier }: { plan: Plan; supplier: Supplier }) {
                 label={location.locationName}
                 position={index + 1}
                 roleDescription="lokation, der kan flyttes"
-                className="flex-wrap"
+                className="min-h-18 flex-wrap"
               >
-                <Collapsible className="contents">
+                <Collapsible
+                  className="contents"
+                  open={open.has(location.locationId)}
+                  onOpenChange={(next) => setOpenFor(location.locationId, next)}
+                >
                   <CollapsibleTrigger
                     render={
                       <Button
                         type="button"
                         variant="ghost"
                         size="lg"
-                        className="group min-h-12 min-w-0 flex-1 justify-start text-left"
+                        className="group min-h-16 min-w-0 flex-1 justify-start text-left"
                       />
                     }
                   >
@@ -845,10 +915,17 @@ function DeliveryList({ plan, supplier }: { plan: Plan; supplier: Supplier }) {
                     <span className="min-w-0 flex-1 truncate font-medium">
                       {location.locationName}
                     </span>
-                    <span className="shrink-0 text-sm text-muted-foreground">
-                      {lines.length}{" "}
-                      {lines.length === 1 ? "produkt" : "produkter"}
-                    </span>
+                    {done ? (
+                      <Badge variant="success">
+                        <CheckIcon data-icon="inline-start" />
+                        Færdig
+                      </Badge>
+                    ) : (
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        {lines.filter(({ store }) => store.packed).length} af{" "}
+                        {lines.length} pakket
+                      </span>
+                    )}
                     <ChevronDownIcon
                       data-icon="inline-end"
                       className="text-muted-foreground transition-transform group-data-panel-open:rotate-180"
@@ -869,16 +946,25 @@ function DeliveryList({ plan, supplier }: { plan: Plan; supplier: Supplier }) {
                         </p>
                       ))}
                       <ul className="divide-y rounded-lg border">
-                        {lines.map(({ item, quantity }) => (
-                          <li
-                            key={itemKey(item)}
-                            className="flex min-h-11 items-center justify-between gap-4 px-3 py-2"
-                          >
-                            <span>{item.productName}</span>
-                            <span className="font-medium tabular-nums">
-                              {itemQuantity(item, quantity)}
-                            </span>
-                          </li>
+                        {lines.map(({ item, store }) => (
+                          <PackLine
+                            key={`${itemKey(item)}:${store.packed?.temperatureCelsius}`}
+                            plan={plan}
+                            item={item}
+                            store={store}
+                            onPacked={(packed) => {
+                              // Close the location once its last product is packed.
+                              if (
+                                packed &&
+                                lines.every(
+                                  (line) =>
+                                    line.store.packed || line.item === item,
+                                )
+                              ) {
+                                setOpenFor(location.locationId, false);
+                              }
+                            }}
+                          />
                         ))}
                       </ul>
                     </div>
@@ -890,5 +976,337 @@ function DeliveryList({ plan, supplier }: { plan: Plan; supplier: Supplier }) {
         </ol>
       </SortableContext>
     </DndContext>
+  );
+}
+
+const temperatureFormatter = new Intl.NumberFormat("da-DK", {
+  maximumFractionDigits: 1,
+});
+
+// "4,5" or "-18"; null when empty, undefined when invalid.
+function parseTemperature(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+  if (!/^-?\d+(?:\.\d)?$/u.test(normalized)) return undefined;
+  const parsed = Number(normalized);
+  return parsed >= -100 && parsed <= 100 ? parsed : undefined;
+}
+
+// A product for one location. Entering a temperature also marks it packed.
+function PackLine({
+  plan,
+  item,
+  store,
+  onPacked,
+}: {
+  plan: Plan;
+  item: Item;
+  store: Store;
+  onPacked: (packed: boolean) => void;
+}) {
+  const setPacked = useMutation(api.prepPlans.setPacked);
+  const saved = store.packed?.temperatureCelsius ?? null;
+  const [draft, setDraft] = useState(
+    saved === null ? "" : temperatureFormatter.format(saved),
+  );
+  const [pending, setPending] = useState(false);
+  const parsed = parseTemperature(draft);
+  const id = `pack-${store.locationId}-${itemKey(item)}`;
+  const maximum = item.maxTemperatureCelsius;
+  const deviation =
+    maximum !== null && typeof parsed === "number" && parsed > maximum;
+
+  async function save(packed: boolean, temperatureCelsius: number | null) {
+    setPending(true);
+    try {
+      await setPacked({
+        locationId: plan.locationId,
+        date: plan.date,
+        deliveryLocationId: store.locationId,
+        productId: item.productId,
+        unitId: item.unitId,
+        quantity: store.quantity,
+        packed,
+        ...(temperatureCelsius !== null ? { temperatureCelsius } : {}),
+      });
+      onPacked(packed);
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Produktet kunne ikke gemmes"));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function commit() {
+    if (parsed === undefined || parsed === saved) return;
+    if (parsed === null) {
+      // A temperature tracked Produkt can't stay packed without one.
+      if (maximum !== null && store.packed) {
+        setDraft(temperatureFormatter.format(saved!));
+        return;
+      }
+      // Clearing the temperature keeps a packed product packed.
+      if (!store.packed) return;
+    }
+    void save(true, parsed);
+  }
+
+  return (
+    <li className="flex min-h-14 items-center gap-3 px-3 py-2">
+      <Checkbox
+        id={id}
+        checked={Boolean(store.packed)}
+        disabled={
+          pending ||
+          (!store.packed && maximum !== null && typeof parsed !== "number")
+        }
+        onCheckedChange={(checked) =>
+          void save(
+            checked,
+            checked && typeof parsed === "number" ? parsed : null,
+          )
+        }
+        aria-label={`${item.productName} er pakket`}
+        className="size-7 [&_svg]:size-5!"
+      />
+      <label htmlFor={id} className="flex min-w-0 flex-1 flex-col">
+        <span className={store.packed ? "line-through" : undefined}>
+          {item.productName}
+        </span>
+        <span className="text-sm font-medium text-muted-foreground tabular-nums">
+          {itemQuantity(item, store.quantity)}
+        </span>
+        {maximum !== null ? (
+          <span
+            className={
+              deviation
+                ? "text-sm text-destructive"
+                : "text-sm text-muted-foreground"
+            }
+          >
+            {deviation
+              ? `Over maks. ${temperatureFormatter.format(maximum)} °C`
+              : `Temperatur påkrævet · maks. ${temperatureFormatter.format(maximum)} °C`}
+          </span>
+        ) : null}
+      </label>
+      <InputGroup className="h-11 w-24 shrink-0">
+        <InputGroupInput
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          disabled={pending}
+          aria-label={`Temperatur for ${item.productName}`}
+          aria-invalid={parsed === undefined || deviation}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") commit();
+          }}
+        />
+        <InputGroupAddon align="inline-end">
+          <InputGroupText>°C</InputGroupText>
+        </InputGroupAddon>
+      </InputGroup>
+    </li>
+  );
+}
+
+// Asks for what the Transfers need: who is responsible, and why a temperature is too high.
+function CreateTransfersDialog({
+  plan,
+  onClose,
+}: {
+  plan: Plan;
+  onClose: () => void;
+}) {
+  const createTransfers = useMutation(api.prepPlans.createTransfers);
+  const users = useQuery(api.transfers.listResponsibleUsers, {});
+  const { data: session } = authClient.useSession();
+  const kiosk = useKiosk();
+  // A shared kiosk account is not a person, so the prepper picks themselves.
+  const sessionUserId =
+    !kiosk?.isKioskAccount && !kiosk?.kioskModeEnabled
+      ? session?.user.id
+      : undefined;
+  const [responsible, setResponsible] = useState<string | null>(null);
+  const responsibleId =
+    responsible ??
+    (users?.some((user) => user.id === sessionUserId) ? sessionUserId! : null);
+  const [comments, setComments] = useState<Record<string, string>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const openLocations = [
+    ...new Map(
+      plan.orders
+        .filter((order) => !order.transferred)
+        .map((order) => [order.locationId, order.locationName]),
+    ),
+  ];
+  const deviations = openLocations.flatMap(([locationId, locationName]) => {
+    const lines = plan.items.flatMap((item) => {
+      const temperature = item.stores.find(
+        (store) => store.locationId === locationId,
+      )?.packed?.temperatureCelsius;
+      return item.maxTemperatureCelsius !== null &&
+        temperature != null &&
+        temperature > item.maxTemperatureCelsius
+        ? [
+            `${item.productName} ${temperatureFormatter.format(temperature)} °C (maks. ${temperatureFormatter.format(item.maxTemperatureCelsius)} °C)`,
+          ]
+        : [];
+    });
+    return lines.length ? [{ locationId, locationName, lines }] : [];
+  });
+
+  async function submit() {
+    setSubmitted(true);
+    if (
+      !responsibleId ||
+      deviations.some((row) => !comments[row.locationId]?.trim())
+    ) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const count = await createTransfers({
+        locationId: plan.locationId,
+        date: plan.date,
+        responsibleUserId: responsibleId,
+        deviationComments: deviations.map((row) => ({
+          deliveryLocationId: row.locationId,
+          comment: comments[row.locationId].trim(),
+        })),
+      });
+      toast.success(
+        count === 1
+          ? "1 transfer er oprettet"
+          : `${count} transfers er oprettet`,
+      );
+      onClose();
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Transfers kunne ikke oprettes"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
+      }}
+    >
+      <DialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {openLocations.length === 1 ? "Opret transfer" : "Opret transfers"}
+          </DialogTitle>
+          <DialogDescription>
+            Der oprettes{" "}
+            {openLocations.length === 1
+              ? "en transfer"
+              : `${openLocations.length} transfers`}{" "}
+            til {openLocations.map(([, name]) => name).join(", ")} med de
+            bestilte mængder og de målte temperaturer.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          id="create-transfers"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <FieldGroup>
+            <Field data-invalid={submitted && !responsibleId}>
+              <FieldLabel htmlFor="create-transfers-responsible">
+                Ansvarlig
+              </FieldLabel>
+              <Select
+                items={(users ?? []).map((user) => ({
+                  value: user.id,
+                  label: user.name,
+                }))}
+                value={responsibleId}
+                onValueChange={(value) => setResponsible(value)}
+              >
+                <SelectTrigger
+                  id="create-transfers-responsible"
+                  className="h-11! w-full"
+                  aria-invalid={submitted && !responsibleId}
+                >
+                  <SelectValue placeholder="Vælg ansvarlig" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {(users ?? []).map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {submitted && !responsibleId ? (
+                <FieldError>Vælg, hvem der er ansvarlig.</FieldError>
+              ) : null}
+            </Field>
+            {deviations.map((row) => {
+              const id = `create-transfers-comment-${row.locationId}`;
+              const invalid = submitted && !comments[row.locationId]?.trim();
+              return (
+                <Field key={row.locationId} data-invalid={invalid}>
+                  <FieldLabel htmlFor={id}>
+                    Temperaturafvigelse til {row.locationName}
+                  </FieldLabel>
+                  <p className="text-sm text-muted-foreground">
+                    {row.lines.join(", ")}
+                  </p>
+                  <Textarea
+                    id={id}
+                    value={comments[row.locationId] ?? ""}
+                    maxLength={500}
+                    placeholder="Forklar afvigelsen"
+                    aria-invalid={invalid}
+                    onChange={(event) =>
+                      setComments((current) => ({
+                        ...current,
+                        [row.locationId]: event.target.value,
+                      }))
+                    }
+                  />
+                  {invalid ? (
+                    <FieldError>Skriv en kommentar til afvigelsen.</FieldError>
+                  ) : null}
+                </Field>
+              );
+            })}
+          </FieldGroup>
+        </form>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            disabled={saving}
+            onClick={onClose}
+          >
+            Annullér
+          </Button>
+          <Button
+            type="submit"
+            form="create-transfers"
+            size="lg"
+            disabled={saving || users === undefined}
+          >
+            {saving ? <Spinner data-icon="inline-start" /> : null}
+            {openLocations.length === 1 ? "Opret transfer" : "Opret transfers"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

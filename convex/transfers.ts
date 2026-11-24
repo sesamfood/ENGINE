@@ -12,6 +12,7 @@ import {
   requireOrganizationAdmin,
   requireTransferManager,
   requireTransferViewer,
+  type OrganizationAuth,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
@@ -594,98 +595,107 @@ export const createTransfer = mutation({
   returns: v.id("transfers"),
   handler: async (ctx, args) => {
     const auth = await requireTransferManager(ctx, "transfers.new");
-    const { organizationId, userIdentifier } = auth;
-    const order = args.orderId
-      ? await requireOpenOrder(ctx, auth, args.orderId, args.orderVersion)
-      : null;
-    if (
-      order &&
-      (order.fulfillingLocationId !== args.fromLocationId ||
-        order.locationId !== args.toLocationId)
-    ) {
-      throw new ConvexError(
-        "Transferen skal gå fra den leverende til den bestillende lokation",
-      );
-    }
-    await requireLocationsUnlocked(ctx, organizationId, [
-      args.fromLocationId,
-      args.toLocationId,
-    ]);
-    const { comment, responsibleName, resolvedItems } = await prepareTransfer(
-      ctx,
-      organizationId,
-      args,
-    );
-    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
-    const aggregates = transferAggregates(resolvedItems);
-    // Every Transfer waits for a goods receipt, unless goods receipts are
-    // turned off and nothing could accept it. Internal orders always wait.
-    const receiptRequired =
-      order !== null || !auth.disabledFeatures.has("goodsReceipts");
-    const transferId = await ctx.db.insert("transfers", {
-      organizationId,
-      fromLocationId: args.fromLocationId,
-      toLocationId: args.toLocationId,
-      responsibleUserId: args.responsibleUserId,
-      responsibleName,
-      comment,
-      transferredAt: args.transferredAt,
-      createdBy: userIdentifier,
-      stockApplied: !receiptRequired,
-      ...(receiptRequired ? { receiptStatus: "pending" as const } : {}),
-      ...aggregates,
-      dashboardSummaryTimeZone: summaryTimeZone,
-      ...(order ? { orderId: order._id } : {}),
-    });
-    if (order) {
-      await ctx.db.patch("orders", order._id, {
-        fulfillmentStatus: "transferred",
-        transferId,
-      });
-    }
-
-    if (!receiptRequired) {
-      await applyTransferStock(
-        ctx,
-        organizationId,
-        args.fromLocationId,
-        args.toLocationId,
-        resolvedItems,
-        1,
-      );
-    }
-
-    for (const item of resolvedItems) {
-      await ctx.db.insert("transferItems", {
-        organizationId,
-        transferId,
-        productId: item.productId,
-        productName: item.productName,
-        unitId: item.unitId,
-        unitName: item.unitName,
-        quantity: item.quantity,
-        factorToDefault: item.factorToDefault,
-        temperatureCelsius: item.temperatureCelsius,
-        maxTemperatureCelsius: item.maxTemperatureCelsius,
-      });
-    }
-
-    const transfer = await ctx.db.get("transfers", transferId);
-    if (transfer) {
-      await reconcileDashboardSummary(
-        ctx,
-        "transfers",
-        null,
-        transfer,
-        summaryTimeZone,
-        undefined,
-        resolvedItems,
-      );
-    }
-
-    return transferId;
+    return await insertTransfer(ctx, auth, args);
   },
 });
+
+// Creates a Transfer, and fulfils the open internal order when one is given.
+export async function insertTransfer(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  args: TransferInput & { orderId?: Id<"orders">; orderVersion?: number },
+) {
+  const { organizationId, userIdentifier } = auth;
+  const order = args.orderId
+    ? await requireOpenOrder(ctx, auth, args.orderId, args.orderVersion)
+    : null;
+  if (
+    order &&
+    (order.fulfillingLocationId !== args.fromLocationId ||
+      order.locationId !== args.toLocationId)
+  ) {
+    throw new ConvexError(
+      "Transferen skal gå fra den leverende til den bestillende lokation",
+    );
+  }
+  await requireLocationsUnlocked(ctx, organizationId, [
+    args.fromLocationId,
+    args.toLocationId,
+  ]);
+  const { comment, responsibleName, resolvedItems } = await prepareTransfer(
+    ctx,
+    organizationId,
+    args,
+  );
+  const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+  const aggregates = transferAggregates(resolvedItems);
+  // Every Transfer waits for a goods receipt, unless goods receipts are
+  // turned off and nothing could accept it. Internal orders always wait.
+  const receiptRequired =
+    order !== null || !auth.disabledFeatures.has("goodsReceipts");
+  const transferId = await ctx.db.insert("transfers", {
+    organizationId,
+    fromLocationId: args.fromLocationId,
+    toLocationId: args.toLocationId,
+    responsibleUserId: args.responsibleUserId,
+    responsibleName,
+    comment,
+    transferredAt: args.transferredAt,
+    createdBy: userIdentifier,
+    stockApplied: !receiptRequired,
+    ...(receiptRequired ? { receiptStatus: "pending" as const } : {}),
+    ...aggregates,
+    dashboardSummaryTimeZone: summaryTimeZone,
+    ...(order ? { orderId: order._id } : {}),
+  });
+  if (order) {
+    await ctx.db.patch("orders", order._id, {
+      fulfillmentStatus: "transferred",
+      transferId,
+    });
+  }
+
+  if (!receiptRequired) {
+    await applyTransferStock(
+      ctx,
+      organizationId,
+      args.fromLocationId,
+      args.toLocationId,
+      resolvedItems,
+      1,
+    );
+  }
+
+  for (const item of resolvedItems) {
+    await ctx.db.insert("transferItems", {
+      organizationId,
+      transferId,
+      productId: item.productId,
+      productName: item.productName,
+      unitId: item.unitId,
+      unitName: item.unitName,
+      quantity: item.quantity,
+      factorToDefault: item.factorToDefault,
+      temperatureCelsius: item.temperatureCelsius,
+      maxTemperatureCelsius: item.maxTemperatureCelsius,
+    });
+  }
+
+  const transfer = await ctx.db.get("transfers", transferId);
+  if (transfer) {
+    await reconcileDashboardSummary(
+      ctx,
+      "transfers",
+      null,
+      transfer,
+      summaryTimeZone,
+      undefined,
+      resolvedItems,
+    );
+  }
+
+  return transferId;
+}
 
 export const updateTransfer = mutation({
   args: {
