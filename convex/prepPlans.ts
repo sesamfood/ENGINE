@@ -17,6 +17,7 @@ const MAX_SUPPLIERS = 200;
 const MAX_ORDERS = 200;
 const MAX_ORDER_LINES = 200;
 const MAX_RECIPE_ROWS = 200;
+const MAX_PRODUCT_UNITS = 50;
 const MAX_RECIPE_DEPTH = 20;
 const MAX_CHECKS = 2000;
 
@@ -44,6 +45,14 @@ const itemValidator = v.object({
   productName: v.string(),
   unitId: v.id("units"),
   unitName: v.string(),
+  // The product's larger custom units, used to show the total in the largest one.
+  units: v.array(
+    v.object({
+      name: v.string(),
+      pluralName: v.optional(v.string()),
+      factorToDefault: v.number(),
+    }),
+  ),
   total: v.number(),
   stores: v.array(
     v.object({
@@ -260,16 +269,37 @@ async function buildItems(
     }
     return factors.get(key) ?? null;
   };
-  const unitNames = new Map<Id<"units">, string>();
-  const unitName = async (id: Id<"units">, fallback: string) => {
-    if (!unitNames.has(id)) {
+  const unitDocs = new Map<Id<"units">, Doc<"units"> | null>();
+  const getUnit = async (id: Id<"units">) => {
+    if (!unitDocs.has(id)) {
       const unit = await ctx.db.get("units", id);
-      unitNames.set(
-        id,
-        unit?.organizationId === organizationId ? unit.name : fallback,
-      );
+      unitDocs.set(id, unit?.organizationId === organizationId ? unit : null);
     }
-    return unitNames.get(id)!;
+    return unitDocs.get(id) ?? null;
+  };
+  const unitName = async (id: Id<"units">, fallback: string) =>
+    (await getUnit(id))?.name ?? fallback;
+  // Units larger than the default, only for totals summed in the default unit.
+  const largerUnits = async (item: Item) => {
+    if (item.unitId !== item.product.defaultUnitId) return [];
+    const rows = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", item.product._id),
+      )
+      .take(MAX_PRODUCT_UNITS);
+    const units = [];
+    for (const row of rows) {
+      if (row.factorToDefault <= 1) continue;
+      const unit = await getUnit(row.unitId);
+      if (!unit) continue;
+      units.push({
+        name: unit.name,
+        pluralName: unit.pluralName,
+        factorToDefault: row.factorToDefault,
+      });
+    }
+    return units;
   };
 
   type Item = {
@@ -369,6 +399,7 @@ async function buildItems(
       productName: product.name,
       unitId: item.unitId,
       unitName: item.unitName,
+      units: await largerUnits(item),
       total: normalizeStock(item.total),
       stores: [...item.stores]
         .map(([locationId, store]) => ({

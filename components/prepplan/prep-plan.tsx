@@ -52,6 +52,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { addDays, dateTimeFormatter, parseDateKey } from "@/lib/date";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { formatStockQuantity } from "@/lib/unit-system";
 
 type Plan = NonNullable<
   NonNullable<FunctionReturnType<typeof api.prepPlans.get>>["plan"]
@@ -431,7 +432,7 @@ function Stores({ item }: { item: Item }) {
       {item.stores.map((store) => (
         <li key={store.locationId}>
           <Badge variant="secondary">
-            {store.locationName} · {quantity(store.quantity, item.unitName)}
+            {store.locationName} · {formatStockQuantity(store.quantity, item.unitName, item.units)}
           </Badge>
         </li>
       ))}
@@ -500,7 +501,7 @@ function OverviewItem({
                 </span>
               </button>
               <span className="text-xl font-semibold tabular-nums">
-                {quantity(item.total, item.unitName)}
+                {formatStockQuantity(item.total, item.unitName, item.units)}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -537,7 +538,7 @@ function StepItem({
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-2xl font-semibold">
           <h2>{item.productName}</h2>
           <span className="tabular-nums">
-            {quantity(item.total, item.unitName)}
+            {formatStockQuantity(item.total, item.unitName, item.units)}
           </span>
         </div>
       </CardHeader>
