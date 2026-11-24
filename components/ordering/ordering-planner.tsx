@@ -554,6 +554,7 @@ function Planner({
     consumption === undefined ||
     staffFood === undefined ||
     waste === undefined;
+  const applyPrepCutoff = supplier?.applyPrepCutoff ?? false;
   const forecasts = useMemo(
     () =>
       (products ?? []).map((product) => ({
@@ -569,6 +570,9 @@ function Planner({
                 today: context.today,
                 coverageDays,
                 bufferPercent,
+                cutoffPercent: applyPrepCutoff
+                  ? (product.prepCutoffPercent ?? 0)
+                  : 0,
                 stock: product.stock,
                 conditions: context.environment.conditions,
                 openingDays: context.openingDays,
@@ -594,6 +598,7 @@ function Planner({
       operationalHistory,
       coverageDays,
       bufferPercent,
+      applyPrepCutoff,
     ],
   );
   const rows = forecasts.flatMap((product) => {
@@ -1569,6 +1574,15 @@ function Planner({
                         {row.productNumber || internalSupplier ? (
                           <div className="text-xs text-muted-foreground">
                             {row.orderUnitName}
+                          </div>
+                        ) : null}
+                        {applyPrepCutoff &&
+                        row.suggested !== null &&
+                        row.prepCutoffPercent ? (
+                          <div className="text-xs text-muted-foreground">
+                            Inkl.{" "}
+                            {numberFormatter.format(row.prepCutoffPercent)} %
+                            svind
                           </div>
                         ) : null}
                       </TableCell>

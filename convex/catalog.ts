@@ -140,6 +140,7 @@ const productDetailValidator = v.object({
   maxTemperatureCelsius: v.union(v.number(), v.null()),
   prepLeadTimeHours: v.union(v.number(), v.null()),
   prepMethod: v.union(v.string(), v.null()),
+  prepCutoffPercent: v.union(v.number(), v.null()),
   expiry: v.union(expiryValidator, v.null()),
   salesPrice: v.union(v.number(), v.null()),
   allergens: v.array(allergenValidator),
@@ -1897,6 +1898,7 @@ export const getProduct = query({
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
       prepLeadTimeHours: product.prepLeadTimeHours ?? null,
       prepMethod: product.prepMethod ?? null,
+      prepCutoffPercent: product.prepCutoffPercent ?? null,
       expiry: product.expiry ?? null,
       salesPrice: product.salesPrice ?? null,
       allergens: product.allergens ?? [],
@@ -2221,8 +2223,16 @@ const MAX_PREP_METHOD_LENGTH = 5000;
 function prepFields(args: {
   prepLeadTimeHours?: number | null;
   prepMethod?: string | null;
+  prepCutoffPercent?: number | null;
 }) {
   const hours = args.prepLeadTimeHours;
+  const cutoff = args.prepCutoffPercent;
+  if (
+    typeof cutoff === "number" &&
+    !(Number.isFinite(cutoff) && cutoff >= 0 && cutoff < 100)
+  ) {
+    throw new ConvexError("Svindet skal være fra 0 til under 100 %");
+  }
   if (
     typeof hours === "number" &&
     !(Number.isFinite(hours) && hours > 0 && hours <= MAX_PREP_LEAD_TIME_HOURS)
@@ -2241,6 +2251,9 @@ function prepFields(args: {
   return {
     ...(hours !== undefined ? { prepLeadTimeHours: hours ?? undefined } : {}),
     ...(method !== undefined ? { prepMethod: method ?? undefined } : {}),
+    ...(cutoff !== undefined
+      ? { prepCutoffPercent: cutoff || undefined }
+      : {}),
   };
 }
 
@@ -2257,6 +2270,7 @@ export async function createProductWithAuth(
     maxTemperatureCelsius?: number | null;
     prepLeadTimeHours?: number | null;
     prepMethod?: string | null;
+    prepCutoffPercent?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
     allergens?: AllergenId[];
@@ -2324,6 +2338,9 @@ export async function createProductWithAuth(
       ? { prepLeadTimeHours: prep.prepLeadTimeHours }
       : {}),
     ...(prep.prepMethod !== undefined ? { prepMethod: prep.prepMethod } : {}),
+    ...(prep.prepCutoffPercent !== undefined
+      ? { prepCutoffPercent: prep.prepCutoffPercent }
+      : {}),
     status: "active",
     createdBy: userIdentifier,
     ...(args.expiry ? { expiry: args.expiry } : {}),
@@ -2377,6 +2394,7 @@ export async function updateProductWithAuth(
     maxTemperatureCelsius?: number | null;
     prepLeadTimeHours?: number | null;
     prepMethod?: string | null;
+    prepCutoffPercent?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
     allergens?: AllergenId[];
@@ -2685,6 +2703,7 @@ export const createProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     prepLeadTimeHours: v.optional(v.union(v.number(), v.null())),
     prepMethod: v.optional(v.union(v.string(), v.null())),
+    prepCutoffPercent: v.optional(v.union(v.number(), v.null())),
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     allergens: v.optional(v.array(allergenValidator)),
@@ -3180,6 +3199,7 @@ export const updateProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     prepLeadTimeHours: v.optional(v.union(v.number(), v.null())),
     prepMethod: v.optional(v.union(v.string(), v.null())),
+    prepCutoffPercent: v.optional(v.union(v.number(), v.null())),
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
     allergens: v.optional(v.array(allergenValidator)),
