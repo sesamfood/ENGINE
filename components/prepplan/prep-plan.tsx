@@ -484,7 +484,6 @@ function TotalQuantity({ item, large }: { item: Item; large?: boolean }) {
         <ChevronDownIcon data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuLabel>Vis mængde i</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={item.displayUnitId ?? "auto"}
           onValueChange={(value) => {
@@ -499,6 +498,7 @@ function TotalQuantity({ item, large }: { item: Item; large?: boolean }) {
             );
           }}
         >
+          <DropdownMenuLabel>Vis mængde i</DropdownMenuLabel>
           <DropdownMenuRadioItem value="auto">Automatisk</DropdownMenuRadioItem>
           {item.units.map((unit) => (
             <DropdownMenuRadioItem key={unit.unitId} value={unit.unitId}>
