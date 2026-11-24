@@ -382,7 +382,7 @@ export async function requireOpenOrder(
   return order;
 }
 
-async function resolveOrderLine(
+export async function resolveOrderLine(
   ctx: QueryCtx,
   auth: OrganizationAuth,
   line: {

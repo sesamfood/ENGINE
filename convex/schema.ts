@@ -1498,8 +1498,31 @@ export default defineSchema({
     allowExtraOrders: v.optional(v.boolean()),
     // How many upcoming prep days an order can be for. Missing means PREP_DAY_CHOICES.
     planDayChoices: v.optional(v.number()),
+    // Prepplan delivery order of the ordering locations. Missing ones go last by name.
+    deliveryLocationOrder: v.optional(v.array(v.id("locations"))),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  // One packed product for one ordering location on the Prepplan Levering page.
+  prepPlanPackings: defineTable({
+    organizationId: v.string(),
+    // The supplier location and prep day, as on prepPlanChecks.
+    locationId: v.id("locations"),
+    planDate: v.string(),
+    deliveryLocationId: v.id("locations"),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    // The quantity it was packed for. A changed quantity reopens it.
+    quantity: v.number(),
+    temperatureCelsius: v.optional(v.number()),
+    packedAt: v.number(),
+    packedBy: v.string(),
+    packedByName: v.string(),
+  }).index("by_organizationId_and_locationId_and_planDate", [
+    "organizationId",
+    "locationId",
+    "planDate",
+  ]),
 
   // One checked item in a Prepplan, keyed by the supplier location and prep day.
   prepPlanChecks: defineTable({
