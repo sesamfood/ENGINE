@@ -169,13 +169,43 @@ function itemKey(item: Item) {
   return `${item.productId}:${item.unitId}`;
 }
 
+type Mode = "overview" | "steps" | "delivery";
+type LastVisit = {
+  locationId?: Id<"locations">;
+  date?: string;
+  mode?: Mode;
+  step?: number;
+};
+// Per device, so a tablet reopens where the prep or packing left off.
+const LAST_VISIT_KEY = "prepplan:last-visit";
+
+function readLastVisit(): LastVisit {
+  try {
+    if (typeof window === "undefined") return {};
+    const value: unknown = JSON.parse(
+      window.localStorage.getItem(LAST_VISIT_KEY) ?? "{}",
+    );
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
 export function PrepPlan() {
-  const [locationId, setLocationId] = useState<Id<"locations"> | null>(null);
-  const [date, setDate] = useState<string | null>(null);
-  const [mode, setMode] = useState<"overview" | "steps" | "delivery">(
-    "overview",
+  const [lastVisit] = useState(readLastVisit);
+  const [locationId, setLocationId] = useState<Id<"locations"> | null>(
+    lastVisit.locationId ?? null,
   );
-  const [step, setStep] = useState(0);
+  const [date, setDate] = useState<string | null>(lastVisit.date ?? null);
+  const [mode, setMode] = useState<Mode>(
+    lastVisit.mode === "steps" || lastVisit.mode === "delivery"
+      ? lastVisit.mode
+      : "overview",
+  );
+  const [step, setStep] = useState(
+    Number.isInteger(lastVisit.step) ? lastVisit.step! : 0,
+  );
+  const [restoring, setRestoring] = useState(date !== null);
   // Refreshed so a kiosk left open moves to the next prep day after midnight.
   const [now, setNow] = useState(() => roundedNow());
   useEffect(() => {
@@ -198,6 +228,35 @@ export function PrepPlan() {
   const canTransfer = kiosk?.kioskModeEnabled
     ? Boolean(kiosk.settings?.enabledPages.includes("transfers.new"))
     : canManageTransfers;
+  const visited = data?.plan;
+  // A restored past day with every Transfer created is done; open the default day.
+  if (restoring && visited) {
+    setRestoring(false);
+    if (
+      visited.date < visited.today &&
+      visited.orders.every((order) => order.transferred)
+    ) {
+      setDate(null);
+      setMode("overview");
+      setStep(0);
+    }
+  }
+  useEffect(() => {
+    if (!visited) return;
+    try {
+      window.localStorage.setItem(
+        LAST_VISIT_KEY,
+        JSON.stringify({
+          locationId: visited.locationId,
+          date: visited.date,
+          mode,
+          step,
+        } satisfies LastVisit),
+      );
+    } catch {
+      // Storage can be unavailable, e.g. in a private window.
+    }
+  }, [visited, mode, step]);
 
   if (data === undefined) return <RowsSkeleton />;
   const bottomBar = (children?: ReactNode) =>
