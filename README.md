@@ -25,6 +25,18 @@ Set `BETTER_AUTH_TRUSTED_ORIGINS` to a comma-separated list when the app should 
 
 Use a verified sender or verified domain in Resend. Set the same variables for production using `--prod` and the public `SITE_URL`.
 
+### Branched Convex environments (worktrees / PRs)
+
+To spin up an isolated Convex dev deployment seeded with a snapshot of your `dev` database and environment variables:
+
+```bash
+bun run convex:branch
+```
+
+By default, the deployment name is derived from the current git branch (as `dev/<branch>`), expires in 5 days, updates `.env.local` (including `NEXT_PUBLIC_CONVEX_SITE_URL`), pushes the backend, and imports a snapshot from `dev`. Run `bun run convex:branch --help` for options (`--name`, `--expiration`, `--no-files`, `--no-data`, `--reseed`).
+
+When a pull request is merged, `.github/workflows/cleanup-convex-branch.yml` automatically deletes the matching non-default `dev/<branch>` deployment (if one exists) and leaves default `dev` and `prod` deployments untouched. To enable it, configure `CONVEX_ACCESS_TOKEN` (Repository secret — Convex Team or Personal Access Token) and `CONVEX_PROJECT_ID` (Repository variable — numeric Convex project ID) in GitHub repository settings.
+
 ## Platform administration
 
 Platform staff manage customer organizations at `/platform`. Owners manage platform access under Indstillinger > Adgang. Grant the first owner from the CLI:

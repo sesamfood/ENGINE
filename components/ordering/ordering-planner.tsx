@@ -18,6 +18,7 @@ import {
   DownloadIcon,
   LayoutGridIcon,
   PackageOpenIcon,
+  PencilIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -199,7 +200,11 @@ function Planner({
   >({});
   const [exporting, setExporting] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [placed, setPlaced] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [dismissedExistingKey, setDismissedExistingKey] = useState<
+    string | null
+  >(null);
   // null until the user has chosen, when suppliers must be chosen first.
   const [supplierChoice, setSupplierValue] = useState<string | null>(null);
   const supplierValue = editOrder?.fulfillingLocationId ?? supplierChoice;
@@ -212,7 +217,7 @@ function Planner({
   const [catalogInputs, setCatalogInputs] = useState<Record<string, string>>(
     {},
   );
-  const busy = exporting || placing;
+  const busy = exporting || placing || placed;
   const submitting = useRef(false);
   const restoredDraftFor = useRef<string | null>(null);
   const draftAppliedFor = useRef<string | null>(null);
@@ -475,6 +480,24 @@ function Planner({
     editOrder?.planDate && !upcomingPlanDays.includes(editOrder.planDate)
       ? [editOrder.planDate, ...upcomingPlanDays]
       : upcomingPlanDays;
+  const windowOrders = useQuery(
+    api.ordering.listInternalWindowOrders,
+    canPlan && locationId && internalSupplier && planDays.length > 0
+      ? {
+          locationId,
+          fulfillingLocationId: internalSupplier.locationId,
+          planDates: planDays,
+        }
+      : "skip",
+  );
+  const windowOrderByDate = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof windowOrders>[number]>();
+    for (const order of windowOrders ?? []) {
+      if (editOrder && order.id === editOrder.id) continue;
+      map.set(order.planDate, order);
+    }
+    return map;
+  }, [windowOrders, editOrder]);
   // Set per supplier under Administration → Bestilling.
   const allowExtraOrders =
     !planDays.length || internalSupplier?.allowExtraOrders !== false;
@@ -485,6 +508,19 @@ function Planner({
       : editing && (editOrder?.planDate || allowExtraOrders)
         ? (editOrder?.planDate ?? NO_PLAN_DATE)
         : (planDays[0] ?? NO_PLAN_DATE);
+  const existingWindowOrder =
+    !placing && !placed && internalSupplier && planDate !== NO_PLAN_DATE
+      ? (windowOrderByDate.get(planDate) ?? null)
+      : null;
+  const existingWindowKey =
+    locationId && internalSupplier && existingWindowOrder
+      ? `${locationId}:${internalSupplier.locationId}:${existingWindowOrder.planDate}:${existingWindowOrder.id}`
+      : null;
+  const showExistingOrderPrompt =
+    existingWindowKey !== null && dismissedExistingKey !== existingWindowKey;
+  const hasOtherPlanChoice =
+    allowExtraOrders ||
+    planDays.some((day) => day !== planDate && !windowOrderByDate.has(day));
   // Set per supplier under Administration → Bestilling. Order windows override it,
   // so the order lasts until the next planned delivery.
   const coverageDays =
@@ -509,6 +545,9 @@ function Planner({
     suppliers === undefined ||
     internalSuppliers === undefined ||
     (internalSupplier !== null && recentUnits === undefined) ||
+    (internalSupplier !== null &&
+      planDays.length > 0 &&
+      windowOrders === undefined) ||
     (catalogSupplier && (supplierLinks === undefined || catalog === undefined)) ||
     !context ||
     products === undefined ||
@@ -691,6 +730,18 @@ function Planner({
     })),
   ];
 
+  const planDayItems = [
+    ...planDays.map((day) => ({
+      value: day,
+      label: windowOrderByDate.has(day)
+        ? `${formatPlanDay(day)} (bestilt)`
+        : formatPlanDay(day),
+    })),
+    ...(allowExtraOrders
+      ? [{ value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" }]
+      : []),
+  ];
+
   const showSupplierField =
     Boolean(locationId) &&
     settings !== undefined &&
@@ -720,7 +771,10 @@ function Planner({
               <Select
                 items={supplierItems}
                 value={supplier?.id ?? internalSupplier?.locationId ?? NO_SUPPLIER}
-                onValueChange={(value) => setSupplierValue(value ?? NO_SUPPLIER)}
+                onValueChange={(value) => {
+                  setDismissedExistingKey(null);
+                  setSupplierValue(value ?? NO_SUPPLIER);
+                }}
                 disabled={busy || editing || suppliers === undefined}
               >
                 <SelectTrigger id="ordering-supplier" className="h-11 w-full">
@@ -741,17 +795,13 @@ function Planner({
           <div className={cn("grid gap-4", planDays.length && "lg:grid-cols-2")}>
             {planDays.length ? (
               <Select
-                items={[
-                  ...planDays.map((day) => ({
-                    value: day,
-                    label: formatPlanDay(day),
-                  })),
-                  ...(allowExtraOrders
-                    ? [{ value: NO_PLAN_DATE, label: "Ingen – ekstra bestilling" }]
-                    : []),
-                ]}
+                items={planDayItems}
                 value={planDate}
-                onValueChange={(value) => value && setPlanDateChoice(value)}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setDismissedExistingKey(null);
+                  setPlanDateChoice(value);
+                }}
                 disabled={busy}
               >
                 <SelectTrigger
@@ -763,16 +813,11 @@ function Planner({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {planDays.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {formatPlanDay(day)}
+                    {planDayItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
                       </SelectItem>
                     ))}
-                    {allowExtraOrders ? (
-                      <SelectItem value={NO_PLAN_DATE}>
-                        Ingen – ekstra bestilling
-                      </SelectItem>
-                    ) : null}
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -794,6 +839,7 @@ function Planner({
                 onValueChange={(value) => {
                   const location = locations.find((item) => item.id === value);
                   if (location) {
+                    setDismissedExistingKey(null);
                     setOrderingLocation(organizationId, location.id);
                     setAsOf(currentMinute());
                   }
@@ -855,6 +901,7 @@ function Planner({
       invalidQuantity ||
       !plannedCount ||
       plannedCount > maxLines ||
+      existingWindowOrder !== null ||
       submitting.current
     ) return;
     submitting.current = true;
@@ -868,6 +915,7 @@ function Planner({
           planDate: planDate === NO_PLAN_DATE ? null : planDate,
         });
         if (!mounted.current) return;
+        setPlaced(true);
         setConfirming(false);
         toast.success("Bestillingen er opdateret");
         router.push("/ordering/history");
@@ -900,6 +948,7 @@ function Planner({
       });
       if (draftUserId) clearOrderingDraft(organizationId, draftUserId, locationId);
       if (!mounted.current) return;
+      setPlaced(true);
       setOrderingLocation(organizationId, locationId);
       setConfirming(false);
       toast.success(
@@ -1090,6 +1139,13 @@ function Planner({
     );
   }
 
+  function openExistingOrder(orderId: Id<"orders">) {
+    if (draftUserId && locationId) {
+      clearOrderingDraft(organizationId, draftUserId, locationId);
+    }
+    router.push(`/ordering?order=${orderId}`);
+  }
+
   function discardDraft() {
     setSupplierValue(null);
     setOverrides({});
@@ -1195,10 +1251,14 @@ function Planner({
                 tabIndex={0}
                 appearance="menu"
                 className="cursor-pointer"
-                onClick={() => setSupplierValue(option.value)}
+                onClick={() => {
+                  setDismissedExistingKey(null);
+                  setSupplierValue(option.value);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
+                    setDismissedExistingKey(null);
                     setSupplierValue(option.value);
                   }
                 }}
@@ -1221,6 +1281,44 @@ function Planner({
         </section>
       ) : (
         <div className="flex flex-col gap-5 pb-72 sm:pb-56 lg:pb-40">
+          {existingWindowOrder && internalSupplier ? (
+            <Alert>
+              <AlertTitle>
+                {existingWindowOrder.fulfillmentStatus === "open"
+                  ? "Der findes allerede en bestilling til denne prepdag"
+                  : "Der er allerede oprettet en transfer til denne prepdag"}
+              </AlertTitle>
+              <AlertDescription>
+                <div className="flex flex-col items-start gap-3">
+                  <span>
+                    {existingWindowOrder.fulfillmentStatus === "open"
+                      ? `Der er allerede afgivet en bestilling hos ${internalSupplier.name} til ${formatPlanDay(existingWindowOrder.planDate)} (${existingWindowOrder.itemCount} ${existingWindowOrder.itemCount === 1 ? "produkt" : "produkter"}, afgivet af ${existingWindowOrder.createdByName}).`
+                      : `Der er allerede afgivet en bestilling og oprettet en transfer hos ${internalSupplier.name} til ${formatPlanDay(existingWindowOrder.planDate)}.`}{" "}
+                    Du kan kun afgive én bestilling pr. lokation pr.
+                    bestillingsvindue.
+                  </span>
+                  {existingWindowOrder.fulfillmentStatus === "open" &&
+                  canPlace ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => openExistingOrder(existingWindowOrder.id)}
+                    >
+                      <PencilIcon data-icon="inline-start" />
+                      Redigér bestilling
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      render={<Link href="/ordering/history" />}
+                      nativeButton={false}
+                    >
+                      Se bestillingshistorik
+                    </Button>
+                  )}
+                </div>
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {invalidQuantity ? (
             <Alert variant="destructive">
               <AlertTitle>Kontrollér mængderne</AlertTitle>
@@ -1568,6 +1666,7 @@ function Planner({
                       invalidQuantity ||
                       plannedCount === 0 ||
                       plannedCount > maxLines ||
+                      existingWindowOrder !== null ||
                       busy
                     }
                     onClick={() => setConfirming(true)}
@@ -1644,6 +1743,52 @@ function Planner({
                   {placing ? <Spinner data-icon="inline-start" /> : null}
                   {editing ? "Gem ændringer" : "Afgiv bestilling"}
                 </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog
+            open={showExistingOrderPrompt}
+            onOpenChange={(open) => {
+              if (!open && existingWindowKey) {
+                setDismissedExistingKey(existingWindowKey);
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {existingWindowOrder?.fulfillmentStatus === "open"
+                    ? "Du har allerede en bestilling"
+                    : "Bestilling allerede afgivet"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {existingWindowOrder && internalSupplier
+                    ? existingWindowOrder.fulfillmentStatus === "open"
+                      ? `Der er allerede afgivet en bestilling hos ${internalSupplier.name} til ${formatPlanDay(existingWindowOrder.planDate)} (${existingWindowOrder.itemCount} ${existingWindowOrder.itemCount === 1 ? "produkt" : "produkter"}, afgivet af ${existingWindowOrder.createdByName}). Du kan kun afgive én bestilling pr. lokation pr. bestillingsvindue.`
+                      : `Der er allerede afgivet en bestilling og oprettet en transfer hos ${internalSupplier.name} til ${formatPlanDay(existingWindowOrder.planDate)}. Du kan kun afgive én bestilling pr. lokation pr. bestillingsvindue.`
+                    : null}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {hasOtherPlanChoice ? "Vælg en anden dag" : "Luk"}
+                </AlertDialogCancel>
+                {existingWindowOrder?.fulfillmentStatus === "open" &&
+                canPlace ? (
+                  <AlertDialogAction
+                    onClick={() => openExistingOrder(existingWindowOrder.id)}
+                  >
+                    <PencilIcon data-icon="inline-start" />
+                    Redigér bestilling
+                  </AlertDialogAction>
+                ) : (
+                  <AlertDialogAction
+                    render={<Link href="/ordering/history" />}
+                    nativeButton={false}
+                  >
+                    Se bestillingshistorik
+                  </AlertDialogAction>
+                )}
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

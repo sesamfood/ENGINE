@@ -989,6 +989,8 @@ export default defineSchema({
     // Prepplan: hours of preparation before the Produkt is ready, and how it is made.
     prepLeadTimeHours: v.optional(v.number()),
     prepMethod: v.optional(v.string()),
+    // Unit the Prepplan shows totals in; absent means the largest unit it fills.
+    prepDisplayUnitId: v.optional(v.id("units")),
     expiry: v.optional(expiryValidator),
     // Including VAT, in integer minor units.
     salesPrice: v.optional(v.number()),
@@ -1497,8 +1499,31 @@ export default defineSchema({
     allowExtraOrders: v.optional(v.boolean()),
     // How many upcoming prep days an order can be for. Missing means PREP_DAY_CHOICES.
     planDayChoices: v.optional(v.number()),
+    // Prepplan delivery order of the ordering locations. Missing ones go last by name.
+    deliveryLocationOrder: v.optional(v.array(v.id("locations"))),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  // One packed product for one ordering location on the Prepplan Levering page.
+  prepPlanPackings: defineTable({
+    organizationId: v.string(),
+    // The supplier location and prep day, as on prepPlanChecks.
+    locationId: v.id("locations"),
+    planDate: v.string(),
+    deliveryLocationId: v.id("locations"),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    // The quantity it was packed for. A changed quantity reopens it.
+    quantity: v.number(),
+    temperatureCelsius: v.optional(v.number()),
+    packedAt: v.number(),
+    packedBy: v.string(),
+    packedByName: v.string(),
+  }).index("by_organizationId_and_locationId_and_planDate", [
+    "organizationId",
+    "locationId",
+    "planDate",
+  ]),
 
   // One checked item in a Prepplan, keyed by the supplier location and prep day.
   prepPlanChecks: defineTable({
@@ -2170,6 +2195,14 @@ export default defineSchema({
     dashboards: v.optional(v.array(kioskDashboardValidator)),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  // Pages for one kiosk account, replacing the organization's kiosk pages and start page.
+  kioskAccountPages: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    enabledPages: v.array(v.string()),
+    homePage: v.string(),
+  }).index("by_organizationId_and_userId", ["organizationId", "userId"]),
 
   kioskPins: defineTable({
     organizationId: v.string(),

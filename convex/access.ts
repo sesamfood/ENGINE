@@ -20,6 +20,7 @@ import { getDatabaseAdapter } from "./auth";
 import { internal } from "./_generated/api";
 import { listScopedLocationOptions } from "./locations";
 import {
+  getKioskSettings,
   kioskPinOpen,
   requireAllLocationAccess,
   requireMemberManager,
@@ -336,12 +337,7 @@ export const getRuntimeContext = query({
 
 async function getAccessContext(ctx: QueryCtx) {
   const auth = await requireOrganization(ctx);
-  const settings = await ctx.db
-    .query("kioskSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", auth.organizationId),
-    )
-    .unique();
+  const settings = await getKioskSettings(ctx, auth);
   const location = auth.kioskLocationId
     ? await ctx.db.get("locations", auth.kioskLocationId)
     : null;

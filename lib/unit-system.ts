@@ -91,6 +91,40 @@ export function unitNameFor(
   return quantity === 1 ? unit.name : (unit.pluralName ?? unit.name);
 }
 
+const stockQuantityFormatter = new Intl.NumberFormat("da-DK", {
+  maximumFractionDigits: 6,
+});
+
+// Shows a default-unit amount in the largest custom unit it fills, e.g. "2 spande og 1 kg".
+export function formatStockQuantity(
+  quantity: number,
+  defaultUnitName: string,
+  units: Array<{ name: string; pluralName?: string; factorToDefault: number }>,
+) {
+  const largestUnit = units
+    .filter(
+      (unit) =>
+        Number.isFinite(unit.factorToDefault) &&
+        unit.factorToDefault > 1 &&
+        Math.abs(quantity) >= unit.factorToDefault,
+    )
+    .sort((a, b) => b.factorToDefault - a.factorToDefault)[0];
+
+  if (!largestUnit) {
+    return `${stockQuantityFormatter.format(quantity)} ${defaultUnitName}`.trim();
+  }
+
+  const wholeUnits = Math.trunc(quantity / largestUnit.factorToDefault);
+  const remainder = Number(
+    (quantity - wholeUnits * largestUnit.factorToDefault).toPrecision(12),
+  );
+  const largest = `${stockQuantityFormatter.format(wholeUnits)} ${unitNameFor(largestUnit, wholeUnits)}`;
+
+  return Math.abs(remainder) < 1e-9
+    ? largest
+    : `${largest} og ${stockQuantityFormatter.format(remainder)} ${defaultUnitName}`.trim();
+}
+
 export function normalizeUnitName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("da");
 }

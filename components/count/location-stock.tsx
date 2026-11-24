@@ -64,41 +64,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useKiosk, usePermission } from "@/components/app-shell";
 import { dateTimeFormatter, DEFAULT_TIME_ZONE } from "@/lib/date";
-import { unitNameFor } from "@/lib/unit-system";
-
-const quantityFormatter = new Intl.NumberFormat("da-DK", {
-  maximumFractionDigits: 6,
-});
-
-function formatStockQuantity(
-  quantity: number,
-  defaultUnitName: string,
-  units: Array<{ name: string; pluralName?: string; factorToDefault: number }>,
-) {
-  const largestUnit = units
-    .filter(
-      (unit) =>
-        Number.isFinite(unit.factorToDefault) &&
-        unit.factorToDefault > 1 &&
-        Math.abs(quantity) >= unit.factorToDefault,
-    )
-    .sort((a, b) => b.factorToDefault - a.factorToDefault)[0];
-
-  if (!largestUnit) {
-    return `${quantityFormatter.format(quantity)} ${defaultUnitName}`;
-  }
-
-  const wholeUnits = Math.trunc(quantity / largestUnit.factorToDefault);
-  const remainder = Number(
-    (quantity - wholeUnits * largestUnit.factorToDefault).toPrecision(12),
-  );
-  const largest = `${quantityFormatter.format(wholeUnits)} ${unitNameFor(largestUnit, wholeUnits)}`;
-
-  return Math.abs(remainder) < 1e-9
-    ? largest
-    : `${largest} og ${quantityFormatter.format(remainder)} ${defaultUnitName}`;
-}
-
+import { formatStockQuantity } from "@/lib/unit-system";
 
 export function LocationStock() {
   const [view, setView] = useState<"grid" | "detail">("grid");
