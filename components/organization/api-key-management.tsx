@@ -230,7 +230,7 @@ function PermissionFields({
 }) {
   const integrations = useIntegrations();
   const permissionVisible = (permission: { id: string }) =>
-    permission.id !== "expenses.exportEconomic" || integrations?.economic === true;
+    !permission.id.startsWith("finance.") || integrations?.economic === true;
   const rolePermissions = new Set(
     options.roles.find((role) => role.key === draft.role)?.permissions ?? [],
   );

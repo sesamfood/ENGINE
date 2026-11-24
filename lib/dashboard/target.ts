@@ -66,7 +66,7 @@ export function supportsTarget(widget: Pick<WidgetInstance, "metric" | "visualiz
   if (!targetVisualizations.includes(widget.visualization)) return false;
   if (widget.metric.kind === "custom") return true;
   const definition = metricRegistry[widget.metric.id];
-  return !definition.live && definition.source !== "economic";
+  return !definition.live && definition.source !== "monthlyReport";
 }
 
 /** Whether a manual target is an amount per day, week or month rather than a fixed level. */

@@ -75,7 +75,7 @@ function groupMetricBatches(
   const groups = new Map<string, WidgetInstance[]>();
   for (const widget of widgets) {
     if (widget.metric.kind === "custom" && customMetricsLoading) continue;
-    if (widget.metric.kind === "builtin" && (metricRegistry[widget.metric.id].live || metricRegistry[widget.metric.id].source === "economic")) continue;
+    if (widget.metric.kind === "builtin" && (metricRegistry[widget.metric.id].live || metricRegistry[widget.metric.id].source === "monthlyReport")) continue;
     const key = metricBatchKey(widget, defaultRange, customMetrics);
     groups.set(key, [...(groups.get(key) ?? []), widget]);
   }

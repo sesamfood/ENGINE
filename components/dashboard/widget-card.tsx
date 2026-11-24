@@ -265,7 +265,7 @@ export function WidgetCard({
     : undefined;
   const integrations = useIntegrations();
   const sources = salesSourceOptions(integrations);
-  const financial = definition?.source === "economic";
+  const financial = definition?.source === "monthlyReport";
   const financialRange = widget.range ? { preset: widget.range } : range;
   const availableRangeOptions = financial
     ? widgetRangeOptions.filter((option) => option.value === "board" || option.value === "thisMonth")

@@ -9,7 +9,7 @@ import type {
   WidgetSize,
 } from "./types";
 
-export type MetricSource = "internal" | "onlinepos" | "wolt" | "workfeed" | "googleMaps" | "economic";
+export type MetricSource = "internal" | "onlinepos" | "wolt" | "workfeed" | "googleMaps" | "monthlyReport";
 
 export const salesSourceMetricIds = [
   "salesRevenue",
@@ -55,8 +55,8 @@ export type MetricDefinition = {
 
 const financialDefaults = {
   category: "Økonomi",
-  source: "economic",
-  sourceTables: ["e-conomic", "onlinePosFinancialMonths", "monthlyKpiActuals", "workfeedLaborDaily"],
+  source: "monthlyReport",
+  sourceTables: ["onlinePosFinancialMonths", "monthlyKpiActuals", "monthlyKpiBudgets", "workfeedLaborDaily"],
   unit: "percent",
   visualizations: ["kpi", "gauge", "list", "table"],
   defaultVisualization: "kpi",
@@ -83,7 +83,7 @@ const definitions = {
     direction: "down-good",
     label: "Vareforbrug",
     description: "Vareforbrug som andel af månedens nettoomsætning.",
-    formula: "Lagerreguleret vareforbrug ÷ nettoomsætning × 100. Bruger et manuelt godkendt beløb eller e-conomic-konti med bekræftet lagerregulering. Bogførte beløb er foreløbige, indtil måneden er godkendt.",
+    formula: "Lagerreguleret vareforbrug ÷ nettoomsætning × 100. Bruger det manuelt godkendte vareforbrug fra månedsrapporten.",
   },
   labourPercent: {
     ...financialDefaults,
@@ -91,7 +91,7 @@ const definitions = {
     direction: "down-good",
     label: "Lønprocent",
     description: "Lønomkostninger som andel af månedens nettoomsætning.",
-    formula: "Lønomkostninger ÷ nettoomsætning × 100. Godkendt bogført løn fra e-conomic erstatter Workfeeds estimat for den enkelte lokation og måned.",
+    formula: "Lønomkostninger ÷ nettoomsætning × 100. Bruger lønestimatet for den enkelte lokation og måned.",
   },
   grossMarginPercent: {
     ...financialDefaults,
@@ -115,7 +115,7 @@ const definitions = {
     direction: "down-good",
     label: "Huslejeprocent",
     description: "Husleje som andel af månedens nettoomsætning.",
-    formula: "Husleje fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
+    formula: "Husleje ÷ nettoomsætning × 100.",
   },
   utilitiesPercent: {
     ...financialDefaults,
@@ -123,7 +123,7 @@ const definitions = {
     direction: "down-good",
     label: "Forbrugsprocent",
     description: "El, vand og varme som andel af månedens nettoomsætning.",
-    formula: "Forbrugsomkostninger fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
+    formula: "Forbrugsomkostninger ÷ nettoomsætning × 100.",
   },
   primeCostPercent: {
     ...financialDefaults,
@@ -539,7 +539,7 @@ const definitions = {
 export const metricRegistry = Object.fromEntries(
   Object.values(definitions).map((definition: MetricDefinition) => [
     definition.id,
-    definition.visualizations.includes("kpi") && !definition.live && definition.source !== "economic"
+    definition.visualizations.includes("kpi") && !definition.live && definition.source !== "monthlyReport"
       ? { ...definition, visualizations: [...definition.visualizations, "goal"] }
       : definition,
   ]),

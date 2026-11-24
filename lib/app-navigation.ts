@@ -52,6 +52,7 @@ const routes: Record<SidebarItemId, readonly Route[]> = {
     { href: "/expenses", permission: "expenses.create" },
     { href: "/expenses/history", permission: "expenses.view" },
   ],
+  finance: [{ href: "/finance", permission: "finance.view" }],
   goodsReceipts: [
     { href: "/goods-receipts", permission: "goodsReceipts.register" },
   ],
@@ -114,17 +115,21 @@ export function resolveAppNavigation({
   kiosk,
   countLocked,
   woltEnabled,
+  economicEnabled = false,
   disabledFeatures = [],
 }: {
   permissions: readonly string[];
   kiosk: KioskNavigation | null;
   countLocked: boolean;
   woltEnabled: boolean;
+  economicEnabled?: boolean;
   disabledFeatures?: readonly FeatureId[];
 }) {
   const otherFeaturesLocked = countLocked && !disabledFeatures.includes("count");
   return sidebarItems.flatMap((item) => {
-    if (item.id !== "organization" && disabledFeatures.includes(item.id === "manager" ? "dashboard" : item.id === "prepplan" ? "ordering" : item.id))
+    if (item.id === "finance") {
+      if (!economicEnabled) return [];
+    } else if (item.id !== "organization" && disabledFeatures.includes(item.id === "manager" ? "dashboard" : item.id === "prepplan" ? "ordering" : item.id))
       return [];
     if (item.id === "woltOrders" && !woltEnabled) return [];
     const candidates = routes[item.id];
@@ -163,6 +168,7 @@ export function homeDestination(
     "transfers",
     "invoices",
     "expenses",
+    "finance",
     "goodsReceipts",
     "waste",
     "foodSafety",

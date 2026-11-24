@@ -145,7 +145,6 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "invoices.manage": "invoices",
   "expenses.create": "expenses",
   "expenses.view": "expenses",
-  "expenses.exportEconomic": "expenses",
   "expenses.settings": null,
   "goodsReceipts.register": "goodsReceipts",
   "goodsReceipts.settings": null,
@@ -163,6 +162,9 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   // Sales data also feeds Count, Waste, and Wolt orders.
   "sales.viewAggregate": null,
   "sales.viewDetail": null,
+  // Økonomi follows the e-conomic integration switch instead of a feature switch.
+  "finance.view": null,
+  "finance.editBankBalance": null,
   "employees.schedule": "employees",
   "employees.directory": "employees",
   "catalog.manage": null,

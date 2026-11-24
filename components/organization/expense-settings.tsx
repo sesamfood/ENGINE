@@ -1,7 +1,5 @@
 "use client";
 
-import { useIntegrations } from "@/integrations/use-integrations";
-
 import { closestCorners, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMutation } from "convex/react";
@@ -11,7 +9,6 @@ import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
-import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 import { SortableListRow, sortableListInstructions } from "@/components/organization/sortable-list-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -35,11 +32,8 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
@@ -52,49 +46,6 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useActiveOrganization } from "@/lib/active-organization";
 
 type Settings = FunctionReturnType<typeof api.expenses.getSettings>;
-type EconomicMapping = Settings["economicMappings"][number];
-type MappingDraft = {
-  connectionId: EconomicMapping["connectionId"];
-  enabled: boolean;
-  journalNumber: string;
-  contraAccountNumber: string;
-  vatCode25: string;
-  accountMappings: Array<{
-    categoryId: EconomicMapping["accountMappings"][number]["categoryId"];
-    accountNumber: string;
-  }>;
-};
-
-function mappingDrafts(settings: Settings, categories: Settings["categories"]): MappingDraft[] {
-  return settings.connections.map((connection) => {
-    const mapping = settings.economicMappings.find(
-      (item) => item.connectionId === connection.id,
-    );
-    return {
-      connectionId: connection.id,
-      enabled: mapping !== undefined,
-      journalNumber: mapping ? String(mapping.journalNumber) : "",
-      contraAccountNumber: mapping ? String(mapping.contraAccountNumber) : "",
-      vatCode25: mapping?.vatCode25 ?? "",
-      accountMappings: categories.map((category) => ({
-        categoryId: category.id,
-        accountNumber:
-          mapping?.accountMappings
-            .find((item) => item.categoryId === category.id)
-            ?.accountNumber.toString() ?? "",
-      })),
-    };
-  });
-}
-
-function positiveInteger(value: string, label: string) {
-  const number = Number(value);
-  if (!value.trim() || !Number.isSafeInteger(number) || number <= 0) {
-    throw new Error(`${label} skal være et positivt heltal`);
-  }
-  return number;
-}
-
 function readRecipients(to: string, cc: string, bcc: string) {
   const split = (value: string) =>
     value.split(/[,;\n]/).map((email) => email.trim()).filter(Boolean);
@@ -126,11 +77,9 @@ export function ExpenseSettings() {
 }
 
 function ExpenseSettingsControl({ organizationId }: { organizationId: string }) {
-  const integrations = useIntegrations();
   const access = useAccess();
   const canManage = usePermission("expenses.settings");
   const canToggle = usePermission("organization.settings");
-  const canManageIntegrations = usePermission("integrations.manage");
   const settings = useQuery(
     api.expenses.getSettings,
     canManage && access?.locationScope.all && !access.kiosk?.kioskModeEnabled
@@ -143,7 +92,6 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const [bccDraft, setBccDraft] = useState<string | null>(null);
   const [categoriesDraft, setCategoriesDraft] = useState<Settings["categories"] | null>(null);
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
-  const [mappingsDraft, setMappingsDraft] = useState<MappingDraft[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sensors = useSensors(
@@ -184,91 +132,22 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const cc = ccDraft ?? settings.cc.join(", ");
   const bcc = bccDraft ?? settings.bcc.join(", ");
   const categories = categoriesDraft ?? settings.categories.filter((category) => category.enabled);
-  const categoryIds = new Set(categories.map((category) => category.id));
   const deletingCategory = categories.find((category) => category.id === deletingCategoryId);
-  const mappings = (mappingsDraft ?? mappingDrafts(settings, categories)).map((mapping) => ({
-    ...mapping,
-    accountMappings: categories.map((category) =>
-      mapping.accountMappings.find((account) => account.categoryId === category.id) ?? {
-        categoryId: category.id,
-        accountNumber: "",
-      },
-    ),
-  }));
-  const usableConnections = settings.connections.filter(
-    (connection) => integrations?.economic && connection.enabled && !connection.requiresReconnect,
-  );
-  const usableConnectionIds = new Set(
-    usableConnections.map((connection) => connection.id),
-  );
-  const visibleMappings = mappings.filter((mapping) =>
-    usableConnectionIds.has(mapping.connectionId),
-  );
-  const canEditMappings = integrations?.economic && canManageIntegrations && access.locationScope.all;
-
-  function updateMapping(
-    connectionId: MappingDraft["connectionId"],
-    update: Partial<Omit<MappingDraft, "connectionId">>,
-  ) {
-    setMappingsDraft(
-      mappings.map((mapping) =>
-        mapping.connectionId === connectionId ? { ...mapping, ...update } : mapping,
-      ),
-    );
-  }
-
   async function save() {
     if (saving) return;
     setError(null);
     try {
       const recipients = readRecipients(to, cc, bcc);
-      const economicMappings: EconomicMapping[] | undefined =
-        canEditMappings && mappingsDraft !== null
-          ? [
-              ...loadedSettings.economicMappings.filter(
-                (mapping) => !usableConnectionIds.has(mapping.connectionId),
-              ),
-              ...visibleMappings
-                .filter((mapping) => mapping.enabled)
-                .map((mapping) => {
-                  const vatCode25 = mapping.vatCode25.trim();
-                  if (!vatCode25) throw new Error("Angiv en momskode til 25 % moms");
-                  const accountMappings = [
-                    // Keep accounts for saved expenses whose category has been removed.
-                    ...(loadedSettings.economicMappings.find((item) => item.connectionId === mapping.connectionId)?.accountMappings ?? [])
-                      .filter((account) => !categoryIds.has(account.categoryId)),
-                    ...mapping.accountMappings
-                      .filter((account) => account.accountNumber.trim())
-                      .map((account) => ({
-                        categoryId: account.categoryId,
-                        accountNumber: positiveInteger(account.accountNumber, "Udgiftskonto"),
-                      })),
-                  ];
-                  if (!accountMappings.length) {
-                    throw new Error("Angiv mindst én udgiftskonto for hver aktiveret e-conomic-aftale");
-                  }
-                  return {
-                    connectionId: mapping.connectionId,
-                    journalNumber: positiveInteger(mapping.journalNumber, "Kassekladdenummer"),
-                    contraAccountNumber: positiveInteger(mapping.contraAccountNumber, "Modkonto"),
-                    vatCode25,
-                    accountMappings,
-                  };
-                }),
-            ]
-          : undefined;
       setSaving(true);
       await saveSettings({
         expectedOrganizationId: loadedSettings.organizationId,
         ...recipients,
         categories: categoriesDraft ?? undefined,
-        economicMappings,
       });
       setToDraft(null);
       setCcDraft(null);
       setBccDraft(null);
       setCategoriesDraft(null);
-      setMappingsDraft(null);
       toast.success("Udgiftsindstillingerne er gemt");
     } catch (cause) {
       const message = getUserErrorMessage(cause, "Udgiftsindstillingerne kunne ikke gemmes. Prøv igen.");
@@ -448,108 +327,6 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
         </CardContent>
       </Card>
 
-      {usableConnections.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>e-conomic</CardTitle>
-            <CardDescription>
-              Udgifter oprettes som kladder til gennemgang i e-conomic.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FieldGroup>
-              {!canEditMappings ? (
-                <Alert>
-                  <AlertDescription>
-                    Du skal have adgang til at administrere integrationer og alle
-                    lokationer for at ændre konteringen.
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-              {visibleMappings.map((mapping) => {
-                const connection = usableConnections.find(
-                  (item) => item.id === mapping.connectionId,
-                );
-                if (!connection) return null;
-                const disabled = saving || !canEditMappings;
-                return (
-                  <FieldSet key={connection.id} disabled={disabled}>
-                    <FieldLegend>{connection.name}</FieldLegend>
-                    <FieldDescription>Aftalenummer {connection.agreementNumber}</FieldDescription>
-                    <FieldGroup>
-                      <SettingsSwitchField
-                        label="Brug til udgifter"
-                        checked={mapping.enabled}
-                        disabled={disabled}
-                        onCheckedChange={(enabled) => updateMapping(connection.id, { enabled })}
-                        help={{
-                          label: "udgifter i e-conomic",
-                          content: "Gør forbindelsen tilgængelig ved registrering af udgifter. Hver udgift sendes først, når brugeren vælger det. Kladden skal gennemgås og bogføres i e-conomic.",
-                        }}
-                      />
-                      {mapping.enabled ? (
-                        <>
-                          <FieldGroup appearance="standard" className="grid sm:grid-cols-2">
-                            <Field data-disabled={disabled}>
-                              <div className="flex items-center gap-1">
-                                <FieldLabel htmlFor={`expense-journal-${connection.id}`}>Kassekladdenummer</FieldLabel>
-                                <HelpTooltip label="kassekladdenummer" content="Nummeret på den kassekladde i e-conomic, der skal modtage udgifterne." />
-                              </div>
-                              <Input id={`expense-journal-${connection.id}`} type="number" min="1" step="1" required disabled={disabled} value={mapping.journalNumber} onChange={(event) => updateMapping(connection.id, { journalNumber: event.target.value })} />
-                            </Field>
-                            <Field data-disabled={disabled}>
-                              <div className="flex items-center gap-1">
-                                <FieldLabel htmlFor={`expense-contra-${connection.id}`}>Modkonto</FieldLabel>
-                                <HelpTooltip label="modkonto" content="Kontonummeret for udgiftens modpost i e-conomic, for eksempel en bank- eller mellemregningskonto." />
-                              </div>
-                              <Input id={`expense-contra-${connection.id}`} type="number" min="1" step="1" required disabled={disabled} value={mapping.contraAccountNumber} onChange={(event) => updateMapping(connection.id, { contraAccountNumber: event.target.value })} />
-                            </Field>
-                            <Field data-disabled={disabled}>
-                              <div className="flex items-center gap-1">
-                                <FieldLabel htmlFor={`expense-vat-${connection.id}`}>Momskode ved 25 % moms</FieldLabel>
-                                <HelpTooltip label="momskode" content="Momskoden for køb med 25 % moms i denne e-conomic-aftale. Udgifter uden moms oprettes uden momskode." />
-                              </div>
-                              <Input id={`expense-vat-${connection.id}`} required disabled={disabled} value={mapping.vatCode25} onChange={(event) => updateMapping(connection.id, { vatCode25: event.target.value })} />
-                            </Field>
-                          </FieldGroup>
-                          <FieldSet>
-                            <FieldLegend variant="label">
-                              <span className="flex items-center gap-1">
-                                Udgiftskonti
-                                <HelpTooltip label="udgiftskonti" content="Angiv mindst én udgiftskonto. Kategorier uden en konto kan stadig registreres her, men kan ikke oprettes i e-conomic." />
-                              </span>
-                            </FieldLegend>
-                            <FieldGroup appearance="standard" className="grid sm:grid-cols-2">
-                              {mapping.accountMappings.map((account) => (
-                                <Field key={account.categoryId} data-disabled={disabled}>
-                                  <FieldLabel htmlFor={`expense-account-${connection.id}-${account.categoryId}`}>
-                                    {categories.find((category) => category.id === account.categoryId)?.label}
-                                  </FieldLabel>
-                                  <Input
-                                    id={`expense-account-${connection.id}-${account.categoryId}`}
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    disabled={disabled}
-                                    value={account.accountNumber}
-                                    onChange={(event) => updateMapping(connection.id, {
-                                      accountMappings: mapping.accountMappings.map((item) => item.categoryId === account.categoryId ? { ...item, accountNumber: event.target.value } : item),
-                                    })}
-                                  />
-                                </Field>
-                              ))}
-                            </FieldGroup>
-                          </FieldSet>
-                        </>
-                      ) : null}
-                    </FieldGroup>
-                  </FieldSet>
-                );
-              })}
-            </FieldGroup>
-          </CardContent>
-        </Card>
-      ) : null}
       {error ? (
         <Alert variant="destructive" role="alert">
           <AlertDescription>{error}</AlertDescription>

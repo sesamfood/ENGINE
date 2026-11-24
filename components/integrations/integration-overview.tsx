@@ -46,10 +46,8 @@ function ConnectionSummary({ integration }: { integration: IntegrationId }) {
     attention = onlinePos.masters.length === 0;
   }
   if (economic) {
-    const reconnect = economic.connections.filter((connection) => connection.requiresReconnect).length;
-    const connected = economic.connections.filter((connection) => connection.enabled && !connection.requiresReconnect).length;
-    attention = reconnect > 0 || connected === 0;
-    label = reconnect ? `${reconnect} aftale${reconnect === 1 ? " kræver" : "r kræver"} ny forbindelse` : connected ? `${connected} forbundet aftale${connected === 1 ? "" : "r"}` : "Mangler aktiv forbindelse";
+    attention = !economic.connection || economic.connection.journalNumber === null;
+    label = !economic.connection ? "Mangler forbindelse" : economic.connection.journalNumber === null ? "Mangler kassekladde" : `Forbundet til ${economic.connection.companyName}`;
   }
   if (wolt) {
     const incomplete = wolt.locations.filter((location) => !location.connection || location.connection.state !== "ready" || location.connection.deadLetterCount > 0 || location.connection.lastError).length;

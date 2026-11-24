@@ -31,7 +31,6 @@ type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
   readonly BETTER_AUTH_SECRET: string | undefined;
-  readonly ECONOMIC_ENCRYPTION_KEY: string | undefined;
   readonly FORECAST_DISPATCH_DISABLED: string | undefined;
   readonly GOOGLE_PLACES_API_KEY: string | undefined;
   readonly KIOSK_DAY_SIMULATION: string | undefined;

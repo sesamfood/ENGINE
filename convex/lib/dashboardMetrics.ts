@@ -94,7 +94,7 @@ type MetricComputer = (
   params: DashboardMetricParams,
 ) => Promise<MetricResult>;
 
-type ExternalMetricComputer = { kind: "external"; provider: "googleMaps" | "economic" };
+type ExternalMetricComputer = { kind: "external"; provider: "googleMaps" | "monthlyReport" };
 
 export function queryMetricComputer(metricId: MetricId): MetricComputer {
   const computer = dashboardMetricComputers[metricId];
@@ -2688,14 +2688,14 @@ const withSalesSource = (computer: MetricComputer, salesSource: SalesSource): Me
   (ctx, params) => computer(ctx, { ...params, salesSource });
 
 export const dashboardMetricComputers: Record<MetricId, MetricComputer | ExternalMetricComputer> = {
-  cogsPercent: { kind: "external", provider: "economic" },
-  labourPercent: { kind: "external", provider: "economic" },
-  grossMarginPercent: { kind: "external", provider: "economic" },
-  wastePercent: { kind: "external", provider: "economic" },
-  rentPercent: { kind: "external", provider: "economic" },
-  utilitiesPercent: { kind: "external", provider: "economic" },
-  primeCostPercent: { kind: "external", provider: "economic" },
-  ebitdaPercent: { kind: "external", provider: "economic" },
+  cogsPercent: { kind: "external", provider: "monthlyReport" },
+  labourPercent: { kind: "external", provider: "monthlyReport" },
+  grossMarginPercent: { kind: "external", provider: "monthlyReport" },
+  wastePercent: { kind: "external", provider: "monthlyReport" },
+  rentPercent: { kind: "external", provider: "monthlyReport" },
+  utilitiesPercent: { kind: "external", provider: "monthlyReport" },
+  primeCostPercent: { kind: "external", provider: "monthlyReport" },
+  ebitdaPercent: { kind: "external", provider: "monthlyReport" },
   googleRating: { kind: "external", provider: "googleMaps" },
   predictedSalesRevenue: withMetricMetadata("predictedSalesRevenue", predictedSalesRevenue),
   wasteQuantity: withMetricMetadata("wasteQuantity", wasteQuantity),

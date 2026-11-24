@@ -8,27 +8,12 @@ export const expenseCategoryOptionValidator = v.object({
   enabled: v.boolean(),
 });
 
-export const expenseEconomicMappingValidator = v.object({
-  connectionId: v.id("economicConnections"),
-  journalNumber: v.number(),
-  contraAccountNumber: v.number(),
-  vatCode25: v.string(),
-  accountMappings: v.array(v.object({
-    categoryId: expenseCategoryValidator,
-    accountNumber: v.number(),
-  })),
-});
-
-export const expenseEconomicSnapshotValidator = v.object({
-  connectionId: v.id("economicConnections"),
-  connectionRevision: v.number(),
-  journalNumber: v.number(),
-  accountNumber: v.number(),
-  contraAccountNumber: v.number(),
-  vatCode: v.optional(v.string()),
-  dimensionNumber: v.union(v.number(), v.null()),
-  dimensionKey: v.union(v.number(), v.null()),
-});
+// Rows written while expenses could be exported to e-conomic still hold these fields.
+// Drop them from the schema after clearing them from existing rows.
+export const legacyEconomicExpenseFields = [
+  "economic", "economicStatus", "economicError", "economicAttemptedAt", "economicEntryNumber",
+  "economicVoucherNumber", "economicDimensionAttached", "economicAttachmentUploaded",
+] as const;
 
 export const expenseFields = {
   organizationId: v.string(),
@@ -67,11 +52,8 @@ export const expenseFields = {
   noticeAttemptedAt: v.optional(v.number()),
   noticeFirstAttemptedAt: v.optional(v.number()),
   noticeProviderId: v.optional(v.string()),
-  economic: v.optional(expenseEconomicSnapshotValidator),
-  economicStatus: v.union(
-    v.literal("notRequested"), v.literal("pending"), v.literal("sending"),
-    v.literal("created"), v.literal("failed"), v.literal("uncertain"),
-  ),
+  economic: v.optional(v.any()),
+  economicStatus: v.optional(v.string()),
   economicError: v.optional(v.string()),
   economicAttemptedAt: v.optional(v.number()),
   economicEntryNumber: v.optional(v.number()),

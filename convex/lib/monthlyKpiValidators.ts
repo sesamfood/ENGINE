@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { economicCategoryValidator } from "../integrations/economic/lib/validators";
 
 export const nullableKpiNumber = v.union(v.number(), v.null());
 export const nullableKpiString = v.union(v.string(), v.null());
@@ -22,7 +21,6 @@ export const monthlyKpiInputsValidator = v.object({
     id: v.id("locations"), name: v.string(), currency: v.string(),
     periods: v.array(monthlyKpiAmountsValidator.extend({ month: v.string() })),
     budget: monthlyKpiAmountsValidator.extend({ guestScore: monthlyKpiCellValidator }),
-    economicBudgetCategories: v.array(economicCategoryValidator),
     labourConnected: v.boolean(),
     salesConnected: v.boolean(),
   })),

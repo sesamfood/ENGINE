@@ -1,7 +1,5 @@
 "use client";
 
-import { useIntegrations } from "@/integrations/use-integrations";
-
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { usePaginatedQuery, useQuery } from "convex-helpers/react/cache/hooks";
@@ -10,16 +8,6 @@ import { toast } from "sonner";
 import { usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,23 +74,11 @@ const noticeLabels = {
   sent: "Sendt",
   failed: "Afsendelse fejlede",
 } satisfies Record<Doc<"expenses">["noticeStatus"], string>;
-const economicLabels = {
-  notRequested: "Ikke overført",
-  pending: "Afventer overførsel",
-  sending: "Overfører",
-  created: "Kladde oprettet",
-  failed: "Overførsel fejlede",
-  uncertain: "Kontrollér i e-conomic",
-} satisfies Record<Doc<"expenses">["economicStatus"], string>;
-
 function ExpenseStatuses({
   expense,
-  economicConfigured,
 }: {
-  expense: Pick<Doc<"expenses">, "noticeStatus" | "economicStatus">;
-  economicConfigured: boolean;
+  expense: Pick<Doc<"expenses">, "noticeStatus">;
 }) {
-  const integrations = useIntegrations();
   return (
     <div className="flex flex-wrap gap-2">
       <Badge
@@ -110,49 +86,15 @@ function ExpenseStatuses({
       >
         E-mail: {noticeLabels[expense.noticeStatus]}
       </Badge>
-      {integrations?.economic && economicConfigured ? <Badge
-        variant={
-          expense.economicStatus === "failed" ||
-          expense.economicStatus === "uncertain"
-            ? "destructive"
-            : "secondary"
-        }
-      >
-        e-conomic: {economicLabels[expense.economicStatus]}
-      </Badge> : null}
     </div>
   );
 }
 
 function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
   const expense = useQuery(api.expenses.get, { expenseId });
-  const requestExport = useMutation(api.expenses.requestEconomicExport);
   const retryNotice = useMutation(api.expenses.retryNotice);
-  const integrations = useIntegrations();
-  const canExport = usePermission("expenses.exportEconomic") && integrations?.economic === true;
   const canCreate = usePermission("expenses.create");
-  const [confirmExport, setConfirmExport] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [retrying, setRetrying] = useState(false);
-
-  async function sendToEconomic() {
-    if (exporting) return;
-    setExporting(true);
-    try {
-      await requestExport({ expenseId });
-      setConfirmExport(false);
-      toast.success("Udgiften er sat i kø til e-conomic.");
-    } catch (error) {
-      toast.error(
-        getUserErrorMessage(
-          error,
-          "Udgiften kunne ikke sendes til e-conomic. Prøv igen.",
-        ),
-      );
-    } finally {
-      setExporting(false);
-    }
-  }
 
   async function resendNotice() {
     if (retrying) return;
@@ -257,33 +199,12 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
             </TableBody>
           </Table>
         </div>
-        <ExpenseStatuses expense={expense} economicConfigured={expense.economicConfigured} />
+        <ExpenseStatuses expense={expense} />
         {expense.noticeError ? (
           <Alert variant="destructive">
             <AlertTitle>E-mailen kunne ikke sendes</AlertTitle>
             <AlertDescription>{expense.noticeError}</AlertDescription>
           </Alert>
-        ) : null}
-        {integrations?.economic && expense.economicConfigured && expense.economicError ? (
-          <Alert variant="destructive">
-            <AlertTitle>
-              {expense.economicStatus === "uncertain"
-                ? "Kontrollér udgiften i e-conomic"
-                : "Overførslen til e-conomic fejlede"}
-            </AlertTitle>
-            <AlertDescription>{expense.economicError}</AlertDescription>
-          </Alert>
-        ) : null}
-        {integrations?.economic && expense.economicConfigured && expense.economicStatus === "uncertain" ? (
-          <p className="text-sm text-muted-foreground">
-            e-conomic kan have modtaget udgiften. Kontrollér kladden i
-            e-conomic, før udgiften oprettes igen.
-          </p>
-        ) : null}
-        {integrations?.economic && expense.economicConfigured && expense.economicEntryNumber !== undefined ? (
-          <p className="text-sm">
-            Postering i e-conomic: {expense.economicEntryNumber}
-          </p>
         ) : null}
         <div className="flex flex-wrap gap-2">
           {expense.attachmentUrl && expense.attachment ? (
@@ -315,50 +236,8 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
               e-mail igen
             </Button>
           ) : null}
-          {canExport &&
-          expense.economicConfigured &&
-          expense.economicAvailable &&
-          (expense.economicStatus === "notRequested" ||
-            expense.economicStatus === "failed") ? (
-            <Button className="min-h-11" onClick={() => setConfirmExport(true)}>
-              {expense.economicStatus === "failed"
-                ? "Prøv e-conomic igen"
-                : "Opret i e-conomic"}
-            </Button>
-          ) : null}
         </div>
       </div>
-      <AlertDialog
-        open={integrations?.economic === true && expense.economicConfigured && confirmExport}
-        onOpenChange={(open) => {
-          if (!exporting) setConfirmExport(open);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Opret udgift i e-conomic?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Udgiften til {expense.supplier} på{" "}
-              {formatExpenseAmount(expense.grossAmount, expense.currency)}{" "}
-              overføres til e-conomic som en kladde. Kladden skal kontrolleres
-              og bogføres i e-conomic.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={exporting}>Annullér</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={exporting}
-              onClick={(event) => {
-                event.preventDefault();
-                void sendToEconomic();
-              }}
-            >
-              {exporting ? <Spinner data-icon="inline-start" /> : null}Opret
-              kladde
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }
@@ -460,7 +339,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                       )}
                     </TableCell>
                     <TableCell className="max-w-72">
-                      <ExpenseStatuses expense={expense} economicConfigured={location.economicConfigured} />
+                      <ExpenseStatuses expense={expense} />
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -500,7 +379,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                         expense.currency,
                       )}
                     </p>
-                    <ExpenseStatuses expense={expense} economicConfigured={location.economicConfigured} />
+                    <ExpenseStatuses expense={expense} />
                   </CardContent>
                   <CardFooter>
                     <Button
