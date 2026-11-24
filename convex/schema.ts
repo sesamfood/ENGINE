@@ -988,6 +988,8 @@ export default defineSchema({
     // Prepplan: hours of preparation before the Produkt is ready, and how it is made.
     prepLeadTimeHours: v.optional(v.number()),
     prepMethod: v.optional(v.string()),
+    // Unit the Prepplan shows totals in; absent means the largest unit it fills.
+    prepDisplayUnitId: v.optional(v.id("units")),
     expiry: v.optional(expiryValidator),
     // Including VAT, in integer minor units.
     salesPrice: v.optional(v.number()),
