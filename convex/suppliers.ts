@@ -47,6 +47,7 @@ const supplierValidator = v.object({
   // Orders go to the supplier's API instead of by e-mail.
   sendsToApi: v.boolean(),
   ...forecastSettingsFields,
+  applyPrepCutoff: v.boolean(),
 });
 
 export const list = query({
@@ -103,6 +104,7 @@ export const list = query({
           sendsToAbCatering,
       ),
       ...forecastSettings(supplier),
+      applyPrepCutoff: supplier.applyPrepCutoff ?? false,
     }));
   },
 });
@@ -111,6 +113,8 @@ const supplierInput = {
   name: v.string(),
   email: v.union(v.string(), v.null()),
   ...forecastSettingsFields,
+  // Optional so clients from before the setting can still save.
+  applyPrepCutoff: v.optional(v.boolean()),
 };
 
 export const create = mutation({
@@ -141,6 +145,9 @@ export const create = mutation({
       normalizedName,
       email,
       ...requireForecastSettings(args),
+      ...(args.applyPrepCutoff !== undefined
+        ? { applyPrepCutoff: args.applyPrepCutoff }
+        : {}),
       updatedAt: Date.now(),
     });
     await recordAudit(ctx, auth, {
@@ -182,6 +189,9 @@ export const update = mutation({
       normalizedName,
       email: normalizeEmail(args.email),
       ...requireForecastSettings(args),
+      ...(args.applyPrepCutoff !== undefined
+        ? { applyPrepCutoff: args.applyPrepCutoff }
+        : {}),
       updatedAt: Date.now(),
     });
     await recordAudit(ctx, auth, {

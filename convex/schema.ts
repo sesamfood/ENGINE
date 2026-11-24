@@ -989,6 +989,8 @@ export default defineSchema({
     // Prepplan: hours of preparation before the Produkt is ready, and how it is made.
     prepLeadTimeHours: v.optional(v.number()),
     prepMethod: v.optional(v.string()),
+    // Percent of the ordered amount lost when prepping, e.g. peel and trim.
+    prepCutoffPercent: v.optional(v.number()),
     // Unit the Prepplan shows totals in; absent means the largest unit it fills.
     prepDisplayUnitId: v.optional(v.id("units")),
     expiry: v.optional(expiryValidator),
@@ -1551,6 +1553,8 @@ export default defineSchema({
     // Forecast settings under Bestilling. Missing means the defaults.
     coverageDays: v.optional(v.number()),
     bufferPercent: v.optional(v.number()),
+    // Gross up suggestions by each Produkt's prepCutoffPercent.
+    applyPrepCutoff: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_normalizedName", [
     "organizationId",

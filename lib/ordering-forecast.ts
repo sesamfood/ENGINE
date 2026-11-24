@@ -46,6 +46,7 @@ export function forecastOrder({
   today,
   coverageDays,
   bufferPercent,
+  cutoffPercent = 0,
   stock,
   factors = [],
   conditions = [],
@@ -61,6 +62,8 @@ export function forecastOrder({
   today: string;
   coverageDays: number;
   bufferPercent: number;
+  // Share of the ordered amount lost when prepping, so more must be ordered.
+  cutoffPercent?: number;
   stock: number | null;
   factors?: readonly DemandFactor[];
   conditions?: readonly ForecastCondition[];
@@ -163,10 +166,12 @@ export function forecastOrder({
     }).points,
   );
   const demand = salesDemand + staffFoodDemand + wasteDemand;
-  const needed = Math.max(
-    0,
-    demand * (1 + bufferPercent / 100) - Math.max(0, stock ?? 0),
-  );
+  const needed =
+    Math.max(
+      0,
+      demand * (1 + bufferPercent / 100) - Math.max(0, stock ?? 0),
+    ) /
+    (1 - cutoffPercent / 100);
   const round = (value: number) => Math.round(value * 1e3) / 1e3;
   return {
     demand: round(demand),
