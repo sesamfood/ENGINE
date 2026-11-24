@@ -2195,6 +2195,14 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
+  // Pages for one kiosk account, replacing the organization's kiosk pages and start page.
+  kioskAccountPages: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    enabledPages: v.array(v.string()),
+    homePage: v.string(),
+  }).index("by_organizationId_and_userId", ["organizationId", "userId"]),
+
   kioskPins: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
