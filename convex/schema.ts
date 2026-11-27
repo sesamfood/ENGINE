@@ -1595,6 +1595,11 @@ export default defineSchema({
           v.literal("failed"),
         ),
         failureMessage: v.optional(v.string()),
+        // Missing on orders sent to the AB basket before direct placement.
+        deliveryDate: v.optional(v.string()),
+        // Warning keys the user accepted before placing the order.
+        acceptedWarnings: v.optional(v.array(v.string())),
+        orderNumbers: v.optional(v.array(v.number())),
       }),
     ),
     // Missing on orders placed before goods receipt, or without product lines.

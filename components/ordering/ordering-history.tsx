@@ -286,6 +286,26 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               </dd>
             </div>
           ) : null}
+          {order.supplierOrder?.deliveryDate ? (
+            <div>
+              <dt className="text-muted-foreground">Leveringsdato</dt>
+              <dd>
+                {dateFormatter.format(
+                  new Date(`${order.supplierOrder.deliveryDate}T00:00:00Z`),
+                )}
+              </dd>
+            </div>
+          ) : null}
+          {order.supplierOrder?.orderNumbers?.length ? (
+            <div>
+              <dt className="text-muted-foreground">
+                {order.supplierOrder.orderNumbers.length > 1
+                  ? "Ordrenumre hos leverandør"
+                  : "Ordrenummer hos leverandør"}
+              </dt>
+              <dd>{order.supplierOrder.orderNumbers.join(", ")}</dd>
+            </div>
+          ) : null}
         </dl>
         <div className="shrink-0 overflow-hidden rounded-lg border">
           <Table>

@@ -27,6 +27,7 @@ import {
   validForecastSettings,
 } from "../lib/ordering-forecast";
 import {
+  internalQuery,
   mutation,
   query,
   type MutationCtx,
@@ -478,7 +479,7 @@ export const listOperationalConsumption = query({
 const MAX_COMMENT_LENGTH = 500;
 const MAX_WINDOW_ORDERS = 500;
 
-const orderInputValidator = v.object({
+export const orderInputValidator = v.object({
   locationId: v.id("locations"),
   supplierId: v.optional(v.id("suppliers")),
   // Internal orders name the location that fulfils them with a Transfer.
@@ -949,6 +950,32 @@ export const prepareExport = query({
   },
 });
 
+/** The lines of an AB Catering order, for checking it with AB before it is placed. */
+export const prepareAbCateringOrder = internalQuery({
+  args: orderInputValidator.fields,
+  returns: v.object({
+    organizationId: v.string(),
+    lines: v.array(orderRowValidator.pick("supplierProductNumber", "quantity")),
+  }),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "ordering.place");
+    const { auth, catalogProvider, rows } = await prepareOrder(ctx, args);
+    if (
+      catalogProvider !== "abcatering" ||
+      !(await sendsAbCateringOrders(ctx, auth.organizationId))
+    ) {
+      throw new ConvexError("Bestillingen sendes ikke til AB Catering");
+    }
+    return {
+      organizationId: auth.organizationId,
+      lines: rows.map(({ supplierProductNumber, quantity }) => ({
+        supplierProductNumber,
+        quantity,
+      })),
+    };
+  },
+});
+
 function historySummary(order: Doc<"orders">) {
   return {
     _id: order._id,
@@ -966,6 +993,18 @@ function historySummary(order: Doc<"orders">) {
     fulfillmentStatus: order.fulfillmentStatus,
     comment: order.comment,
   };
+}
+
+export function requireDeliveryDate(value: string | undefined) {
+  const today = dateKey(Date.now(), DEFAULT_TIME_ZONE);
+  try {
+    if (value && parseDateKey(value) && value >= today) {
+      return value;
+    }
+  } catch {
+    // Falls through to the error below.
+  }
+  throw new ConvexError("Vælg en leveringsdato fra i dag og frem");
 }
 
 function orderComment(comment: string | undefined) {
@@ -987,6 +1026,9 @@ export const placeOrder = mutation({
     comment: v.optional(v.string()),
     // Internal orders only. Missing means an extra order outside the Prepplan.
     planDate: v.optional(v.string()),
+    // AB Catering orders only.
+    deliveryDate: v.optional(v.string()),
+    acceptedWarnings: v.optional(v.array(v.string())),
   }).fields,
   returns: v.id("orders"),
   handler: async (ctx, args) => {
@@ -1039,6 +1081,15 @@ export const placeOrder = mutation({
     } catch {
       throw new ConvexError("Datoen er ugyldig");
     }
+    // The dialog checked the order with AB; sending turned off since then.
+    if (args.deliveryDate !== undefined && !sendsToApi) {
+      throw new ConvexError(
+        "Bestillingen sendes ikke længere til AB Catering. Opdatér siden og prøv igen",
+      );
+    }
+    const deliveryDate = sendsToApi
+      ? requireDeliveryDate(args.deliveryDate)
+      : undefined;
     const email =
       !sendsToApi && args.sendEmail && supplier?.email
         ? { to: supplier.email, status: "pending" as const }
@@ -1069,6 +1120,14 @@ export const placeOrder = mutation({
             supplierOrder: {
               provider: "abcatering" as const,
               status: "pending" as const,
+              deliveryDate,
+              acceptedWarnings: [
+                ...new Set(
+                  (args.acceptedWarnings ?? [])
+                    .map((key) => key.trim())
+                    .filter((key) => key && key.length <= 64),
+                ),
+              ].slice(0, 20),
             },
           }
         : {}),

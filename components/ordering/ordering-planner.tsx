@@ -9,7 +9,7 @@ import { useLastDefined } from "@/lib/use-last-defined";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader, PageTitle } from "@/components/app-page-header";
 
-import { useConvex, useMutation } from "convex/react";
+import { useAction, useConvex, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -86,6 +86,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
+import { addDays } from "@/lib/date";
+import { DatePicker } from "@/components/date-picker";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
@@ -209,6 +211,14 @@ function Planner({
   const [supplierChoice, setSupplierValue] = useState<string | null>(null);
   const supplierValue = editOrder?.fulfillingLocationId ?? supplierChoice;
   const [sendEmail, setSendEmail] = useState(true);
+  // null until the user has chosen, so it starts from tomorrow.
+  const [deliveryDateInput, setDeliveryDateInput] = useState<string | null>(null);
+  // AB Catering's check of the order; its warnings must be accepted before placing.
+  const [checkedOrder, setCheckedOrder] = useState<{
+    key: string;
+    errors: { key: string; message: string }[];
+    warnings: { key: string; message: string }[];
+  } | null>(null);
   // null until the user has typed, so editing starts from the saved comment.
   const [commentInput, setCommentInput] = useState<string | null>(null);
   const comment = commentInput ?? editOrder?.comment ?? "";
@@ -277,6 +287,7 @@ function Planner({
   }, [catalogInputs, draftUserId, editing, locationId, organizationId, overrides, sendEmail, supplierChoice, unitLines]);
   const convex = useConvex();
   const placeOrder = useMutation(api.ordering.placeOrder);
+  const checkAbOrder = useAction(api.integrations.abcatering.orders.check);
   const updateOrder = useMutation(api.ordering.updateInternalOrder);
   const refreshEnvironment = useMutation(api.forecasts.requestRefresh);
   const settings = useQuery(
@@ -377,6 +388,13 @@ function Planner({
     canPlan && locationId ? { locationId, asOf } : "skip",
   );
   const context = useLastDefined(liveContext, canPlan ? locationId : null);
+  // A chosen date that has passed falls back to tomorrow.
+  const deliveryDate =
+    deliveryDateInput && (!context || deliveryDateInput >= context.today)
+      ? deliveryDateInput
+      : context
+        ? addDays(context.today, 1)
+        : "";
   const products = useCompleteCatalog(
     api.ordering.listProducts,
     canPlan && locationId ? { locationId } : "skip",
@@ -716,6 +734,15 @@ function Planner({
     productName: row.name,
     quantity: row.quantity ?? 0,
   }));
+  // A check only counts for the exact order and date it was made for.
+  const supplierCheckKey = JSON.stringify([
+    supplier?.id,
+    deliveryDate,
+    orderLines,
+    catalogLines,
+  ]);
+  const supplierCheck =
+    sendsToApi && checkedOrder?.key === supplierCheckKey ? checkedOrder : null;
   const missingPrices = planned.some((row) => row.productNumber && !row.catalogItem);
   const visible = searchProducts(rows, search, (row) => ({
     name: row.name,
@@ -938,6 +965,30 @@ function Planner({
     }
     try {
       const emailed = !sendsToApi && Boolean(supplier?.email && sendEmail);
+      let acceptedWarnings: string[] | undefined;
+      if (sendsToApi && supplier) {
+        let check = supplierCheck;
+        if (!check) {
+          const key = supplierCheckKey;
+          check = {
+            key,
+            ...(await checkAbOrder({
+              locationId,
+              supplierId: supplier.id,
+              lines: orderLines,
+              catalogLines,
+              deliveryDate,
+            })),
+          };
+          if (!mounted.current) return;
+          if (check.errors.length || check.warnings.length) {
+            setCheckedOrder(check);
+            return;
+          }
+        }
+        if (check.errors.length) return;
+        acceptedWarnings = check.warnings.map((warning) => warning.key);
+      }
       await placeOrder({
         locationId,
         supplierId: supplier?.id,
@@ -950,6 +1001,7 @@ function Planner({
         catalogLines,
         ...(internalSupplier ? { comment } : {}),
         ...(internalSupplier && planDate !== NO_PLAN_DATE ? { planDate } : {}),
+        ...(sendsToApi ? { deliveryDate, acceptedWarnings } : {}),
       });
       if (draftUserId) clearOrderingDraft(organizationId, draftUserId, locationId);
       if (!mounted.current) return;
@@ -1694,7 +1746,9 @@ function Planner({
           <AlertDialog
             open={confirming}
             onOpenChange={(open) => {
-              if (!submitting.current) setConfirming(open);
+              if (submitting.current) return;
+              setConfirming(open);
+              setCheckedOrder(null);
             }}
           >
             <AlertDialogContent>
@@ -1730,6 +1784,47 @@ function Planner({
                   </FieldLabel>
                 </Field>
               ) : null}
+              {sendsToApi ? (
+                <Field>
+                  <FieldLabel htmlFor="ordering-delivery-date">
+                    Leveringsdato
+                  </FieldLabel>
+                  <DatePicker
+                    id="ordering-delivery-date"
+                    value={deliveryDate}
+                    min={context?.today}
+                    required
+                    onValueChange={setDeliveryDateInput}
+                    disabled={placing}
+                  />
+                </Field>
+              ) : null}
+              {supplierCheck?.errors.length ? (
+                <Alert variant="destructive">
+                  <AlertTitle>
+                    {supplierCatalog?.name} kan ikke modtage bestillingen
+                  </AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc pl-4">
+                      {supplierCheck.errors.map((error, index) => (
+                        <li key={index}>{error.message}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {supplierCheck?.warnings.length ? (
+                <Alert>
+                  <AlertTitle>Advarsler fra {supplierCatalog?.name}</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc pl-4">
+                      {supplierCheck.warnings.map((warning, index) => (
+                        <li key={index}>{warning.message}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               {internalSupplier ? (
                 <Field>
                   <FieldLabel htmlFor="ordering-comment">
@@ -1748,14 +1843,23 @@ function Planner({
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={placing}>Annullér</AlertDialogCancel>
                 <AlertDialogAction
-                  disabled={placing}
+                  disabled={
+                    placing ||
+                    (sendsToApi && !deliveryDate) ||
+                    Boolean(supplierCheck?.errors.length)
+                  }
                   onClick={(event) => {
                     event.preventDefault();
                     void submitOrder();
                   }}
                 >
                   {placing ? <Spinner data-icon="inline-start" /> : null}
-                  {editing ? "Gem ændringer" : "Afgiv bestilling"}
+                  {editing
+                    ? "Gem ændringer"
+                    : supplierCheck?.warnings.length &&
+                        !supplierCheck.errors.length
+                      ? "Acceptér og afgiv"
+                      : "Afgiv bestilling"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
