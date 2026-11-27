@@ -87,6 +87,8 @@ type AllowanceDraft = {
   id: string;
   categoryIds: Id<"categories">[];
   amount: string;
+  // Draft ids of other groups this group's picks can be spent on.
+  swapToIds: string[];
   productIds: Id<"products">[];
 };
 function formatDuration(minutes: number) {
@@ -226,6 +228,13 @@ export function StaffFoodSettings() {
       })),
     [categoryItems],
   );
+  const swapItems = allowances.map((allowance, index) => ({
+    value: allowance.id,
+    label: `Kategorigruppe ${index + 1}: ${allowance.categoryIds
+      .map((id) => categoryItems.find((item) => item.value === id)?.label)
+      .filter(Boolean)
+      .join(", ")}`,
+  }));
   const minimumMinutes = Number(minimumHours) * 60;
   const minimumValid =
     Number.isFinite(minimumMinutes) &&
@@ -237,14 +246,25 @@ export function StaffFoodSettings() {
     setEditingId(tier?.id ?? null);
     setMinimumHours(String((tier?.minimumShiftMinutes ?? 240) / 60));
     setRoleNames(tier?.roleNames ?? []);
-    setAllowances(
+    const drafts =
       tier?.allowances.map((allowance) => ({
         id: crypto.randomUUID(),
         categoryIds: allowance.categoryIds ?? [allowance.categoryId],
         amount: String(allowance.amount),
+        swapToIds: [] as string[],
         productIds: allowance.products.map((product) => product.id),
-      })) ?? [],
-    );
+      })) ?? [];
+    tier?.allowances.forEach((allowance, index) => {
+      drafts[index].swapToIds = allowance.swapCategoryIds.flatMap(
+        (categoryId) => {
+          const target = tier.allowances.findIndex(
+            (item) => item.categoryId === categoryId,
+          );
+          return target >= 0 ? [drafts[target].id] : [];
+        },
+      );
+    });
+    setAllowances(drafts);
     setEditorOpen(true);
   }
 
@@ -270,6 +290,7 @@ export function StaffFoodSettings() {
         id,
         categoryIds: [category.id],
         amount: "1",
+        swapToIds: [],
         productIds: [],
       },
     ]);
@@ -307,6 +328,10 @@ export function StaffFoodSettings() {
           categoryId: allowance.categoryIds[0],
           categoryIds: allowance.categoryIds,
           amount: Number(allowance.amount),
+          swapCategoryIds: allowance.swapToIds.flatMap((id) => {
+            const target = allowances.find((item) => item.id === id);
+            return target ? [target.categoryIds[0]] : [];
+          }),
           productIds: allowance.productIds,
         })),
       });
@@ -491,6 +516,17 @@ export function StaffFoodSettings() {
                       <Badge key={allowance.categoryId} variant="secondary">
                         {allowance.amount} i alt fra {allowance.categoryName} ·{" "}
                         {allowance.products.length} produkter
+                        {allowance.swapCategoryIds.length
+                          ? ` · kan byttes til ${allowance.swapCategoryIds
+                              .map(
+                                (categoryId) =>
+                                  tier.allowances.find(
+                                    (item) => item.categoryId === categoryId,
+                                  )?.categoryName,
+                              )
+                              .filter(Boolean)
+                              .join(", ")}`
+                          : null}
                       </Badge>
                     ))}
                   </CardContent>
@@ -780,6 +816,56 @@ export function StaffFoodSettings() {
                         ) : null}
                       </Field>
                     </FieldGroup>
+
+                    {allowances.length > 1 ? (
+                      <Field>
+                        <div className="flex items-center gap-1">
+                          <FieldLabel htmlFor={`staff-food-swap-${index}`}>
+                            Kan byttes til
+                          </FieldLabel>
+                          <HelpTooltip
+                            label="Kan byttes til"
+                            content="Medarbejderen kan bruge antallet fra denne kategorigruppe på produkter i de valgte grupper. Vælg det i begge grupper, hvis der skal kunne byttes begge veje."
+                          />
+                        </div>
+                        <Select
+                          multiple
+                          items={swapItems.filter((item) => item.value !== allowance.id)}
+                          value={allowance.swapToIds.filter((id) =>
+                            allowances.some((item) => item.id === id),
+                          )}
+                          onValueChange={(value) =>
+                            updateAllowance(index, { swapToIds: value })
+                          }
+                        >
+                          <SelectTrigger
+                            id={`staff-food-swap-${index}`}
+                            className="min-h-11 w-full min-w-0"
+                          >
+                            <SelectValue
+                              appearance="truncate"
+                              className="min-w-0"
+                              placeholder="Ingen bytte"
+                            />
+                          </SelectTrigger>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              {swapItems
+                                .filter((item) => item.value !== allowance.id)
+                                .map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                    className="min-h-11"
+                                  >
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    ) : null}
 
                     <FieldSet>
                       <FieldLegend>

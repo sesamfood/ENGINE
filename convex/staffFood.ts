@@ -1,5 +1,6 @@
 import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { addDays, dateKey as dateInTimeZone, zonedStart } from "../lib/date";
+import { swapRemaining, swapRules, swapsCover } from "../lib/staff-food-swaps";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -107,6 +108,7 @@ const allowanceInputValidator = v.object({
   categoryId: v.id("categories"),
   categoryIds: v.optional(v.array(v.id("categories"))),
   amount: v.number(),
+  swapCategoryIds: v.optional(v.array(v.id("categories"))),
   productIds: v.array(v.id("products")),
 });
 
@@ -720,6 +722,7 @@ export const getSessionState = query({
         categoryIds: v.array(v.id("categories")),
         categoryName: v.string(),
         amount: v.number(),
+        swapCategoryIds: v.array(v.id("categories")),
         used: v.number(),
         remaining: v.number(),
       }),
@@ -826,6 +829,7 @@ export const getSessionState = query({
           categoryIds,
           categoryName: categories.map((category) => category?.name).join(", "),
           amount: allowance.amount,
+          swapCategoryIds: allowance.swapCategoryIds ?? [],
           used: 0,
           remaining: allowance.amount,
         },
@@ -980,14 +984,15 @@ export const getSessionState = query({
         active,
       },
       tierMinimumShiftMinutes: tier.minimumShiftMinutes,
-      allowances: allowances.map((allowance) => {
-        const categoryUsed = used.get(allowance.categoryId) ?? 0;
-        return {
-          ...allowance,
-          used: categoryUsed,
-          remaining: Math.max(0, allowance.amount - categoryUsed),
-        };
-      }),
+      allowances: allowances.map((allowance) => ({
+        ...allowance,
+        used: used.get(allowance.categoryId) ?? 0,
+        remaining: swapRemaining(
+          swapRules(allowances),
+          used,
+          allowance.categoryId,
+        ),
+      })),
       products: products.sort(
         (left, right) =>
           left.categoryName.localeCompare(right.categoryName, "da") ||
@@ -1142,7 +1147,14 @@ export const register = mutation({
     if (existing.length > MAX_SESSION_REGISTRATIONS) {
       throw new ConvexError("Sessionen har for mange registreringer");
     }
-    const usedByAllowance = new Map<Id<"staffFoodRuleAllowances">, number>();
+    const demand = new Map<string, number>();
+    for (const [allowanceId, basketQuantity] of basketByAllowance) {
+      const allowance = allowanceById.get(allowanceId);
+      if (!allowance) {
+        throw new ConvexError("Et valgt produkt er ikke tilladt");
+      }
+      demand.set(allowance.categoryId, basketQuantity);
+    }
     for (const row of existing) {
       if (row.status !== "active") continue;
       const allowance =
@@ -1153,21 +1165,14 @@ export const register = mutation({
           ),
         );
       if (allowance) {
-        usedByAllowance.set(
-          allowance._id,
-          (usedByAllowance.get(allowance._id) ?? 0) + row.quantity,
+        demand.set(
+          allowance.categoryId,
+          (demand.get(allowance.categoryId) ?? 0) + row.quantity,
         );
       }
     }
-    for (const [allowanceId, basketQuantity] of basketByAllowance) {
-      const allowance = allowanceById.get(allowanceId);
-      if (!allowance) {
-        throw new ConvexError("Et valgt produkt er ikke tilladt");
-      }
-      const used = usedByAllowance.get(allowanceId) ?? 0;
-      if (used + basketQuantity > allowance.amount) {
-        throw new ConvexError("Valget overstiger den resterende mængde");
-      }
+    if (!swapsCover(swapRules(allowanceRows), demand)) {
+      throw new ConvexError("Valget overstiger den resterende mængde");
     }
 
     const checkoutId = crypto.randomUUID();
@@ -1389,6 +1394,7 @@ export const getSettings = query({
             categoryIds: v.array(v.id("categories")),
             categoryName: v.string(),
             amount: v.number(),
+            swapCategoryIds: v.array(v.id("categories")),
             products: v.array(
               v.object({
                 id: v.id("products"),
@@ -1497,6 +1503,7 @@ export const getSettings = query({
                 categoryIds,
                 categoryName: categories.map((category) => category?.name).join(", "),
                 amount: allowance.amount,
+                swapCategoryIds: allowance.swapCategoryIds ?? [],
                 products: allowedProducts.flatMap((product) =>
                   product?.organizationId === organizationId
                     ? [
@@ -1636,6 +1643,17 @@ export const saveTier = mutation({
       ) {
         throw new ConvexError("Kategoriens mængde eller produkter er ugyldige");
       }
+      const swapCategoryIds = allowance.swapCategoryIds ?? [];
+      if (
+        new Set(swapCategoryIds).size !== swapCategoryIds.length ||
+        swapCategoryIds.some(
+          (id) =>
+            id === allowance.categoryId ||
+            !args.allowances.some((other) => other.categoryId === id),
+        )
+      ) {
+        throw new ConvexError("Vælg gyldige kategorigrupper at bytte til");
+      }
     }
     const sameLength = await ctx.db
       .query("staffFoodRuleTiers")
@@ -1744,6 +1762,9 @@ export const saveTier = mutation({
         categoryId: allowance.categoryId,
         categoryIds,
         amount: allowance.amount,
+        swapCategoryIds: allowance.swapCategoryIds?.length
+          ? allowance.swapCategoryIds
+          : undefined,
       });
       for (const productId of allowance.productIds) {
         await ctx.db.insert("staffFoodRuleProducts", {

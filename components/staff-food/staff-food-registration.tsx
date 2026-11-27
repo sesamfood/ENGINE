@@ -75,6 +75,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useLastDefined } from "@/lib/use-last-defined";
+import { swapRemaining, swapRules } from "@/lib/staff-food-swaps";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
@@ -504,19 +505,11 @@ export function StaffFoodRegistration() {
   }
 
   function changeProduct(product: Product, delta: number) {
-    const allowance = state?.allowances.find(
-      (item) => item.categoryId === product.allowanceCategoryId,
-    );
-    if (!allowance) return;
-    const reserved = Object.entries(basket).reduce((total, [id, quantity]) => {
-      const item = state?.products.find((candidate) => candidate.id === id);
-      return item?.allowanceCategoryId === product.allowanceCategoryId
-        ? total + quantity
-        : total;
-    }, 0);
+    const limit = allowanceLimits.get(product.allowanceCategoryId);
+    if (!limit) return;
     setBasket((current) => {
       const nextValue = Math.max(0, (current[product.id] ?? 0) + delta);
-      if (delta > 0 && reserved >= allowance.remaining) return current;
+      if (delta > 0 && !limit.remaining) return current;
       const next = { ...current };
       if (nextValue) next[product.id] = nextValue;
       else delete next[product.id];
@@ -614,6 +607,27 @@ export function StaffFoodRegistration() {
         return product ? [{ product, quantity }] : [];
       }),
     [basket, state],
+  );
+  // Remaining picks per category group after used and basket picks, including swaps between groups.
+  const allowances = state?.allowances ?? [];
+  const rules = swapRules(allowances);
+  const demand = new Map<string, number>(
+    allowances.map((allowance) => [allowance.categoryId, allowance.used]),
+  );
+  for (const { product, quantity } of basketProducts) {
+    demand.set(
+      product.allowanceCategoryId,
+      (demand.get(product.allowanceCategoryId) ?? 0) + quantity,
+    );
+  }
+  const allowanceLimits = new Map(
+    allowances.map((allowance) => [
+      allowance.categoryId,
+      {
+        remaining: swapRemaining(rules, demand, allowance.categoryId),
+        max: swapRemaining(rules, new Map(), allowance.categoryId),
+      },
+    ]),
   );
   const visibleAllowances =
     state?.allowances.filter(
@@ -745,13 +759,6 @@ export function StaffFoodRegistration() {
                       Alle
                     </TabsTrigger>
                     {state.allowances.map((allowance) => {
-                      const reserved = basketProducts
-                        .filter(
-                          ({ product }) =>
-                            product.allowanceCategoryId ===
-                            allowance.categoryId,
-                        )
-                        .reduce((total, item) => total + item.quantity, 0);
                       return (
                         <TabsTrigger
                           key={allowance.categoryId}
@@ -761,7 +768,7 @@ export function StaffFoodRegistration() {
                         >
                           {allowance.categoryName}
                           <Badge variant="secondary">
-                            {Math.max(0, allowance.remaining - reserved)}
+                            {allowanceLimits.get(allowance.categoryId)?.remaining ?? 0}
                           </Badge>
                         </TabsTrigger>
                       );
@@ -777,15 +784,9 @@ export function StaffFoodRegistration() {
                           product.allowanceCategoryId === allowance.categoryId,
                       );
                       if (!products.length) return null;
-                      const reserved = basketProducts
-                        .filter(
-                          ({ product }) =>
-                            product.allowanceCategoryId ===
-                            allowance.categoryId,
-                        )
-                        .reduce((total, item) => total + item.quantity, 0);
-                      const canAdd =
-                        state.session.active && reserved < allowance.remaining;
+                      const limit = allowanceLimits.get(allowance.categoryId);
+                      const remaining = limit?.remaining ?? 0;
+                      const canAdd = state.session.active && remaining > 0;
 
                       return (
                         <section
@@ -797,8 +798,7 @@ export function StaffFoodRegistration() {
                               {allowance.categoryName}
                             </h2>
                             <span className="text-sm text-muted-foreground">
-                              {Math.max(0, allowance.remaining - reserved)}{" "}
-                              tilbage
+                              {remaining} tilbage
                             </span>
                           </div>
                           <div className={productGridClassName}>
@@ -830,7 +830,7 @@ export function StaffFoodRegistration() {
                                       </CardTitle>
                                     </CardHeader>
                                   </div>
-                                  {allowance.amount === 1 ? (
+                                  {limit?.max === 1 ? (
                                     <CardFooter appearance="product" className="mt-auto">
                                       <Button
                                         size="lg"
