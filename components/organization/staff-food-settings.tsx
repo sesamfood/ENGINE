@@ -715,9 +715,11 @@ export function StaffFoodSettings() {
                   <CardContent appearance="relaxed" className="flex flex-col">
                     <FieldGroup className="grid sm:grid-cols-(--grid-cols-staff-food-limit)">
                       <Field data-invalid={!allowance.categoryIds.length}>
-                        <FieldLabel htmlFor={`staff-food-category-${index}`}>
-                          Kategorier
-                        </FieldLabel>
+                        <div className="flex min-h-11 items-center">
+                          <FieldLabel htmlFor={`staff-food-category-${index}`}>
+                            Kategorier
+                          </FieldLabel>
+                        </div>
                         <Select
                           multiple
                           items={categoryItems}
