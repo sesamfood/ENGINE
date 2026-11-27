@@ -781,6 +781,8 @@ export default defineSchema({
     categoryId: v.id("categories"),
     categoryIds: v.optional(v.array(v.id("categories"))),
     amount: v.number(),
+    // Primary category ids of other groups in the same tier this group's picks can be spent on.
+    swapCategoryIds: v.optional(v.array(v.id("categories"))),
   })
     .index("by_organizationId_and_tierId", ["organizationId", "tierId"])
     .index("by_organizationId_and_tierId_and_categoryId", [
