@@ -779,20 +779,16 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (nextTransitionAt === null || nextTransitionAt === undefined) return;
-    const refresh = () => setQueryNow(minuteTimestamp());
-    const timeout = window.setTimeout(
-      refresh,
-      Math.max(0, nextTransitionAt - Date.now()) + 100,
-    );
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible" && Date.now() >= nextTransitionAt) {
-        refresh();
-      }
+    // Safari pauses timers while the iPad sleeps and resumes them with their remaining
+    // delay, so one long timeout until closing fires hours late. Poll the clock instead.
+    const check = () => {
+      if (Date.now() >= nextTransitionAt) setQueryNow(minuteTimestamp());
     };
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    const interval = window.setInterval(check, 30_000);
+    document.addEventListener("visibilitychange", check);
     return () => {
-      window.clearTimeout(timeout);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", check);
     };
   }, [nextTransitionAt]);
 
