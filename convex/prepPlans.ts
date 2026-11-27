@@ -44,6 +44,8 @@ function nextPlanDate(from: string, orderWindows: number[]) {
 
 const ingredientValidator = v.object({
   productName: v.string(),
+  // 0 for the product's own recipe, 1+ for ingredients of a sub-recipe.
+  depth: v.number(),
   quantity: v.number(),
   unitName: v.string(),
 });
@@ -484,26 +486,53 @@ async function buildItems(
   return { items: result, unavailableLineCount };
 
   async function scaledIngredients(item: Item) {
-    const rows = await getRecipe(item.product._id);
-    if (!rows.length) return [];
     const { product } = item;
+    if (!(await getRecipe(product._id)).length) return [];
+    if (item.unitId !== product.defaultUnitId) return null;
+    return await recipeRows(product, item.total, 0, new Set([product._id]));
+  }
+
+  // Rows for `total` default units of `product`, with sub-recipes expanded
+  // below their ingredient. Null when the yield can't be converted.
+  async function recipeRows(
+    product: Doc<"products">,
+    total: number,
+    depth: number,
+    path: Set<Id<"products">>,
+  ) {
     const yieldFactor = product.recipeYield
       ? await factorToDefault(product, product.recipeYield.unitId)
       : 1;
-    if (item.unitId !== product.defaultUnitId || yieldFactor === null) {
-      return null;
-    }
-    const recipeYield = (product.recipeYield?.quantity ?? 1) * yieldFactor;
-    const batches = item.total / recipeYield;
-    return await Promise.all(
-      rows.map(async (row) => ({
-        productName:
-          (await getProduct(row.ingredientProductId))?.name ??
-          "Ukendt produkt",
-        quantity: normalizeStock(row.quantity * batches),
+    if (yieldFactor === null) return null;
+    const batches =
+      total / ((product.recipeYield?.quantity ?? 1) * yieldFactor);
+    const result: Array<{
+      productName: string;
+      depth: number;
+      quantity: number;
+      unitName: string;
+    }> = [];
+    for (const row of await getRecipe(product._id)) {
+      const ingredient = await getProduct(row.ingredientProductId);
+      const quantity = row.quantity * batches;
+      result.push({
+        productName: ingredient?.name ?? "Ukendt produkt",
+        depth,
+        quantity: normalizeStock(quantity),
         unitName: await unitName(row.unitId, ""),
-      })),
-    );
+      });
+      if (!ingredient || path.has(ingredient._id) || depth >= 4) continue;
+      const factor = await factorToDefault(ingredient, row.unitId);
+      if (factor === null) continue;
+      const children = await recipeRows(
+        ingredient,
+        quantity * factor,
+        depth + 1,
+        new Set([...path, ingredient._id]),
+      );
+      if (children) result.push(...children);
+    }
+    return result;
   }
 }
 
