@@ -109,6 +109,10 @@ import { addDays, dateTimeFormatter, parseDateKey } from "@/lib/date";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { formatStockQuantity, unitNameFor } from "@/lib/unit-system";
+import { cn } from "@/lib/utils";
+
+// Padding per sub-recipe depth; the server stops expanding at depth 4.
+const INGREDIENT_INDENT = ["pl-3", "pl-8", "pl-13", "pl-18", "pl-23"];
 
 type Plan = NonNullable<
   NonNullable<FunctionReturnType<typeof api.prepPlans.get>>["plan"]
@@ -788,7 +792,11 @@ function StepItem({
                 {item.ingredients.map((ingredient, row) => (
                   <li
                     key={row}
-                    className="flex min-h-11 items-center justify-between gap-4 px-3 py-2"
+                    className={cn(
+                      "flex min-h-11 items-center justify-between gap-4 py-2 pr-3",
+                      INGREDIENT_INDENT[ingredient.depth],
+                      ingredient.depth > 0 && "bg-muted/40 text-sm",
+                    )}
                   >
                     <span>{ingredient.productName}</span>
                     <span className="font-medium tabular-nums">
